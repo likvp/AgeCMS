@@ -1,83 +1,115 @@
-# AgeCMS — The Agent-Native PHP/SQLite CMS
-> **Developed with ❤️ by Tabson.ru Studio**  
+# AgeCMS — Agent-Native PHP/SQLite CMS
+> **Repository:** [github.com/likvp/Agent-native-php-cms-](https://github.com/likvp/Agent-native-php-cms-)  
+> **Vendor:** Tabson.ru Studio  
 > **Core Philosophy:** Agent-Native Architecture over Protocol-Bound Branding  
 > **Official Anchor:** *Agent-native CMS with MCP as the agent interface*
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-777BB4?style=flat-square&logo=php)](https://php.net)
 [![Database](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
-[![Protocol](https://img.shields.io/badge/MCP-Compatible-FF6B6B?style=flat-square)](#-dual-ux-human--ai-architecture)
+[![Protocol](https://img.shields.io/badge/MCP-Compatible-FF6B6B?style=flat-square)](#-mcp-agent-gateway--dual-ux)
 [![Performance](https://img.shields.io/badge/PageSpeed-100%2F100-00C853?style=flat-square)](#-key-features)
 [![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)](#)
 
 ---
 
-## 💡 What is AgeCMS?
+## 💡 Что такое AgeCMS?
 
-**AgeCMS** (Agent + Engine / The New Age of CMS) is a lightweight, zero-setup, dual-interface CMS built from the ground up for the AI-driven web generation. Designed as an in-house core engine for **Tabson.ru Studio**, AgeCMS decouples traditional human administrative flows from autonomous AI-agent workflows.
+**AgeCMS** (*Agent + Engine / The New Age of CMS*) — это ультралёгкая, портативная и защищённая Agent-Native CMS с двухуровневым интерфейсом (**Dual-UX**), разработанная студией **Tabson.ru** в качестве фундаментального встраиваемого ядра для веб-проектов нового поколения.
 
-It is built on top of **PHP 8.1+** and embedded **SQLite 3 (WAL mode)**, achieving sub-2ms response times with zero external database dependencies.
-
----
-
-## ⚡ Key Features
-
-* **Dual-UX Architecture:** Seamless visual inline editing (`contenteditable` + Bento UI) for humans; standardized JSON-RPC 2.0 / MCP (Model Context Protocol) endpoints for AI Agents (Cursor, Claude, Windsurf, Devin).
-* **Zero-Setup & Portable:** No configuration wizards or complex MySQL provisioning. Initializes `data.sqlite` with WAL mode automatically on the first HTTP request.
-* **1-ms Flat-File Shadow Cache:** Serves compiled static HTML snapshots instantly with almost zero PHP/SQLite overhead.
-* **Module-as-a-Skill Protocol:** Every extension module (`/modules/<module_name>/skills/*.json`) automatically exports declarative skills directly into the AI agent's context.
-* **Immutable Audit Ledger:** Time-Travel versioning backed by SQLite-level `BEFORE UPDATE` / `BEFORE DELETE` triggers to ensure `revisions` are strictly append-only.
-* **Hardened Security Suite:** HMAC-SHA256 request signatures, circuit breakers for bulk mutations (15% limit), and strict Schema-based RBAC.
+Система устраняет барьеры между классическим администрированием людьми и автоматическим управлением ИИ-агентами (Cursor, Claude Desktop, Windsurf, Devin, OpenAI Operator). **AgeCMS** построена на **PHP 8.1+** и встроенной СУБД **SQLite 3 в режиме WAL**, не требует настройки внешних баз данных (Zero-Setup) и обеспечивает скорость отдачи страниц **за 1–2 мс** за счёт системы Flat-File Shadow Cache.
 
 ---
 
-## 🏛 Three-Tier Positioning Model
+## ⚡ Ключевые возможности и архитектура
 
-To protect the architecture from protocol deprecation or rebranding, **AgeCMS** strictly enforces a 3-tier positioning structure:
+### 1. Двухуровневый интерфейс (Dual-UX)
+* **Для человека:** Визуальное редактирование контента «на лету» (`contenteditable`) с мгновенным сохранением блоков Bento UI (Tailwind CSS + Alpine.js).
+* **Для ИИ-агентов:** Нативный шлюз `/admin/mcp.php` по протоколу Model Context Protocol (JSON-RPC 2.0) с защитой HMAC-SHA256.
 
-| Tier | Role | Term / Scope |
+### 2. Zero-Setup & 1-ms Shadow Cache
+* Никаких мастеров установки или подключения к MySQL. При первом HTTP-запросе ядро автоматически создает базу `data.sqlite`, включающую режим WAL.
+* Кеширующий слой **Flat-File Shadow Cache** запекает валидный Bento-контент в статические `.html` файлы, отдавая их с диска за 1–2 мс с нулевой нагрузкой на PHP.
+
+### 3. Концепция Module-as-a-Skill
+* Модули расширения (`/modules/<module_name>/`) не просто содержат PHP-логику, но и объявляют JSON-инструкции в папке `skills/`.
+* Класс `SkillRegistry` динамически агрегирует эти файлы и передаёт готовые описания навыков в контекст ИИ-агентов через MCP.
+
+### 4. Неизменяемый аудит (Append-Only Time-Travel Ledger)
+* Все изменения фиксируются в таблице `revisions` с указанием типа актора (`actor_type = 'agent' | 'human'`).
+* Журнал защищён на уровне ядра СУБД триггерами SQLite (`BEFORE UPDATE` / `BEFORE DELETE`), гарантирующими невозможность удаления или подмены истории правок.
+
+---
+
+## 🏛 Трёхуровневое позиционирование (Three-Tier Naming Model)
+
+Для защиты продукта от устаревания конкретных протоколов в **AgeCMS** зафиксирована строго проверенная структура позиционирования:
+
+| Уровень | Назначение | Формулировка / Термин |
 | :--- | :--- | :--- |
-| **Brand** | Commercial Product Name | **AgeCMS** *(by Tabson.ru)* |
-| **Category** | Durable Architectural Class | **Agent-Native PHP/SQLite CMS** |
-| **Compatibility** | Current Agent Protocol Interface | **MCP-Compatible** |
+| **Brand** | Коммерческое имя продукта | **AgeCMS** *(by Tabson.ru)* |
+| **Category** | Архитектурный класс (Durable) | **Agent-Native PHP/SQLite CMS** |
+| **Compatibility** | Протокол интеграции | **MCP-Compatible** |
+
+> **Связующий якорь:** *Agent-native CMS with MCP as the agent interface*
 
 ---
 
-## 📁 Directory Structure
+## 📁 Структура каталогов репозитория
 
 ```text
-public_html/
-├── admin/                  # Administrative Panel & MCP Gateway
-│   ├── index.php           # Human Dashboard
-│   └── mcp.php             # Secure Agent Endpoint (HMAC Signed)
-├── core/                   # Core Architecture
-│   ├── Database.php        # SQLite WAL Singleton
-│   ├── EventBus.php        # Internal Event Hook System
-│   ├── SchemaValidator.php # Strict JSON Block Schema Validation
-│   └── SkillRegistry.php   # Dynamic Agent Skill Aggregator
-├── modules/                # Custom Business Modules (Module-as-a-Skill)
-│   ├── auto_migrator/      # Automated Legacy Migration Engine
-│   └── telegram_leads/     # Telegram Notification Dispatcher
-├── themes/                 # Bento UI Theme Templates (Tailwind + Alpine.js)
-├── data.sqlite             # Embedded SQLite Database File
-└── index.php               # Front-Controller & Shadow Cache Router
+.
+├── admin/                  # Панель управления и шлюз для ИИ-агентов
+│   ├── index.php           # Дашборд администратора (Human Layer)
+│   └── mcp.php             # Защищенный MCP Шлюз (JSON-RPC 2.0 + HMAC)
+├── core/                   # Архитектурное ядро
+│   ├── Database.php        # Синглтон подключения к SQLite WAL
+│   ├── EventBus.php        # Шина событий системы (Хуки и уведомления)
+│   ├── SchemaValidator.php # Валидатор JSON-схем Bento-блоков
+│   └── SkillRegistry.php   # Динамический реестр навыков ИИ-агентов
+├── modules/                # Расширения (Module-as-a-Skill)
+│   ├── auto_migrator/      # Бесшовный конвейер миграции старых сайтов в /new/
+│   ├── scale_migrator/     # Модуль пакетной пересборки (10,000+ страниц, 301 SEO)
+│   └── telegram_leads/     # Модуль приёма заявок и отправки в Telegram
+├── themes/                 # Темы оформления (Bento UI + Tailwind + Alpine.js)
+├── BRAND_STRATEGY.md       # Стратегия позиционирования и нейминга
+├── QUICKSTART.md           # Руководство по быстрому старту
+├── SEAMLESS_AGENT_DEPLOYMENT.md # Протокол бесшовной деплой-миграции через FTP
+├── SECURITY.md             # Политика безопасности и правила репортов
+├── SKILL_AUTO_MIGRATOR.md  # Инструкция для агентов: автоматическая миграция
+├── SKILL_SCALE_MIGRATOR.md # Инструкция для агентов: enterprise-миграция и SEO
+├── THREAT_MODEL.md         # Модель угроз и инженерный анализ векторов атак
+├── data.sqlite             # Встраиваемая база данных SQLite 3
+├── index.php               # Front-Controller & Shadow Cache роутер
+└── README.md               # Полное техническое руководство
 ```
 
 ---
 
-## 🚀 Quick Start for Developers & AI Agents
+## 🛡 Комплексный фреймворк безопасности (Security & Integrity)
 
-### 1. Installation
-Simply upload the repository contents to your web root (`/public_html/`) or staging folder (`/new/`). Ensure PHP 8.1+ with `pdo_sqlite` enabled.
+AgeCMS проектировалась с учётом наивысших требований к защите закрытого B2B-контура:
+
+1. **HMAC-SHA256 подпись:** Каждый запрос к `/admin/mcp.php` подписывается секретным ключом с временной меткой (окно 30 секунд для защиты от Replay Attack).
+2. **Предохранители массовых правок (Circuit Breakers):** Если сессия или агент пытается модифицировать >15% страниц сайта одновременно, транзакция замораживается с отправкой аларма в Telegram.
+3. **Двухуровневая фильтрация:** `SchemaValidator` проверяет структуру по JSON Schema, а `SecuritySanitizer` очищает HTML-разметку от XSS и опасных инъекций.
+4. **Append-Only Ревизии:** SQLite-триггеры блокируют `UPDATE` и `DELETE` в таблице `revisions`.
+
+---
+
+## 🚀 Быстрый старт
+
+### 1. Клонирование репозитория
+Загрузите содержимое репозитория [github.com/likvp/Agent-native-php-cms-](https://github.com/likvp/Agent-native-php-cms-) в корень сайта или временный каталог:
 
 ```bash
-git clone https://github.com/tabson/agecms.git .
+git clone https://github.com/likvp/Agent-native-php-cms-.git .
 ```
 
-### 2. First Boot
-Navigate to `http://your-domain.com/`. AgeCMS will auto-create `data.sqlite`, execute core migrations, compile the initial Bento theme, and initialize the WAL journal.
+### 2. Первый запуск
+Перейдите по адресу вашего сайта (`http://domain.com/`). **AgeCMS** автоматически сформирует структуру `data.sqlite`, настроит WAL-журнал и отрендерит базовую тему.
 
-### 3. Connecting an AI Agent via MCP
-To interact with AgeCMS via Cursor or Claude Desktop, point your MCP client configuration to `/admin/mcp.php`:
+### 3. Подключение ИИ-агентов по MCP
+Для подключения Cursor, Claude Desktop или Windsurf укажите настройки в конфигурационном файле MCP-клиента:
 
 ```json
 {
@@ -96,18 +128,15 @@ To interact with AgeCMS via Cursor or Claude Desktop, point your MCP client conf
 
 ---
 
-## 🛡 Security Policy & Threat Mitigation
+## 📄 Спецификации и дополнительная документация
 
-AgeCMS is designed for secure deployment in both internal agency workflows and hardened production environments:
-* **HMAC-SHA256 Signatures:** Required on all `/admin/mcp.php` calls.
-* **Bulk Mutation Circuit Breaker:** Rejects agent operations affecting >15% of pages in a single transaction.
-* **Append-Only Revisions:** SQLite database triggers prevent deletion or editing of historical revision logs.
-
-For full threat analysis and security guidelines, see [`THREAT_MODEL.md`](./THREAT_MODEL.md) and [`SECURITY.md`](./SECURITY.md).
+* [`BRAND_STRATEGY.md`](./BRAND_STRATEGY.md) — Стратегия нейминга и категория Agent-Native CMS.
+* [`SEAMLESS_AGENT_DEPLOYMENT.md`](./SEAMLESS_AGENT_DEPLOYMENT.md) — Руководство по миграции сайтов ИИ-агентом через FTP без даунтайма.
+* [`SKILL_AUTO_MIGRATOR.md`](./SKILL_AUTO_MIGRATOR.md) — Автоматический поиск конфигураций и перенос в `/new/`.
+* [`SKILL_SCALE_MIGRATOR.md`](./SKILL_SCALE_MIGRATOR.md) — Миграция 10,000+ страниц с сохранением SEO, 301-картой и рендерингом Bento.
+* [`THREAT_MODEL.md`](./THREAT_MODEL.md) & [`SECURITY.md`](./SECURITY.md) — Анализ угроз, защита от Prompt Injection и правила безопасности.
 
 ---
 
-## 📄 License & Attribution
-
-Designed and developed by **Tabson.ru Studio**.  
-All rights reserved. Confidential in-house core software.
+Разработано с ❤️ в **Tabson.ru Studio**.  
+Репозиторий проекта: [github.com/likvp/Agent-native-php-cms-](https://github.com/likvp/Agent-native-php-cms-)
