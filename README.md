@@ -37,12 +37,7 @@ php bin/install.php --url=https://example.com --name="Мой сайт"
 - nginx: возьмите [nginx.vhost.example](nginx.vhost.example), поправьте `server_name`, `root` и сокет FPM.
 - Права: пользователь PHP должен писать в `data/`, `assets/cache/` и `assets/uploads/`.
 
-Cron раз в минуту (очередь, пинги IndexNow, пересборка сброшенных страниц):
-
-```bash
-* * * * * php /var/www/agecms/bin/queue-worker.php
-0 3 * * *  php /var/www/agecms/bin/backup.php
-```
+Фоновые задачи (разбор очереди записи, пинги IndexNow, пересборка кэша сброшенных страниц) выполняются сами: сразу после ответа на сохранение в админке или через API и при заходе посетителей, не чаще раза в 30 секунд. Cron не нужен. Если хотите расписание, можно по-прежнему вызывать `php bin/queue-worker.php` раз в минуту. Резервную копию удобно делать ежедневно: `0 3 * * * php /var/www/agecms/bin/backup.php` (или кнопкой «Сделать бэкап» в «Системе»).
 
 ## Команды
 
@@ -80,7 +75,7 @@ curl -s https://example.com/admin/api.php -H "Content-Type: application/json" \
 ## Тесты и замеры
 
 ```bash
-php tests/run.php          # 116 тестов, около 35 секунд, песочница во временной папке
+php tests/run.php          # 120 тестов, около 35 секунд, песочница во временной папке
 php bench/shadow_cache_bench.php
 ```
 

@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, Auth, Backup, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security};
+use AgeCMS\{AgeCMSException, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Slug};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -18,6 +18,9 @@ if (!Installer::installed() || !Database::exists()) {
     echo 'AgeCMS is not installed. Run php bin/install.php';
     exit;
 }
+
+// After the page is sent: finish queued work, ping search engines, re-cache the pages that changed. No cron needed.
+Background::afterResponse(true);
 
 $flash = '';
 $error = '';
@@ -69,6 +72,10 @@ try {
                     exit;
                 case 'page_create':
                     $slug = trim((string)($_POST['slug'] ?? ''), " \t/");
+                    if ($slug === '') {
+                        // The address is optional: it is made from the title (Cyrillic transliterated), under the parent page if one is chosen.
+                        $slug = Slug::free((string)($_POST['title'] ?? ''), (string)($_POST['parent_slug'] ?? ''));
+                    }
                     $fields = ['title' => (string)($_POST['title'] ?? ''), 'schema_type' => (string)($_POST['schema_type'] ?? 'WebPage'), 'is_published' => 0, 'blocks' => []];
                     if (($_POST['parent_slug'] ?? '') !== '') {
                         $fields['parent_slug'] = (string)$_POST['parent_slug'];

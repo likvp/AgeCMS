@@ -156,7 +156,7 @@ final class HttpIntegrationTest extends TestCase
 
         $anon = $this->http('GET', '/');
         $this->assertContains('Новый заголовок', $anon['body']);
-        $this->assertSame('miss', $anon['headers']['x-agecms-cache'], 'the edit dropped the cached copy');
+        $this->assertSame('hit', $anon['headers']['x-agecms-cache'], 'the save re-cached the page itself, no cron needed');
         $this->assertSame('hit', $this->http('GET', '/')['headers']['x-agecms-cache']);
 
         $bad = $this->http('POST', '/admin/api.php', json_encode(['action' => 'update_block_field', 'slug' => 'index', 'block_id' => 'hero_1', 'field_path' => 'nope', 'value' => 'x']), ['Content-Type' => 'application/json', 'X-CSRF-Token' => $csrf], true);
@@ -371,7 +371,8 @@ final class HttpIntegrationTest extends TestCase
 
         $done = $form($base + ['demo' => '1']);
         $this->assertContains('AgeCMS установлена', $done['body']);
-        $this->assertContains('queue-worker.php', $done['body']);
+        $this->assertContains('cron не требуется', $done['body']);
+        $this->assertNotContains('* * * * *', $done['body']);
         preg_match('~id="c-pass">([A-Za-z0-9]{16})</dd>~', $done['body'], $m);
         $this->assertTrue(isset($m[1]), 'generated password is shown once');
         $this->assertSame(false, is_file(AGECMS_DATA . '/install.key'), 'key file is removed');
@@ -529,6 +530,47 @@ final class HttpIntegrationTest extends TestCase
         $on = $this->form(['action' => 'agent_access_save', 'self_issue' => '1'], $csrf);
         $this->assertContains('агент получает токен сам', $on['body']);
         $this->assertContains('/AGENT.md', $this->http('GET', '/admin/', null, [], false)['body'], 'the login page points agents to the instructions');
+    }
+
+    public function testSavingRebuildsTheCacheAndLeftoversAreFinishedOnVisits(): void
+    {
+        $this->boot();
+        $editor = Auth::createToken('cache-bot', 'editor');
+        $this->http('GET', '/about');
+        $this->assertTrue(is_file(AGECMS_CACHE . '/about.html'));
+
+        // a save through the API: the changed page is cached again right after the answer, without a worker
+        $args = ['name' => 'update_block_field', 'arguments' => ['slug' => 'about', 'block_id' => 'text_1', 'field_path' => 'heading', 'value' => 'Сразу в кэше']];
+        $this->assertSame(false, $this->rpc($editor, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => $args])['json']['result']['isError']);
+        $this->assertTrue(is_file(AGECMS_CACHE . '/about.html'), 'cached again by the save');
+        $this->assertContains('Сразу в кэше', (string)file_get_contents(AGECMS_CACHE . '/about.html'));
+        $this->assertSame([], glob(AGECMS_DATA . '/queue/rebuild/*.json') ?: [], 'nothing left to rebuild');
+
+        // work left behind (a crash, a failed ping) is picked up by an ordinary visit that reaches PHP
+        \AgeCMS\Cache::invalidate(['all']);
+        $this->assertSame(false, is_file(AGECMS_CACHE . '/about.html'));
+        @unlink(AGECMS_DATA . '/queue/.tick');
+        $this->http('GET', '/no-such-page');
+        $this->assertSame([], glob(AGECMS_DATA . '/queue/rebuild/*.json') ?: [], 'a visit finished the leftovers');
+        $this->assertTrue(is_file(AGECMS_CACHE . '/about.html'), 'about was re-rendered in the background');
+    }
+
+    public function testNewPageGetsItsAddressFromTheTitle(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $made = $this->form(['action' => 'page_create', 'slug' => '', 'title' => 'Ремонт квартир под ключ', 'schema_type' => 'Service'], $csrf);
+        $this->assertSame(302, $made['status']);
+        $this->assertContains('slug=remont-kvartir-pod-klyuch', $made['headers']['location']);
+        $again = $this->form(['action' => 'page_create', 'slug' => '', 'title' => 'Ремонт квартир под ключ', 'schema_type' => 'Service'], $csrf);
+        $this->assertContains('slug=remont-kvartir-pod-klyuch-2', $again['headers']['location'], 'a taken address gets a number');
+        $child = $this->form(['action' => 'page_create', 'slug' => '', 'title' => 'Цены', 'parent_slug' => 'remont-kvartir-pod-klyuch', 'schema_type' => 'WebPage'], $csrf);
+        $this->assertContains('slug=remont-kvartir-pod-klyuch%2Ftseny', $child['headers']['location'], 'under the parent page');
+        $own = $this->form(['action' => 'page_create', 'slug' => 'moy-adres', 'title' => 'Что-то', 'schema_type' => 'WebPage'], $csrf);
+        $this->assertContains('slug=moy-adres', $own['headers']['location'], 'a typed address wins');
+        $form = $this->http('GET', '/admin/?s=pages', null, [], true)['body'];
+        $this->assertContains('data-slug-from', $form);
+        $this->assertContains('необязательно', $form);
     }
 
     public function testAdminDeletePagesMediaAndUsers(): void

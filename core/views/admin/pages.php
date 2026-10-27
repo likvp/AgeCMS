@@ -59,15 +59,15 @@ $pages = Pages::listing();
 <?php if ($canWrite): ?>
 <section class="panel" id="new">
     <div class="panel-h"><h2>Новая страница</h2></div>
-    <form method="post" class="panel-b">
+    <form method="post" class="panel-b" data-autoslug>
         <?= admin_post_fields($csrf, 'page_create') ?>
         <div class="row">
-            <label class="f"><span>Адрес</span><input class="in" type="text" name="slug" placeholder="uslugi/remont" required pattern="[a-z0-9][a-z0-9_\-]*(/[a-z0-9][a-z0-9_\-]*)*" title="латиница, цифры, - и _, части через /" autocapitalize="none" spellcheck="false"></label>
-            <label class="f"><span>Заголовок</span><input class="in" type="text" name="title" placeholder="Ремонт" required maxlength="200"></label>
+            <label class="f"><span>Заголовок</span><input class="in" type="text" name="title" placeholder="Ремонт квартир" required maxlength="200" data-slug-from></label>
+            <label class="f"><span>Адрес <small>(необязательно, делается из заголовка)</small></span><input class="in" type="text" name="slug" placeholder="remont-kvartir" pattern="[a-z0-9][a-z0-9_\-]*(/[a-z0-9][a-z0-9_\-]*)*" title="латиница, цифры, - и _, части через /" autocapitalize="none" spellcheck="false" data-slug></label>
         </div>
         <div class="row">
             <label class="f"><span>Родитель</span>
-                <select class="in" name="parent_slug"><option value="">без родителя</option>
+                <select class="in" name="parent_slug" data-slug-parent><option value="">без родителя</option>
                     <?php foreach ($pages as $p): ?><option value="<?= h($p['slug']) ?>"><?= h($p['title']) ?> (/<?= h($p['slug']) ?>)</option><?php endforeach; ?>
                 </select></label>
             <label class="f"><span>Тип (schema.org)</span>

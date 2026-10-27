@@ -5,16 +5,11 @@ declare(strict_types=1);
 // Auth: Bearer token, or the admin session plus the X-CSRF-Token header.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{Api, AgeCMSException, AntiSpam, Auth, Config, Http, Logger, NotInstalledException, Seo};
+use AgeCMS\{Api, Background, AgeCMSException, AntiSpam, Auth, Config, Http, Logger, NotInstalledException, Seo};
 
 
-register_shutdown_function(static function (): void {
-    Http::finishResponse();
-    try {
-        Seo::flushPings();
-    } catch (Throwable) {
-    }
-});
+// After the answer is sent: finish queued work, ping search engines, re-cache the pages that changed. No cron needed.
+Background::afterResponse(true);
 
 try {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {

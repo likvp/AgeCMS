@@ -149,11 +149,13 @@ final class Cache
     }
 
     /**
-     * Renders and stores the slugs queued by invalidate(). Meant for the cron worker.
+     * Renders and stores the slugs queued by invalidate(). Run after a save and by the optional cron worker.
+     * Slugs left over when the limit or the time budget runs out are queued again, or built on the next visit.
      *
+     * @param float|null $deadline microtime() after which no more pages are started
      * @return int number of pages rebuilt
      */
-    public static function processRebuildQueue(int $limit = 200): int
+    public static function processRebuildQueue(int $limit = 200, ?float $deadline = null): int
     {
         $files = glob(Queue::dir() . '/rebuild/*.json') ?: [];
         sort($files, SORT_STRING);
@@ -165,7 +167,12 @@ final class Cache
             @unlink($file);
         }
         $done = 0;
-        foreach (array_slice(array_keys($slugs), 0, $limit) as $slug) {
+        $todo = array_map('strval', array_keys($slugs));
+        foreach ($todo as $i => $slug) {
+            if ($i >= $limit || ($deadline !== null && microtime(true) > $deadline)) {
+                self::queueRebuild(array_slice($todo, $i));
+                break;
+            }
             if (self::warm($slug)) {
                 $done++;
             }

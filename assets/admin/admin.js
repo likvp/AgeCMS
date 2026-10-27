@@ -102,6 +102,29 @@
         sync();
     });
 
+    // ---- page address made from the title (same rules as core/Slug.php) ----------------------
+    var slugForm = document.querySelector('[data-autoslug]');
+    if (slugForm) {
+        var map = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'};
+        var titleIn = slugForm.querySelector('[data-slug-from]');
+        var slugIn = slugForm.querySelector('[data-slug]');
+        var parentIn = slugForm.querySelector('[data-slug-parent]');
+        var touched = false;
+        var makeSlug = function (t) {
+            var s = t.toLowerCase().replace(/[а-яё]/g, function (c) { return map[c]; }).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            if (s.length > 60) { s = s.slice(0, 60); var cut = s.lastIndexOf('-'); s = (cut > 20 ? s.slice(0, cut) : s).replace(/-+$/g, ''); }
+            return s;
+        };
+        var fill = function () {
+            if (touched) { return; }
+            var base = makeSlug(titleIn.value);
+            slugIn.value = base === '' ? '' : (parentIn && parentIn.value && parentIn.value !== 'index' ? parentIn.value + '/' : '') + base;
+        };
+        slugIn.addEventListener('input', function () { touched = slugIn.value !== ''; });
+        titleIn.addEventListener('input', fill);
+        if (parentIn) { parentIn.addEventListener('change', fill); }
+    }
+
     // ---- auto-submit selects (role switch) -------------------------------------------------
     document.querySelectorAll('[data-autosubmit]').forEach(function (sel) {
         sel.addEventListener('change', function () { if (sel.form.requestSubmit) { sel.form.requestSubmit(); } else { sel.form.submit(); } });

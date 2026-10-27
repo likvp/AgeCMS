@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-// Cron worker, e.g. every minute: * * * * * php /path/bin/queue-worker.php
+// Optional: the site does this by itself after saves and on visits (core/Background.php).
+// A cron entry only adds a schedule, e.g. every minute: * * * * * php /path/bin/queue-worker.php
 // Drains the write queue, sends IndexNow pings and rebuilds invalidated pages.
 if (PHP_SAPI !== 'cli') {
     exit(1);

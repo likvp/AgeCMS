@@ -11,6 +11,10 @@ final class Router
 {
     public static function handle(): void
     {
+        // Leftover jobs, pings and re-renders are finished after a visit is answered, at most every 30 seconds.
+        if (in_array($_SERVER['REQUEST_METHOD'] ?? '', ['GET', 'HEAD'], true)) {
+            Background::afterResponse();
+        }
         try {
             self::route();
         } catch (NotInstalledException $e) {
