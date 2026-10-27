@@ -38,6 +38,9 @@ final class EventBus
                 Logger::log('error', 'event.listener_failed', ['event' => $event, 'error' => $e->getMessage()]);
             }
         }
+        if ($event === Background::TICK_EVENT) {
+            return; // fires every 30 seconds: only modules listen, never an HTTP webhook
+        }
         try {
             $rows = Database::rows("SELECT key, value FROM settings WHERE key LIKE 'integration\_%' ESCAPE '\\'");
         } catch (Throwable) {

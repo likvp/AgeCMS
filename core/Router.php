@@ -12,7 +12,9 @@ final class Router
     public static function handle(): void
     {
         // Leftover jobs, pings and re-renders are finished after a visit is answered, at most every 30 seconds.
-        if (in_array($_SERVER['REQUEST_METHOD'] ?? '', ['GET', 'HEAD'], true)) {
+        // The page-view beacon counts as a visit: pages served straight from the cache never start PHP themselves.
+        $method = $_SERVER['REQUEST_METHOD'] ?? '';
+        if (in_array($method, ['GET', 'HEAD'], true) || ($method === 'POST' && parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) === '/_/hit')) {
             Background::afterResponse();
         }
         try {

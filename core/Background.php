@@ -13,6 +13,8 @@ use Throwable;
 final class Background
 {
     private const TICK_EVERY = 30;
+    /** Modules subscribe to this event to do scheduled work (mailings, syncs). The payload holds "time" and "deadline" (microtime to stop at). */
+    public const TICK_EVENT = 'background.tick';
 
     /** True when something is waiting: queued jobs, pings or pages to re-render. */
     public static function pending(): bool
@@ -43,12 +45,13 @@ final class Background
     }
 
     /**
-     * @return array{jobs:int,pings:int,rebuilt:int}|null null when nothing was due
+     * @return array{jobs:int,pings:int,rebuilt:int,ticked:bool}|null null when nothing was due
      */
     public static function run(bool $always = false, float $budgetSeconds = 8.0): ?array
     {
+        $ticked = self::tick($budgetSeconds);
         if (!is_dir(Queue::dir()) || !self::pending()) {
-            return null;
+            return $ticked ? ['jobs' => 0, 'pings' => 0, 'rebuilt' => 0, 'ticked' => true] : null;
         }
         $stamp = Queue::dir() . '/.tick';
         if (!$always) {
@@ -62,6 +65,42 @@ final class Background
         $jobs = Queue::drain(0, 200);
         $pings = Seo::flushPings();
         $rebuilt = Cache::processRebuildQueue(200, $deadline);
-        return ['jobs' => $jobs, 'pings' => $pings, 'rebuilt' => $rebuilt];
+        return ['jobs' => $jobs, 'pings' => $pings, 'rebuilt' => $rebuilt, 'ticked' => $ticked];
+    }
+
+    /**
+     * Raises background.tick for modules, at most once every 30 seconds and never twice at the same time
+     * (an exclusive lock on the stamp file, so a slow listener is not started again by the next visit).
+     * Declarative webhooks are not called for this event. Returns true when the event was raised.
+     */
+    public static function tick(float $budgetSeconds = 8.0): bool
+    {
+        $dir = Queue::dir();
+        if (!is_dir($dir)) {
+            return false;
+        }
+        $file = $dir . '/.tick-modules';
+        $handle = @fopen($file, 'c+');
+        if ($handle === false) {
+            return false;
+        }
+        try {
+            if (!flock($handle, LOCK_EX | LOCK_NB)) {
+                return false;
+            }
+            $last = (int)stream_get_contents($handle);
+            if ($last > 0 && time() - $last < self::TICK_EVERY) {
+                return false;
+            }
+            rewind($handle);
+            ftruncate($handle, 0);
+            fwrite($handle, (string)time());
+            fflush($handle);
+            EventBus::trigger(self::TICK_EVENT, ['time' => time(), 'deadline' => microtime(true) + $budgetSeconds]);
+            return true;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
 }
