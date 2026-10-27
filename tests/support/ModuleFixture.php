@@ -10,13 +10,14 @@ final class ModuleFixture
      * @param list<array<string,mixed>> $routes routes for the manifest
      * @param array<string,string> $migrations file name (migrations/001_x.sql) => SQL
      * @param array<string,mixed> $extra more manifest keys
+     * @param list<array<string,string>>|null $sitemap addresses the module offers for sitemap.xml (makes it a SitemapModuleInterface)
      */
-    public static function make(string $name, array $routes = [], array $migrations = [], array $extra = [], bool $routed = true): string
+    public static function make(string $name, array $routes = [], array $migrations = [], array $extra = [], bool $routed = true, ?array $sitemap = null): string
     {
         $dir = AGECMS_MODULES . '/' . $name;
         mkdir($dir . '/migrations', 0700, true);
         mkdir($dir . '/skills', 0700, true);
-        $interface = $routed ? 'RoutedModuleInterface' : 'ModuleInterface';
+        $interface = $sitemap !== null ? 'SitemapModuleInterface' : ($routed ? 'RoutedModuleInterface' : 'ModuleInterface');
         $code = <<<'PHP'
 <?php
 declare(strict_types=1);
@@ -61,6 +62,9 @@ PHP;
         };
     }
 PHP;
+        if ($sitemap !== null) {
+            $handle .= "\n\n    public function sitemapUrls(): iterable\n    {\n        return " . var_export($sitemap, true) . ";\n    }\n";
+        }
         $code = str_replace('__HANDLE__', $routed ? $handle : '', $code);
         file_put_contents($dir . '/Module.php', str_replace(['__NAME__', '__IFACE__'], [$name, $interface], $code));
         file_put_contents($dir . '/skills/ping.json', json_encode(['name' => 'ping', 'description' => 'Ping', 'permission' => 'skills.run']));

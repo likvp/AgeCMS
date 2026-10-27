@@ -155,6 +155,9 @@ final class Seo
         foreach ($rows as $row) {
             $xml .= '  <url><loc>' . htmlspecialchars(self::url($row['slug']), ENT_XML1) . '</loc><lastmod>' . substr((string)$row['updated_at'], 0, 10) . '</lastmod><priority>' . ($row['slug'] === 'index' ? '1.0' : '0.8') . "</priority></url>\n";
         }
+        foreach (ModuleSitemap::entries() as $entry) {
+            $xml .= '  <url><loc>' . htmlspecialchars($entry['loc'], ENT_XML1) . '</loc>' . ($entry['lastmod'] !== '' ? '<lastmod>' . $entry['lastmod'] . '</lastmod>' : '') . "<priority>0.6</priority></url>\n";
+        }
         return $xml . '</urlset>' . "\n";
     }
 
@@ -202,6 +205,12 @@ final class Seo
     /** Remembers that a page changed, the ping itself is sent after the response by flushPings(). */
     public static function queuePing(string $slug): void
     {
+        self::queueUrl(self::url($slug));
+    }
+
+    /** Same for a full address (used for the addresses of modules, see ModuleSitemap::ping). */
+    public static function queueUrl(string $url): void
+    {
         if (!self::indexNowEnabled()) {
             return;
         }
@@ -209,7 +218,7 @@ final class Seo
         if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
             return;
         }
-        @file_put_contents($dir . '/' . (int)(microtime(true) * 1000000) . '-' . bin2hex(random_bytes(3)) . '.json', json_encode(['url' => self::url($slug)]));
+        @file_put_contents($dir . '/' . (int)(microtime(true) * 1000000) . '-' . bin2hex(random_bytes(3)) . '.json', json_encode(['url' => $url]));
     }
 
     public static function indexNowEnabled(): bool

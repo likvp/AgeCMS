@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use AgeCMS\{Content, Database, ModuleSigner, Security, SkillRegistry, ValidationException};
+use AgeCMS\{Content, Database, ModuleSigner, ModuleSitemap, Security, SkillRegistry, ValidationException};
 
 require_once __DIR__ . '/support/HttpCase.php';
 require_once __DIR__ . '/support/ModuleFixture.php';
@@ -254,6 +254,87 @@ final class ModuleRoutesTest extends HttpCase
         $this->assertSame('public, max-age=120', $page['headers']['cache-control']);
         $this->assertContains('noindex', $this->http('GET', '/rt_idx/hello')['body'], 'a route without the flag stays out of search');
         $this->assertContains('noindex', $this->http('GET', '/rt_idx/nothing')['body'], 'an error page of an indexable route is not offered either');
+    }
+
+    // Addresses of modules in sitemap.xml (E5).
+
+    public function testIndexableAddressesOfAModuleAreInTheSitemap(): void
+    {
+        $this->boot();
+        $routes = [['path' => '/sm-shop/{id}', 'cache' => 'public', 'indexable' => true], ['path' => '/sm-shop/secret/{id}', 'cache' => 'public'], ['path' => '/sm-shop/private/{id}']];
+        ModuleFixture::make('sm_shop', $routes, [], [], true, [
+            ['path' => '/sm-shop/12', 'lastmod' => '2026-10-20 10:00:00'],
+            ['path' => '/sm-shop/13'],
+            ['path' => '/sm-shop/secret/5'],       // public but not indexable
+            ['path' => '/sm-shop/private/6'],      // private
+            ['path' => '/kontakty'],               // a page, not a route of the module
+            ['path' => '/admin/'],
+            ['path' => 'https://evil.example/x'],
+            ['path' => '/sm-shop/12'],             // twice
+            ['path' => "/sm-shop/9\n<x>"],
+        ]);
+        $xml = $this->http('GET', '/sitemap.xml')['body'];
+        $base = 'http://127.0.0.1:' . $this->port;
+        $this->assertContains('<loc>' . $base . '/sm-shop/12</loc><lastmod>2026-10-20</lastmod>', $xml);
+        $this->assertContains('<loc>' . $base . '/sm-shop/13</loc>', $xml);
+        $this->assertSame(2, substr_count($xml, '/sm-shop/'), 'only the two indexable addresses, once each');
+        $this->assertNotContains('secret', $xml);
+        $this->assertNotContains('private', $xml);
+        $this->assertNotContains('evil', $xml);
+        $this->assertNotContains('/admin', $xml);
+    }
+
+    public function testAModuleCannotListAddressesOfAnotherModule(): void
+    {
+        $this->boot();
+        ModuleFixture::make('sm_one', [['path' => '/sm-one/{id}', 'cache' => 'public', 'indexable' => true]], [], [], true, [['path' => '/sm-two/7'], ['path' => '/sm-one/1']]);
+        ModuleFixture::make('sm_two', [['path' => '/sm-two/{id}', 'cache' => 'public', 'indexable' => true]]);
+        $xml = $this->http('GET', '/sitemap.xml')['body'];
+        $this->assertContains('/sm-one/1</loc>', $xml);
+        $this->assertNotContains('/sm-two/7', $xml);
+        SkillRegistry::reset();
+        $this->assertSame(false, ModuleSitemap::allowed('sm_one', '/sm-two/7'));
+        $this->assertSame(true, ModuleSitemap::allowed('sm_two', '/sm-two/7'));
+        $this->assertSame(1, ModuleSitemap::ping('sm_two', ['/sm-two/7', '/sm-one/1', '/nothing']), 'a ping is accepted only for the own addresses');
+        $this->assertSame(0, ModuleSitemap::ping('sm_missing', ['/sm-two/7']), 'an unknown module pings nothing');
+    }
+
+    public function testSitemapTakesNoMoreThanTheLimitFromOneModule(): void
+    {
+        $this->boot();
+        $many = [];
+        for ($i = 1; $i <= ModuleSitemap::LIMIT + 50; $i++) {
+            $many[] = ['path' => '/sm-many/' . $i];
+        }
+        ModuleFixture::make('sm_many', [['path' => '/sm-many/{id}', 'cache' => 'public', 'indexable' => true]], [], [], true, $many);
+        $xml = $this->http('GET', '/sitemap.xml')['body'];
+        $this->assertSame(ModuleSitemap::LIMIT, substr_count($xml, '/sm-many/'));
+        $this->assertContains('/sm-many/1</loc>', $xml);
+        $this->assertNotContains('/sm-many/' . (ModuleSitemap::LIMIT + 1) . '<', $xml);
+    }
+
+    public function testABlockedModuleAddsNothingToTheSitemap(): void
+    {
+        $this->boot();
+        $dir = ModuleFixture::make('sm_blocked', [['path' => '/sm-blocked/{id}', 'cache' => 'public', 'indexable' => true]], [], [], true, [['path' => '/sm-blocked/1']]);
+        $this->assertContains('/sm-blocked/1</loc>', $this->http('GET', '/sitemap.xml')['body']);
+        file_put_contents($dir . '/Module.php', file_get_contents($dir . '/Module.php') . "\n// tampered\n");
+        $this->assertSame('blocked', $this->status('sm_blocked')['status']);
+        $this->assertNotContains('/sm-blocked/', $this->http('GET', '/sitemap.xml')['body'], 'the signature no longer matches');
+        $this->assertSame(0, ModuleSitemap::ping('sm_blocked', ['/sm-blocked/1']));
+    }
+
+    public function testAFailingModuleDoesNotBreakTheSitemap(): void
+    {
+        $this->boot();
+        ModuleFixture::make('sm_fail', [['path' => '/sm-fail/{id}', 'cache' => 'public', 'indexable' => true]], [], [], true, [['path' => '/sm-fail/1']]);
+        $dir = AGECMS_MODULES . '/sm_fail';
+        file_put_contents($dir . '/Module.php', str_replace('return array (', 'throw new \RuntimeException("boom"); return array (', file_get_contents($dir . '/Module.php')));
+        ModuleFixture::resign('sm_fail');
+        $res = $this->http('GET', '/sitemap.xml');
+        $this->assertSame(200, $res['status']);
+        $this->assertContains('</urlset>', $res['body']);
+        $this->assertNotContains('/sm-fail/', $res['body']);
     }
 
     public function testIndexableNeedsAPublicRoute(): void
