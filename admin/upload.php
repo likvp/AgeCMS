@@ -5,7 +5,7 @@ declare(strict_types=1);
 // X-CSRF-Token header, or a Bearer token. The image is re-encoded to WebP, so the original is never stored.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Api, Auth, Config, Http, Logger, Media, NotInstalledException, Security};
+use AgeCMS\{AgeCMSException, AntiSpam, Api, Auth, Config, Http, Logger, Media, NotInstalledException, Security, Seo};
 
 try {
     // Preview of an image in the trash for the signed-in admin: the files live outside the web root.
@@ -37,7 +37,7 @@ try {
         }
     }
     if ($actor === null) {
-        Http::json(['ok' => false, 'error' => 'Authentication required'], 401);
+        Http::json(['ok' => false, 'error' => 'Authentication required: send a Bearer token, see ' . Seo::siteUrl() . '/AGENT.md', 'instructions' => Seo::siteUrl() . '/AGENT.md'], 401);
     }
     Security::requirePermission($actor, 'content.write');
     if (!AntiSpam::rateLimit('upload:' . $actor->name, (int)Config::get('rate_limit.upload_per_minute', 30), 60)) {

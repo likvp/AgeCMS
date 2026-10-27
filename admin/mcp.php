@@ -39,7 +39,7 @@ function handle(array $request, Actor $actor): ?array
                 'protocolVersion' => '2025-03-26',
                 'capabilities' => ['tools' => ['listChanged' => false]],
                 'serverInfo' => ['name' => 'agecms', 'version' => '1.0.0'],
-                'instructions' => 'Call get_site_structure first. Read AGENT.md on the site for the rules. Changes are validated, versioned and rate-limited; mass edits trip a circuit breaker.',
+                'instructions' => 'Call get_site_structure first. Read ' . Seo::siteUrl() . '/AGENT.md for the rules. Changes are validated, versioned and rate-limited; mass edits trip a circuit breaker.',
             ],
             $method === 'ping' => new stdClass(),
             str_starts_with($method, 'notifications/') => null,
@@ -111,7 +111,7 @@ try {
     $actor = $bearer === null ? null : Auth::tokenActor($bearer);
     if ($actor === null) {
         header('WWW-Authenticate: Bearer realm="agecms"');
-        Http::json(rpcError(null, -32001, 'Authentication required: send a Bearer token'), 401);
+        Http::json(rpcError(null, -32001, 'Authentication required: send a Bearer token. To get one with the owner\'s login and password, read ' . Seo::siteUrl() . '/AGENT.md'), 401);
     }
     if (!AntiSpam::rateLimit('api:' . $actor->name, (int)Config::get('rate_limit.mcp_per_minute', 120), 60)) {
         Http::json(rpcError(null, -32002, 'Rate limit exceeded'), 429);

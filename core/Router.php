@@ -49,6 +49,8 @@ final class Router
                 self::send(200, 'text/plain; charset=utf-8', Seo::robots(), ['Cache-Control' => 'public, max-age=3600']);
             case $path === '/llms.txt':
                 self::send(200, 'text/markdown; charset=utf-8', Seo::llms(), ['Cache-Control' => 'public, max-age=300']);
+            case $path === '/AGENT.md':
+                self::send(200, 'text/markdown; charset=utf-8', Seo::agentInstructions(), ['Cache-Control' => 'public, max-age=300']);
             case $indexNowKey !== '' && $path === '/' . $indexNowKey . '.txt':
                 self::send(200, 'text/plain; charset=utf-8', $indexNowKey);
             case $path === '/_/token':

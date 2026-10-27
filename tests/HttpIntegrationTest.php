@@ -439,6 +439,98 @@ final class HttpIntegrationTest extends TestCase
         $this->assertSame(302, $new['status']);
     }
 
+    /** @return array{status:int,json:array<string,mixed>} */
+    private function issue(array $fields): array
+    {
+        $r = $this->http('POST', '/admin/api.php', json_encode($fields), ['Content-Type' => 'application/json']);
+        return ['status' => $r['status'], 'json' => json_decode($r['body'], true)];
+    }
+
+    public function testAnAgentIssuesItselfATokenFromTheOwnersLoginAndPassword(): void
+    {
+        $this->boot();
+        $base = "http://127.0.0.1:{$this->port}";
+
+        // the instructions are reachable over the web, carry the real address and name the way in
+        $doc = $this->http('GET', '/AGENT.md');
+        $this->assertSame(200, $doc['status']);
+        $this->assertContains('text/markdown', $doc['headers']['content-type']);
+        $this->assertContains($base . '/admin/api.php', $doc['body']);
+        $this->assertContains('issue_token', $doc['body']);
+        $this->assertNotContains('{{SITE_URL}}', $doc['body']);
+        $this->assertContains('/AGENT.md', $this->http('GET', '/llms.txt')['body']);
+
+        // a request without credentials is told where to read
+        $anon = $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']));
+        $this->assertSame(401, $anon['status']);
+        $this->assertContains($base . '/AGENT.md', $anon['body']);
+        $this->assertContains('/AGENT.md', $this->http('POST', '/admin/mcp.php', '{}', ['Content-Type' => 'application/json'])['body']);
+
+        // the right pair gives a token that works over REST and MCP
+        $ok = $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'claude-agent', 'role' => 'editor']);
+        $this->assertSame(200, $ok['status']);
+        $token = $ok['json']['result']['token'];
+        $this->assertSame('editor', $ok['json']['result']['role']);
+        $this->assertContains($base . '/admin/mcp.php', $ok['json']['result']['mcp']);
+        $structure = $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
+        $this->assertSame(200, $structure['status']);
+        $init = $this->rpc($token, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => []]);
+        $this->assertContains($base . '/AGENT.md', $init['json']['result']['instructions']);
+        $this->assertSame(1, (int)Database::value("SELECT COUNT(*) FROM api_tokens WHERE name = 'claude-agent' AND revoked_at IS NULL"));
+        $this->assertSame(false, str_contains((string)Database::value("SELECT token_hash FROM api_tokens WHERE name = 'claude-agent'"), $token), 'only the hash is stored');
+
+        // the default role of an administrator's login is an editor token, never a stronger one by accident
+        $dflt = $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'second-agent']);
+        $this->assertSame('editor', $dflt['json']['result']['role']);
+        $this->assertSame(422, $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'claude-agent'])['status'], 'a name is used once');
+        $this->assertSame(422, $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'x'])['status'], 'name too short');
+
+        // a token cannot be stronger than the person behind it
+        Auth::createUser('anna', 'Anna-pass-12345', 'editor');
+        $this->assertSame(403, $this->issue(['action' => 'issue_token', 'username' => 'anna', 'password' => 'Anna-pass-12345', 'name' => 'anna-admin', 'role' => 'admin'])['status'], 'role above the user');
+        $annaToken = $this->issue(['action' => 'issue_token', 'username' => 'anna', 'password' => 'Anna-pass-12345', 'name' => 'anna-agent'])['json']['result'];
+        $this->assertSame('editor', $annaToken['role']);
+
+        // the owner revokes it and it stops working
+        Auth::revokeToken('claude-agent');
+        $this->assertSame(401, $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json'])['status']);
+
+        // the owner can switch self-service off
+        // switched in the admin, in the server's own process, as the owner would do it
+        $csrf = $this->adminLogin();
+        $this->form(['action' => 'agent_access_save'], $csrf);
+        $off = $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'late-agent']);
+        $this->assertSame(403, $off['status'], 'switched off');
+        $this->assertContains('self_issue_disabled', $off['json']['error']);
+        $this->form(['action' => 'agent_access_save', 'self_issue' => '1'], $csrf);
+
+        // wrong passwords are counted like failed logins, and then even the right one is refused
+        for ($i = 0; $i < 5; $i++) {
+            $this->assertSame(422, $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'bad' . $i, 'name' => 'guess-agent'])['status'], 'locked after five misses');
+        }
+        $this->assertSame(403, $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'guess-agent'])['status']);
+        $this->assertSame(0, (int)Database::value("SELECT COUNT(*) FROM api_tokens WHERE name IN ('guess-agent','late-agent')"));
+    }
+
+    public function testTheSystemPageExplainsSelfServiceAndSavesTheSwitch(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $page = $this->http('GET', '/admin/?s=system', null, [], true)['body'];
+        $this->assertContains('Доступ для ИИ-агентов', $page);
+        $this->assertContains('/AGENT.md', $page);
+        $this->assertContains('агент получает токен сам', $page);
+
+        $off = $this->form(['action' => 'agent_access_save'], $csrf);
+        $this->assertContains('выключена', $off['body']);
+        $this->assertContains('выдача вручную', $off['body']);
+        \AgeCMS\Config::reset();
+        $this->assertSame(false, \AgeCMS\Config::get('agent_access.self_issue'));
+        $on = $this->form(['action' => 'agent_access_save', 'self_issue' => '1'], $csrf);
+        $this->assertContains('агент получает токен сам', $on['body']);
+        $this->assertContains('/AGENT.md', $this->http('GET', '/admin/', null, [], false)['body'], 'the login page points agents to the instructions');
+    }
+
     public function testAdminDeletePagesMediaAndUsers(): void
     {
         $this->boot();

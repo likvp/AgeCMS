@@ -248,6 +248,12 @@ try {
                     $flash = 'Кэш очищен, файлов: ' . Cache::clearAll();
                     $section = 'system';
                     break;
+                case 'agent_access_save':
+                    Security::requirePermission($actor, 'system.manage');
+                    Config::set('agent_access.self_issue', isset($_POST['self_issue']));
+                    $flash = isset($_POST['self_issue']) ? 'Агенты снова могут получать токен по логину и паролю' : 'Самостоятельная выдача токенов агентам выключена';
+                    $section = 'system';
+                    break;
                 case 'token_create':
                     Security::requirePermission($actor, 'system.manage');
                     $newToken = Auth::createToken((string)$_POST['name'], (string)$_POST['role']);

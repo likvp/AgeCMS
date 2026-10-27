@@ -66,10 +66,12 @@ final class Auth
     }
 
     /**
+     * Checks a login and password against the failure limits, without opening a session.
+     *
      * @return array<string,mixed>|null the user row on success, null on wrong credentials
      * @throws ForbiddenException when the address or account is temporarily blocked
      */
-    public static function login(string $username, string $password): ?array
+    public static function checkCredentials(string $username, string $password): ?array
     {
         $limit = (int)Config::get('rate_limit.login_fails', 5);
         $window = (int)Config::get('rate_limit.login_window', 900);
@@ -95,6 +97,20 @@ final class Auth
         foreach ($buckets as $bucket) {
             AntiSpam::clear($bucket);
         }
+        return $user;
+    }
+
+    /**
+     * @return array<string,mixed>|null the user row on success, null on wrong credentials
+     * @throws ForbiddenException when the address or account is temporarily blocked
+     */
+    public static function login(string $username, string $password): ?array
+    {
+        $user = self::checkCredentials($username, $password);
+        if ($user === null) {
+            return null;
+        }
+
         self::startSession();
         session_regenerate_id(true);
         $_SESSION['uid'] = (int)$user['id'];
@@ -429,6 +445,43 @@ final class Auth
         Database::write(static fn(PDO $pdo) => $pdo->prepare('INSERT INTO api_tokens (name, token_hash, role, created_at) VALUES (?, ?, ?, ?)')
             ->execute([$name, Security::hashToken($plain), $role, ag_now()]));
         return $plain;
+    }
+
+    /**
+     * An agent exchanges the owner's login and password for its own token, as the instructions at /AGENT.md describe.
+     * The role cannot be higher than the user's. The plain token is returned once.
+     *
+     * @return array{token:string,role:string,name:string}
+     * @throws ForbiddenException when the owner switched self-service off, or too many attempts
+     * @throws ValidationException on bad name or role, wrong login or password
+     */
+    public static function issueTokenForCredentials(string $username, string $password, string $name, string $role = ''): array
+    {
+        if (Config::get('agent_access.self_issue', true) !== true) {
+            throw new ForbiddenException('self_issue_disabled: the owner switched off self-service tokens. Ask the owner for a token (Admin, System).');
+        }
+        $user = self::checkCredentials($username, $password);
+        if ($user === null) {
+            throw new ValidationException(['Wrong login or password']);
+        }
+        $rank = ['viewer' => 1, 'editor' => 2, 'admin' => 3];
+        $userRank = $rank[$user['role']] ?? 1;
+        $role = $role !== '' ? $role : ($userRank >= 2 ? 'editor' : 'viewer');
+        if (!isset($rank[$role])) {
+            throw new ValidationException(["Unknown role '{$role}', use viewer, editor or admin"]);
+        }
+        if ($rank[$role] > $userRank) {
+            throw new ForbiddenException("The user '{$user['username']}' has the role '{$user['role']}', a token cannot be stronger");
+        }
+        if (!AntiSpam::rateLimit('token-issue:' . $user['id'], 10, 3600)) {
+            throw new ForbiddenException('Too many tokens requested. Try again in an hour.');
+        }
+        if (Database::row('SELECT id FROM api_tokens WHERE name = ?', [$name]) !== null) {
+            throw new ValidationException(["The token name '{$name}' is taken, pick another"]);
+        }
+        $token = self::createToken($name, $role);
+        Logger::log('info', 'token.self_issued', ['user' => $user['username'], 'name' => $name, 'role' => $role]);
+        return ['token' => $token, 'role' => $role, 'name' => $name];
     }
 
     public static function revokeToken(string $name): bool

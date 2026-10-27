@@ -5,7 +5,7 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{Backup, Database, SkillRegistry};
+use AgeCMS\{Backup, Config, Database, Seo, SkillRegistry};
 
 $modules = SkillRegistry::modules();
 ?>
@@ -38,7 +38,19 @@ $modules = SkillRegistry::modules();
     <?php endif; ?>
 </section>
 
-<?php if ($isAdmin): $tokens = Database::rows('SELECT name, role, last_used_at, revoked_at FROM api_tokens ORDER BY id'); ?>
+<?php if ($isAdmin): $tokens = Database::rows('SELECT name, role, last_used_at, revoked_at FROM api_tokens ORDER BY id'); $selfIssue = Config::get('agent_access.self_issue', true) === true; ?>
+<section class="panel">
+    <div class="panel-h"><h2>Доступ для ИИ-агентов</h2><span class="tag <?= $selfIssue ? 'ok' : 'warn' ?>"><?= $selfIssue ? 'агент получает токен сам' : 'выдача вручную' ?></span></div>
+    <div class="panel-b">
+        <p>Обычно токены создаёте не вы. Дайте агенту адрес сайта, логин и пароль и попросите прочитать инструкцию: она лежит по адресу <a href="/AGENT.md" target="_blank" rel="noopener"><code><?= h(Seo::siteUrl()) ?>/AGENT.md</code></a> и указана в <a href="/llms.txt" target="_blank" rel="noopener"><code>/llms.txt</code></a>. Агент войдёт, выдаст себе токен и появится в списке ниже. Роль токена не выше роли того пользователя, чей пароль вы дали, поэтому для агента удобно создать отдельного пользователя-редактора.</p>
+        <p class="muted">Ниже вы видите, кто и когда обращался, и можете отозвать любой токен. Создавать токен вручную нужно только если выдачу выключили.</p>
+        <form method="post" class="row center">
+            <?= admin_post_fields($csrf, 'agent_access_save') ?>
+            <label class="chk"><input type="checkbox" name="self_issue" value="1" data-autosubmit<?= $selfIssue ? ' checked' : '' ?>><span>Разрешить агентам получать токен по логину и паролю</span></label>
+            <noscript><button class="btn sm" type="submit">Сохранить</button></noscript>
+        </form>
+    </div>
+</section>
 <section class="panel">
     <div class="panel-h"><h2>Токены для ИИ-агентов</h2></div>
     <?php if ($tokens !== []): ?>
@@ -58,7 +70,7 @@ $modules = SkillRegistry::modules();
         <div class="row">
             <label class="f"><span>Имя токена</span><input class="in" type="text" name="name" placeholder="seo-agent" required pattern="[A-Za-z0-9_.\-]{2,40}" autocapitalize="none" spellcheck="false"></label>
             <label class="f"><span>Роль</span><select class="in" name="role"><option value="editor">editor: правит контент</option><option value="viewer">viewer: только чтение</option><option value="admin">admin: полный доступ</option></select></label>
-            <button class="btn primary" type="submit"><?= icon('key') ?>Создать токен</button>
+            <button class="btn primary" type="submit"><?= icon('key') ?>Создать токен вручную</button>
         </div>
     </form>
 </section>

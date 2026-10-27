@@ -31,7 +31,7 @@
 ## 2. Структура репозитория
 
 ```
-AGENT.md  llms.txt  README.md  LICENSE  CONTRIBUTING.md  ROADMAP.md
+core/agent.md  llms.txt  README.md  LICENSE  CONTRIBUTING.md  ROADMAP.md
 HOSTER_INTEGRATION_WHITEPAPER.md  index.php  .htaccess  nginx.vhost.example
 core/        bootstrap.php Exceptions.php helpers.php
              Config Database Schema Actor Security Logger Http
@@ -92,7 +92,7 @@ docs/        ТЗ.md PLAN.md gemini-analysis.md gemini-links.md
 - [x] `admin/mcp.php`, `SkillRegistry` (подпись, хэши), `bin/sign-module.php`
 - [x] `EventBus` (+ вебхуки без SSRF), `AntiSpam`, `Media`, `Backup`, `bin/backup.php`
 - [x] Модуль `telegram_leads`
-- [x] `AGENT.md`; `llms.txt` отдаётся динамически маршрутом (список опубликованных страниц), статического файла нет
+- [x] `core/agent.md` (отдаётся как `/AGENT.md`, агент выдаёт себе токен по логину и паролю); `llms.txt` отдаётся динамически маршрутом (список опубликованных страниц), статического файла нет
 
 ### Этап 4. Тесты и бенчмарки (ТЗ этап 3)
 - [x] `tests/run.php`, 90 тестов в 13 файлах (вместо отдельных `AuthTest` и `RouterTest` проверки входа, токенов и маршрутов лежат в `InstallerTest` и `HttpIntegrationTest`)

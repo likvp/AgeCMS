@@ -20,6 +20,7 @@ final class Config
         'secrets' => [],
         'circuit_breaker' => ['ratio' => 0.15, 'min_touched' => 3, 'max_creates' => 500],
         'backup' => ['keep' => 7, 'telegram' => false],
+        'agent_access' => ['self_issue' => true],
         'mail' => ['transport' => 'mail', 'from' => '', 'from_name' => '', 'smtp' => ['host' => '', 'port' => 465, 'secure' => 'ssl', 'user' => '', 'pass' => '']],
         'rate_limit' => ['mcp_per_minute' => 120, 'login_fails' => 5, 'login_window' => 900],
     ];

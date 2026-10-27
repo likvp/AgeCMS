@@ -20,6 +20,7 @@ defined('AGECMS_BOOTED') || exit;
                 <button class="btn primary block" type="submit">Войти</button>
             </form>
             <p class="auth-alt"><a href="<?= h(admin_url('forgot')) ?>">Забыли пароль?</a></p>
+            <p class="muted auth-note">ИИ-агентам: инструкция и порядок получения доступа лежат по адресу <a href="/AGENT.md">/AGENT.md</a>.</p>
         </div>
     </main>
 </div>
