@@ -27,7 +27,7 @@ final class Api
             'restore_page' => ['content.write', 'Restore a deleted page to its last state.', $obj(['slug' => $slug], ['slug'])],
             'list_deleted_pages' => ['content.read', 'Deleted pages that can be restored.', $obj([], [])],
             'set_menu' => ['content.write', 'Replace a menu ("header" or "footer"). items: [{title, url}].', $obj(['name' => ['type' => 'string'], 'items' => ['type' => 'array', 'items' => ['type' => 'object']]], ['name', 'items'])],
-            'set_settings' => ['system.manage', 'Change site_name and/or site_description (administrators only).', $obj(['values' => ['type' => 'object']], ['values'])],
+            'set_settings' => ['system.manage', 'Change site_name (the title of every page), site_description (default meta description) and/or llms_text (free Markdown for language models, published in /llms.txt). Administrators only.', $obj(['values' => ['type' => 'object']], ['values'])],
             'list_revisions' => ['content.read', 'Revision history of a page, newest first.', $obj(['slug' => $slug, 'limit' => ['type' => 'integer']], ['slug'])],
             'rollback_revision' => ['content.write', 'Restore a page to its state right after the given revision. Creates a new revision.', $obj(['slug' => $slug, 'revision_id' => ['type' => 'integer']], ['slug', 'revision_id'])],
             'import_image' => ['content.write', 'Download a public image by https URL, convert it to WebP and return its site path for use in og_image or url fields.', $obj(['url' => ['type' => 'string']], ['url'])],

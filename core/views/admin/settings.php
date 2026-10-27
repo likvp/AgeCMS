@@ -6,12 +6,13 @@ use AgeCMS\{Config, Mailer, Seo};
 
 $settings = Seo::settings();
 ?>
-<div class="pagehead"><div class="grow"><h1>Настройки сайта</h1><p>Название и описание используются в заголовках страниц, поисковой выдаче и <code>llms.txt</code>.</p></div></div>
+<div class="pagehead"><div class="grow"><h1>Настройки сайта</h1><p>Здесь то, что про сайт видят поисковики и ИИ-модели: заголовок, описание и отдельный текст для <code>llms.txt</code>.</p></div></div>
 <section class="panel">
     <form method="post" class="panel-b">
         <?= admin_post_fields($csrf, 'settings_save') ?>
-        <label class="f"><span>Название сайта</span><input class="in" type="text" name="site_name" value="<?= h($settings['site_name'] ?? '') ?>" required maxlength="100"></label>
-        <label class="f"><span>Описание сайта</span><textarea class="in" name="site_description" rows="3" maxlength="300"><?= h($settings['site_description'] ?? '') ?></textarea><small class="hint">До 300 символов, одной строкой.</small></label>
+        <label class="f"><span>Название сайта <small>(title)</small></span><input class="in" type="text" name="site_name" value="<?= h($settings['site_name'] ?? '') ?>" required maxlength="100"><small class="hint">Идёт в заголовок каждой страницы (<code>&lt;title&gt;</code>), в <code>og:site_name</code> и в разметку организации. Так сайт называют поисковики и ИИ-модели.</small></label>
+        <label class="f"><span>Описание сайта <small>(description)</small></span><textarea class="in" name="site_description" rows="3" maxlength="300"><?= h($settings['site_description'] ?? '') ?></textarea><small class="hint">Описание по умолчанию (<code>meta description</code>) для страниц, у которых своего нет. Попадает и в <code>llms.txt</code>. До 300 символов, одной строкой.</small></label>
+        <label class="f"><span>Текст для ИИ-моделей <small>(llms.txt)</small></span><textarea class="in" name="llms_text" rows="9" maxlength="4000" placeholder="Чем занимается компания, для кого, чем отличается, как правильно называть, что не предлагаем, как связаться. Можно в формате Markdown."><?= h($settings['llms_text'] ?? '') ?></textarea><small class="hint">Свободный текст для языковых моделей: отдельно от описания, подробнее и без ограничения в одну строку. Выводится в файле <a href="/llms.txt" target="_blank" rel="noopener">/llms.txt</a> после описания, посетители сайта его не видят. До 4000 символов.</small></label>
         <button class="btn primary" type="submit">Сохранить</button>
     </form>
 </section>

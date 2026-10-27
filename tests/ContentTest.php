@@ -150,6 +150,19 @@ final class ContentTest extends TestCase
         $this->assertSame('@settings', Database::value('SELECT page_slug FROM revisions ORDER BY id DESC LIMIT 1'));
         $this->assertSame(false, is_file(\AgeCMS\Cache::fileFor('a')), 'settings tag drops cached pages');
         $this->assertSame(false, Queue::submit($this->admin(), 'set_settings', ['values' => ['site_name' => 'Новое имя']])['changed']);
+
+        // llms_text: multi-line Markdown for language models, published in /llms.txt after the description
+        $this->assertThrows(ValidationException::class, fn() => Queue::submit($this->admin(), 'set_settings', ['values' => ['llms_text' => str_repeat('я', 4001)]]), '0-4000');
+        $this->assertThrows(ValidationException::class, fn() => Queue::submit($this->admin(), 'set_settings', ['values' => ['llms_text' => "bad\x07char"]]), 'plain text');
+        $text = "Мы красим стены.\r\n\r\n- Не делаем кровли\n- Работаем в Кирове";
+        $saved = Queue::submit($this->admin(), 'set_settings', ['values' => ['llms_text' => $text]]);
+        $this->assertSame(true, $saved['changed']);
+        $llms = \AgeCMS\Seo::llms();
+        $this->assertContains("Мы красим стены.\n\n- Не делаем кровли\n- Работаем в Кирове", $llms, 'line breaks are kept and normalised');
+        $this->assertTrue(strpos($llms, 'Мы красим стены.') < strpos($llms, '## Pages'), 'the text comes before the page list');
+        $this->assertSame(\AgeCMS\Revisions::stateAt('@settings', $saved['revision_id'])['llms_text'], str_replace(["\r\n"], "\n", $text), 'the ledger replays the new setting');
+        Queue::submit($this->admin(), 'set_settings', ['values' => ['llms_text' => '']]);
+        $this->assertNotContains('Мы красим стены.', \AgeCMS\Seo::llms());
         $this->assertSame('Новое имя', \AgeCMS\Seo::settings()['site_name']);
     }
 }

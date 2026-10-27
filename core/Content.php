@@ -259,23 +259,24 @@ final class Content
     /**
      * Site name and description (administrators only). Versioned as the pseudo page "@settings".
      *
-     * @param array<string,mixed> $values only "site_name" and "site_description" are accepted
+     * @param array<string,mixed> $values only "site_name", "site_description" and "llms_text" are accepted
      * @return array<string,mixed>
      */
     public static function setSettings(Actor $actor, array $values): array
     {
         Security::requirePermission($actor, 'system.manage');
         return self::run($actor, static function (PDO $pdo) use ($actor, $values): array {
-            $limits = ['site_name' => [1, 100], 'site_description' => [0, 300]];
+            // llms_text is the one multi-line value: Markdown for language models, published in /llms.txt.
+            $limits = ['site_name' => [1, 100], 'site_description' => [0, 300], 'llms_text' => [0, 4000]];
             $errors = [];
             $clean = [];
             foreach ($values as $key => $value) {
                 if (!isset($limits[$key])) {
                     $errors[] = "Unknown setting '{$key}'";
-                } elseif (!is_string($value) || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
-                    $errors[] = "{$key} must be plain text on one line";
+                } elseif (!is_string($value) || preg_match($key === 'llms_text' ? '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/' : '/[\x00-\x1F\x7F]/', $value) === 1) {
+                    $errors[] = $key === 'llms_text' ? "{$key} must be plain text" : "{$key} must be plain text on one line";
                 } else {
-                    $value = trim($value);
+                    $value = trim($key === 'llms_text' ? str_replace(["\r\n", "\r"], "\n", $value) : $value);
                     $length = mb_strlen($value);
                     if ($length < $limits[$key][0] || $length > $limits[$key][1]) {
                         $errors[] = "{$key} must be {$limits[$key][0]}-{$limits[$key][1]} characters";
@@ -294,7 +295,10 @@ final class Content
             foreach (array_keys($limits) as $key) {
                 $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
                 $stmt->execute([$key]);
-                $before[$key] = (string)($stmt->fetchColumn() ?: '');
+                $stored = $stmt->fetchColumn();
+                if ($stored !== false) { // a setting that was never saved is not part of the recorded state
+                    $before[$key] = (string)$stored;
+                }
             }
             $after = array_replace($before, $clean);
             $revisionId = Revisions::record($pdo, '@settings', $actor, 'Настройки сайта: ' . implode(', ', array_keys($clean)), $before, $after);

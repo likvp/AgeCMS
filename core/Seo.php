@@ -169,6 +169,9 @@ final class Seo
         if (!empty($settings['site_description'])) {
             $out .= '> ' . $settings['site_description'] . "\n\n";
         }
+        if (!empty($settings['llms_text'])) {
+            $out .= $settings['llms_text'] . "\n\n";
+        }
         $out .= "## Pages\n\n";
         foreach (Database::rows('SELECT slug, title, meta_description FROM pages WHERE is_published = 1 AND is_noindex = 0 ORDER BY sort_order, slug') as $row) {
             $out .= '- [' . $row['title'] . '](' . self::url($row['slug']) . ')' . ($row['meta_description'] !== '' ? ': ' . $row['meta_description'] : '') . "\n";

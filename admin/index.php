@@ -80,6 +80,7 @@ try {
                     $result = Queue::submit($actor, 'set_settings', ['values' => [
                         'site_name' => (string)($_POST['site_name'] ?? ''),
                         'site_description' => (string)($_POST['site_description'] ?? ''),
+                        'llms_text' => (string)($_POST['llms_text'] ?? ''),
                     ]]);
                     $flash = $result['changed'] ? 'Настройки сохранены, ревизия #' . $result['revision_id'] : 'Без изменений';
                     $section = 'settings';
