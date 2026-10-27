@@ -58,6 +58,10 @@ final class Database
         $pdo->exec('PRAGMA synchronous = NORMAL');
         $pdo->exec('PRAGMA foreign_keys = ON');
         $pdo->exec('PRAGMA busy_timeout = 5000');
+        // An existing site picks up new tables and columns on the first request after the code is updated.
+        if ((int)$pdo->query('PRAGMA user_version')->fetchColumn() < Schema::latest()) {
+            Schema::migrate($pdo);
+        }
         return $pdo;
     }
 

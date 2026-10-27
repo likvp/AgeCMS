@@ -9,15 +9,28 @@ use Throwable;
 /** Versioned migrations tracked in PRAGMA user_version. */
 final class Schema
 {
+    /** Highest schema version this code knows. */
+    public static function latest(): int
+    {
+        return (int)max(array_keys(self::steps()));
+    }
+
+    /**
+     * Applies every missing step. Safe to call from several processes at once: the version is read again
+     * inside the write lock, so the one that arrives second finds nothing left to do.
+     */
     public static function migrate(PDO $pdo): void
     {
-        $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
         foreach (self::steps() as $target => $apply) {
-            if ($target <= $version) {
+            if ($target <= (int)$pdo->query('PRAGMA user_version')->fetchColumn()) {
                 continue;
             }
             $pdo->exec('BEGIN IMMEDIATE');
             try {
+                if ($target <= (int)$pdo->query('PRAGMA user_version')->fetchColumn()) {
+                    $pdo->exec('ROLLBACK');
+                    continue;
+                }
                 $apply($pdo);
                 $pdo->exec('PRAGMA user_version = ' . $target);
                 $pdo->exec('COMMIT');

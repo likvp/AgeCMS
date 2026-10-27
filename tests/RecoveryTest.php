@@ -162,4 +162,28 @@ final class RecoveryTest extends TestCase
             proc_close($proc);
         }
     }
+
+    public function testAnOlderDatabaseIsUpgradedOnFirstUse(): void
+    {
+        $this->freshSite();
+        $id = Auth::createUser('anna', 'long-enough-pass', 'editor');
+        // Put the database back into the shape it had before recovery by e-mail existed.
+        Database::write(static function (PDO $pdo): void {
+            $pdo->exec('DROP INDEX users_email');
+            $pdo->exec('DROP TABLE password_resets');
+            $pdo->exec('ALTER TABLE users DROP COLUMN email');
+            $pdo->exec('ALTER TABLE users DROP COLUMN pwd_epoch');
+        });
+        Database::pdo()->exec('PRAGMA user_version = 1');
+        Database::reset();
+
+        $this->assertSame(AgeCMS\Schema::latest(), (int)Database::value('PRAGMA user_version'), 'the first query upgrades the schema');
+        $this->assertSame('anna', Database::value('SELECT username FROM users WHERE id = ?', [$id]), 'existing data survives');
+        $this->assertSame('', Database::value('SELECT email FROM users WHERE id = ?', [$id]));
+        $this->assertSame(0, (int)Database::value('SELECT pwd_epoch FROM users WHERE id = ?', [$id]));
+        $this->assertSame(0, (int)Database::value('SELECT COUNT(*) FROM password_resets'));
+        // a second open changes nothing
+        Database::reset();
+        $this->assertSame(AgeCMS\Schema::latest(), (int)Database::value('PRAGMA user_version'));
+    }
 }
