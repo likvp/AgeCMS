@@ -1,0 +1,6 @@
+{
+    "name": "send_test_message",
+    "description": "Send a test message to the configured Telegram chat to check the connection.",
+    "permission": "settings.write",
+    "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+}

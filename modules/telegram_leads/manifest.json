@@ -1,0 +1,7 @@
+{
+    "name": "telegram_leads",
+    "version": "1.0.0",
+    "title": "Telegram: leads and alerts",
+    "entry": "Module.php",
+    "class": "AgeCMS\\Modules\\TelegramLeads\\Module"
+}

@@ -1,0 +1,6 @@
+{
+    "name": "status",
+    "description": "Tell whether the Telegram bot token and chat id are configured. Never returns the values.",
+    "permission": "content.read",
+    "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+}
