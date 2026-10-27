@@ -373,7 +373,7 @@ if ($adminModule !== null) {
     } else {
         $input = $_POST;
         unset($input['csrf']);
-        $moduleReply = \AgeCMS\ModuleAdmin::run($adminModule, $method, (string)$adminModule['path'], $_GET, $input, Auth::actor());
+        $moduleReply = \AgeCMS\ModuleAdmin::run($adminModule, $method, (string)$adminModule['path'], $_GET, $input, Auth::actor(), $_FILES);
     }
     if ($moduleReply->kind === 'redirect') {
         http_response_code($moduleReply->status);

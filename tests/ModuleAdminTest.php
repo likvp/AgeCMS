@@ -215,4 +215,120 @@ final class ModuleAdminTest extends HttpCase
         ModuleFixture::make('ad_good', [], [], [], true, null, $this->pages());
         $this->assertSame(200, $this->http('GET', '/admin/m/ad_good/', null, [], true)['status']);
     }
+
+    // Files that come with an admin page (E8).
+
+    /** @return list<array<string,mixed>> */
+    private function uploadPages(): array
+    {
+        return [
+            ['path' => '/', 'title' => 'Загрузка', 'permission' => 'content.write'],
+            ['path' => '/upload', 'title' => 'Принять', 'permission' => 'content.write', 'methods' => ['POST'], 'menu' => false, 'upload' => ['kinds' => ['image', 'csv'], 'max_kb' => 20, 'max_files' => 2]],
+            ['path' => '/noupload', 'title' => 'Без файлов', 'permission' => 'content.write', 'methods' => ['POST'], 'menu' => false],
+        ];
+    }
+
+    /** @param array<string,mixed> $fields */
+    private function multipart(string $path, array $fields, string $csrf, array $files): array
+    {
+        $post = ['csrf' => $csrf] + $fields;
+        foreach ($files as $key => [$name, $content]) {
+            $tmp = TEST_TMP . '/up-' . bin2hex(random_bytes(3));
+            file_put_contents($tmp, $content);
+            $post[$key] = new CURLFile($tmp, 'application/octet-stream', $name);
+        }
+        $ch = curl_init("http://127.0.0.1:{$this->port}{$path}");
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $post, CURLOPT_RETURNTRANSFER => true, CURLOPT_COOKIEJAR => $this->jar, CURLOPT_COOKIEFILE => $this->jar, CURLOPT_TIMEOUT => 15]);
+        $body = (string)curl_exec($ch);
+        return ['status' => (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'body' => $body];
+    }
+
+    private function png(): string
+    {
+        return (string)base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+    }
+
+    public function testAnAdminPageReceivesCheckedFiles(): void
+    {
+        $this->boot();
+        ModuleFixture::make('ad_up', [], [], [], true, null, $this->uploadPages());
+        $csrf = $this->login();
+
+        $ok = $this->multipart('/admin/m/ad_up/upload', ['keep' => '1'], $csrf, ['file' => ['price.csv', "a;b\nЯ;2\n"], 'pic' => ['x.png', $this->png()]]);
+        $this->assertSame(200, $ok['status'], $ok['body']);
+        $data = json_decode($ok['body'], true);
+        $this->assertSame(2, count($data['files']));
+        $this->assertSame(['price.csv', 'csv'], [$data['files'][0]['name'], $data['files'][0]['kind']]);
+        $this->assertSame("a;b\nЯ;2\n", $data['files'][0]['text']);
+        $this->assertSame(['x.png', 'image', 'image/png'], [$data['files'][1]['name'], $data['files'][1]['kind'], $data['files'][1]['mime']]);
+        $stored = (string)$data['files'][1]['stored'];
+        $path = AgeCMS\ModuleUpload::stored('ad_up', $stored);
+        $this->assertTrue($path !== null && is_file($path), 'stored in the private folder');
+        $this->assertContains('/data/module_files/ad_up/', $path);
+        $this->assertSame(null, AgeCMS\ModuleUpload::stored('ad_up', '../config.php'));
+        $this->assertSame(null, AgeCMS\ModuleUpload::stored('other', $stored), 'another module does not see it');
+        $this->assertSame(['keep'], array_keys($data['body']), 'the csrf field is not passed on');
+
+        $media = json_decode($this->multipart('/admin/m/ad_up/upload', ['media' => '1'], $csrf, ['pic' => ['x.png', $this->png()]])['body'], true);
+        $this->assertContains('.webp', (string)$media['files'][0]['media'], 'an image can go to the media library');
+    }
+
+    public function testFilesAreJudgedByContentSizeAndNumber(): void
+    {
+        $this->boot();
+        ModuleFixture::make('ad_up2', [], [], [], true, null, $this->uploadPages());
+        $csrf = $this->login();
+        $post = fn(array $files) => $this->multipart('/admin/m/ad_up2/upload', [], $csrf, $files);
+        $php = "<?php echo 'x';";
+        $cases = [
+            'a script named as an image' => [['f' => ['evil.png', $php]], 'не принимается'],
+            'a script named csv' => [['f' => ['a.csv', $php . "\n<?php system('id');"]], 'не принимается'],
+            'html' => [['f' => ['a.png', '<html><script>alert(1)</script></html>']], 'не принимается'],
+            'svg' => [['f' => ['a.png', '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>']], 'не принимается'],
+            'pdf is not allowed on this page' => [['f' => ['a.pdf', "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF"]], 'не принимается'],
+            'too big' => [['f' => ['big.csv', str_repeat("abcdefgh;12345\n", 3000)]], 'больше 20 КБ'],
+            'binary csv' => [['f' => ['bin.csv', "a;b\0c\n"]], 'не принимается'],
+            'too many' => [['a' => ['1.csv', "a\n"], 'b' => ['2.csv', "b\n"], 'c' => ['3.csv', "c\n"]], 'Файлов не больше 2'],
+        ];
+        foreach ($cases as $label => [$files, $message]) {
+            $r = $post($files);
+            $this->assertSame(400, $r['status'], $label . ': ' . substr($r['body'], 0, 200));
+            $this->assertContains($message, $r['body'], $label);
+            $this->assertContains('class="side"', $r['body'], $label . ': the admin around the message');
+        }
+        $this->assertSame([], glob(AGECMS_DATA . '/module_files/ad_up2/*') ?: [], 'nothing was stored');
+    }
+
+    public function testAPageWithoutUploadNeverSeesFiles(): void
+    {
+        $this->boot();
+        ModuleFixture::make('ad_up3', [], [], [], true, null, $this->uploadPages());
+        $csrf = $this->login();
+        $r = $this->multipart('/admin/m/ad_up3/noupload', [], $csrf, ['f' => ['a.csv', "a\n"]]);
+        $this->assertSame(200, $r['status']);
+        $this->assertSame([], json_decode($r['body'], true)['files'], 'files are ignored unless the page declared upload');
+        // and a CSRF-less upload stores nothing
+        $no = $this->multipart('/admin/m/ad_up3/upload', ['keep' => '1'], 'wrong', ['f' => ['a.csv', "a\n"]]);
+        $this->assertSame(403, $no['status']);
+        $this->assertSame([], glob(AGECMS_DATA . '/module_files/ad_up3/*') ?: []);
+    }
+
+    public function testBadUploadDeclarationsBlockTheModule(): void
+    {
+        $this->boot();
+        $page = static fn(array $u, array $methods = ['POST']): array => [['path' => '/u', 'title' => 'U', 'permission' => 'content.write', 'methods' => $methods, 'upload' => $u]];
+        $bad = [
+            'ad_ub1' => $page(['kinds' => ['image']], ['GET']),
+            'ad_ub2' => $page(['kinds' => ['exe']]),
+            'ad_ub3' => $page(['kinds' => []]),
+            'ad_ub4' => $page(['kinds' => ['image'], 'max_kb' => 99999]),
+            'ad_ub5' => $page(['kinds' => ['image'], 'max_files' => 50]),
+            'ad_ub6' => $page(['kinds' => ['image'], 'x' => 1]),
+            'ad_ub7' => $page(['max_kb' => 10]),
+        ];
+        foreach ($bad as $name => $pages) {
+            ModuleFixture::make($name, [], [], [], true, null, $pages);
+            $this->assertSame('blocked', $this->status($name)['status'], $name . ' should be blocked');
+        }
+    }
 }

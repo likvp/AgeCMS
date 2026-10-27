@@ -23,7 +23,7 @@ final class ModuleAdmin
 
     /**
      * @param array<string,mixed> $manifest
-     * @return list<array{module:string,path:string,segments:list<string>,title:string,permission:string,methods:list<string>,menu:bool}>
+     * @return list<array{module:string,path:string,segments:list<string>,title:string,permission:string,methods:list<string>,menu:bool,upload:?array{kinds:list<string>,max_kb:int,max_files:int}}>
      */
     public static function parse(string $module, array $manifest): array
     {
@@ -33,7 +33,7 @@ final class ModuleAdmin
         }
         $pages = [];
         foreach ($declared as $i => $page) {
-            if (!is_array($page) || array_diff(array_keys($page), ['path', 'title', 'permission', 'methods', 'menu']) !== [] || !isset($page['path'], $page['title'], $page['permission'])) {
+            if (!is_array($page) || array_diff(array_keys($page), ['path', 'title', 'permission', 'methods', 'menu', 'upload']) !== [] || !isset($page['path'], $page['title'], $page['permission'])) {
                 throw new AgeCMSException("admin[{$i}]: path, title and permission are required, nothing else except methods and menu");
             }
             $path = $page['path'];
@@ -71,12 +71,25 @@ final class ModuleAdmin
             if (!is_bool($menu) || ($menu && ($names !== [] || !in_array('GET', $methods, true)))) {
                 throw new AgeCMSException("admin[{$i}]: only a GET page without placeholders can be in the menu");
             }
+            $upload = null;
+            if (isset($page['upload'])) {
+                $u = $page['upload'];
+                $kinds = is_array($u) ? ($u['kinds'] ?? null) : null;
+                $maxKb = is_array($u) ? ($u['max_kb'] ?? 2048) : null;
+                $maxFiles = is_array($u) ? ($u['max_files'] ?? 1) : null;
+                if (!is_array($u) || array_diff(array_keys($u), ['kinds', 'max_kb', 'max_files']) !== [] || $methods !== ['POST']
+                    || !is_array($kinds) || $kinds === [] || !array_is_list($kinds) || array_diff($kinds, array_keys(ModuleUpload::KINDS)) !== [] || count(array_unique($kinds)) !== count($kinds)
+                    || !is_int($maxKb) || $maxKb < 1 || $maxKb > 10240 || !is_int($maxFiles) || $maxFiles < 1 || $maxFiles > 10) {
+                    throw new AgeCMSException("admin[{$i}]: upload goes only with a POST-only page and needs kinds (" . implode(', ', array_keys(ModuleUpload::KINDS)) . '), max_kb 1..10240, max_files 1..10');
+                }
+                $upload = ['kinds' => array_values($kinds), 'max_kb' => $maxKb, 'max_files' => $maxFiles];
+            }
             foreach ($pages as $other) {
                 if (self::overlap($segments, $other['segments']) && array_intersect($methods, $other['methods']) !== []) {
                     throw new AgeCMSException("admin[{$i}]: {$path} overlaps {$other['path']}");
                 }
             }
-            $pages[] = ['module' => $module, 'path' => $path, 'segments' => $segments, 'title' => trim($title), 'permission' => $page['permission'], 'methods' => array_values($methods), 'menu' => $menu];
+            $pages[] = ['module' => $module, 'path' => $path, 'segments' => $segments, 'title' => trim($title), 'permission' => $page['permission'], 'methods' => array_values($methods), 'menu' => $menu, 'upload' => $upload];
         }
         return $pages;
     }
@@ -97,7 +110,7 @@ final class ModuleAdmin
         }
     }
 
-    /** @return list<array{module:string,path:string,segments:list<string>,title:string,permission:string,methods:list<string>,menu:bool}> */
+    /** @return list<array{module:string,path:string,segments:list<string>,title:string,permission:string,methods:list<string>,menu:bool,upload:?array{kinds:list<string>,max_kb:int,max_files:int}}> */
     public static function all(): array
     {
         $out = [];
@@ -163,17 +176,21 @@ final class ModuleAdmin
      *
      * @param array{page:array<string,mixed>,params:array<string,string>} $hit
      * @param array<string,mixed> $input POST fields without the CSRF field
+     * @param array<string,mixed> $files $_FILES; looked at only when the page declared "upload"
      */
-    public static function run(array $hit, string $method, string $path, array $query, array $input, Actor $actor): ModuleResponse
+    public static function run(array $hit, string $method, string $path, array $query, array $input, Actor $actor, array $files = []): ModuleResponse
     {
         $name = (string)$hit['page']['module'];
         try {
             Security::requirePermission($actor, (string)$hit['page']['permission']);
             $module = SkillRegistry::admin($name);
-            $request = new ModuleRequest($name, $method === 'HEAD' ? 'GET' : $method, $path, $hit['params'], $query, $input, Http::clientIp(), []);
+            $uploads = $hit['page']['upload'] !== null && $method === 'POST' ? ModuleUpload::collect($name, $hit['page']['upload'], $files) : [];
+            $request = new ModuleRequest($name, $method === 'HEAD' ? 'GET' : $method, $path, $hit['params'], $query, $input, Http::clientIp(), [], $uploads);
             $response = $module->handleAdmin($request, $actor);
         } catch (ForbiddenException $e) {
             return ModuleResponse::html('Нет доступа', '<div class="notice error">' . ag_e($e->getMessage()) . '</div>', 403);
+        } catch (ValidationException $e) {
+            return ModuleResponse::html('Данные не приняты', '<div class="notice error">' . ag_e($e->getMessage()) . '</div>', 400);
         } catch (NotFoundException) {
             return ModuleResponse::html('Страница не найдена', '<div class="notice error">Модуль недоступен.</div>', 404);
         } catch (Throwable $e) {

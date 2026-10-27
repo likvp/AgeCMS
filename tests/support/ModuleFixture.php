@@ -82,6 +82,7 @@ PHP;
             "{$base}/evil2" => ModuleResponse::redirect('https://evil.example/'),
             "{$base}/cookie" => ModuleResponse::html('Печенье', '<p>x</p>')->withCookie('sid', 'abc', 60),
             "{$base}/boom" => throw new \RuntimeException('secret trace detail'),
+            "{$base}/upload", "{$base}/noupload" => ModuleResponse::json(['files' => array_map(static fn($f) => ['name' => $f->name, 'kind' => $f->kind, 'mime' => $f->mime, 'size' => $f->size, 'stored' => isset($request->body['keep']) ? $f->store() : null, 'text' => $f->kind === 'csv' ? $f->contents() : null, 'media' => isset($request->body['media']) ? $f->toMedia() : null], $request->files), 'body' => $request->body]),
             default => ModuleResponse::html('Пусто', '<p>empty</p>', 404),
         };
     }

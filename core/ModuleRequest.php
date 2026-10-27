@@ -11,6 +11,7 @@ final class ModuleRequest
      * @param array<string,mixed> $query
      * @param array<string,mixed> $body POST fields without the form token fields; empty for GET
      * @param array<string,string> $cookies cookies of this module (names without the module prefix)
+     * @param list<ModuleUpload> $files checked uploads of an admin page that declared "upload"; empty everywhere else
      */
     public function __construct(
         public readonly string $module,
@@ -21,6 +22,7 @@ final class ModuleRequest
         public readonly array $body,
         public readonly string $ip,
         public readonly array $cookies,
+        public readonly array $files = [],
     ) {
     }
 
