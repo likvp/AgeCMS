@@ -35,7 +35,7 @@ if ($isAdmin) {
 }
 $nav[] = ['system', 'Система', 'terminal-window', null];
 $moduleNav = \AgeCMS\ModuleAdmin::menu((string)$user['role']);
-$active = $section === 'edit' ? 'pages' : $section;
+$active = $section === 'edit' ? 'pages' : ($section === 'module_settings' ? 'system' : $section);
 $roleNames = ['admin' => 'Администратор', 'editor' => 'Редактор', 'viewer' => 'Наблюдатель'];
 ?>
 <a class="skip" href="#main">К содержимому</a>
@@ -112,7 +112,7 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
             $vars = compact('user', 'csrf', 'isAdmin', 'canWrite');
             if ($section === 'module') {
                 admin_view('module', $vars + ['reply' => $moduleReply, 'moduleName' => (string)$adminModule['page']['module']]);
-            } elseif ($section === 'settings' && !$isAdmin) {
+            } elseif (in_array($section, ['settings', 'module_settings'], true) && !$isAdmin) {
                 echo '<div class="notice error">' . icon('lock-key') . '<div>Нужна роль администратора.</div></div>';
             } else {
                 admin_view($section, $vars);

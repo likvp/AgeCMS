@@ -53,6 +53,7 @@ final class SkillRegistry
         }
         ModuleRoutes::validateAll(self::$modules);
         ModuleAdmin::validateAll(self::$modules);
+        ModuleSettings::validateAll(self::$modules);
         return self::$modules;
     }
 

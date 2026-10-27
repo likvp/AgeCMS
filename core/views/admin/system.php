@@ -30,9 +30,10 @@ $modules = SkillRegistry::modules();
     <?php if ($modules === []): ?>
         <div class="empty"><?= icon('seal-check') ?><b>Модулей нет</b><span>Подписанные модули кладутся в каталог modules.</span></div>
     <?php else: ?>
-    <table class="tbl"><thead><tr><th>Модуль</th><th>Состояние</th></tr></thead><tbody>
+    <table class="tbl"><thead><tr><th>Модуль</th><th>Состояние</th><th></th></tr></thead><tbody>
         <?php foreach ($modules as $name => $m): ?>
-            <tr><td class="mono"><?= h($name) ?></td><td><?= $m['status'] === 'ok' ? '<span class="tag ok">подпись проверена</span>' : '<span class="tag err">заблокирован</span> <small>' . h($m['reason']) . '</small>' ?></td></tr>
+            <tr><td class="mono"><?= h($name) ?></td><td><?= $m['status'] === 'ok' ? '<span class="tag ok">подпись проверена</span>' : '<span class="tag err">заблокирован</span> <small>' . h($m['reason']) . '</small>' ?></td>
+                <td><?php if ($isAdmin && \AgeCMS\ModuleSettings::fields($name) !== []): ?><a class="btn sm" href="<?= h(admin_url('module_settings', ['m' => $name])) ?>"><?= icon('gear-six') ?>Настройки</a><?php endif; ?></td></tr>
         <?php endforeach; ?>
     </tbody></table>
     <?php endif; ?>

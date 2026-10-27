@@ -32,7 +32,7 @@ $user = Auth::user();
 // Set by the router for /admin/m/<module>/...: a page that a module declared in its manifest (ModuleAdmin).
 $adminModule = $GLOBALS['AGECMS_ADMIN_MODULE'] ?? null;
 $moduleReply = null;
-$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'trash', 'menus', 'settings', 'history', 'leads', 'users', 'system', 'forgot', 'reset'], true) ? (string)$_GET['s'] : 'overview';
+$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'trash', 'menus', 'settings', 'history', 'leads', 'users', 'system', 'module_settings', 'forgot', 'reset'], true) ? (string)$_GET['s'] : 'overview';
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminModule === null) {
@@ -310,6 +310,22 @@ try {
                     Auth::setBlocked((int)($_POST['id'] ?? 0), $block, (int)$user['id']);
                     $flash = $block ? 'Пользователь заблокирован: вход и его токены не работают' : 'Пользователь разблокирован';
                     $section = 'users';
+                    break;
+                case 'module_settings_save':
+                    Security::requirePermission($actor, 'system.manage');
+                    $module = (string)($_POST['module'] ?? '');
+                    $section = 'module_settings';
+                    $_GET['m'] = $module;
+                    $input = [];
+                    foreach ($_POST as $k => $v) {
+                        if (is_string($k) && str_starts_with($k, 'f_')) {
+                            $input[substr($k, 2)] = $v;
+                        } elseif (is_string($k) && str_starts_with($k, 'clear_f_')) {
+                            $input['clear_' . substr($k, 8)] = $v;
+                        }
+                    }
+                    $changed = \AgeCMS\ModuleSettings::save($module, $input);
+                    $flash = $changed === [] ? 'Без изменений' : 'Настройки сохранены: ' . implode(', ', $changed);
                     break;
                 case 'token_create':
                     Security::requirePermission($actor, 'system.manage');
