@@ -69,6 +69,41 @@ final class Mailer
         Logger::log('info', 'mail.sent', ['to' => self::mask($to), 'transport' => self::transport()]);
     }
 
+    /**
+     * Tells the owners about a new lead, from noreply@ the site's domain. Recipients: the addresses set in Settings,
+     * or every active administrator that has an e-mail. Never throws: a lead is already saved.
+     *
+     * @param array<string,string> $lead name, phone, message, page
+     * @return int letters sent
+     */
+    public static function notifyLead(array $lead): int
+    {
+        if (Config::get('mail.leads_notify', true) !== true || !self::configured()) {
+            return 0;
+        }
+        $to = array_filter(array_map('trim', explode(',', (string)Config::get('mail.leads_to', ''))));
+        if ($to === []) {
+            $to = array_column(Database::rows("SELECT email FROM users WHERE role = 'admin' AND email <> '' AND blocked_at IS NULL"), 'email');
+        }
+        $site = Seo::siteUrl();
+        $body = "Новая заявка с сайта {$site}\n\n"
+            . 'Имя: ' . ($lead['name'] ?? '') . "\n"
+            . 'Телефон: ' . ($lead['phone'] ?? '') . "\n"
+            . 'Сообщение: ' . ($lead['message'] ?? '') . "\n"
+            . 'Страница: ' . $site . '/' . (($lead['page'] ?? '') === 'index' ? '' : ($lead['page'] ?? '')) . "\n\n"
+            . "Все заявки: {$site}/admin/?s=leads\n";
+        $sent = 0;
+        foreach (array_slice(array_unique($to), 0, 5) as $address) {
+            try {
+                self::send((string)$address, 'Новая заявка с сайта ' . (string)parse_url($site, PHP_URL_HOST), $body);
+                $sent++;
+            } catch (\Throwable $e) {
+                Logger::log('warning', 'mail.lead_failed', ['error' => $e->getMessage()]);
+            }
+        }
+        return $sent;
+    }
+
     /** a***@example.com: enough for the log, not enough to harvest. */
     public static function mask(string $email): string
     {

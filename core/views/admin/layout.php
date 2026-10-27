@@ -9,6 +9,7 @@
  * @var string $error
  * @var string $newToken
  * @var array<string,string>|null $newPassword
+ * @var array<string,mixed>|null $newAgent
  */
 defined('AGECMS_BOOTED') || exit;
 
@@ -70,6 +71,14 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
                 <div class="notice warn" role="status"><?= icon('key') ?><div>
                     <p><b>Пароль для <?= h($newPassword['user']) ?>. Передайте его человеку сейчас.</b> Потом он не показывается.</p>
                     <p class="row center"><code id="new-password"><?= h($newPassword['value']) ?></code> <button class="btn sm" type="button" data-copy="#new-password"><?= icon('copy') ?>Копировать</button></p>
+                </div></div>
+            <?php endif; ?>
+            <?php if (!empty($newAgent)): ?>
+                <div class="notice warn" role="status"><?= icon('key') ?><div>
+                    <p><b><?= $newAgent['kind'] === 'invite' ? 'Скопируйте текст и вставьте его агенту в чат.' : 'Скопируйте текст для агента: логин и пароль показываются один раз.' ?></b>
+                    <?= $newAgent['kind'] === 'invite' ? 'Код сработает один раз и действует ' . (int)$newAgent['hours'] . ' ч.' : 'Пароль нигде не сохраняется открытым.' ?></p>
+                    <pre class="agent-text" id="new-agent"><?= h($newAgent['text']) ?></pre>
+                    <p><button class="btn sm" type="button" data-copy="#new-agent"><?= icon('copy') ?>Копировать текст</button></p>
                 </div></div>
             <?php endif; ?>
             <?php if ($frozen !== null): ?>

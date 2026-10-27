@@ -29,7 +29,7 @@ $settings = Seo::settings();
     <div class="panel-h"><h2>Почта</h2><span class="tag <?= Mailer::configured() ? 'ok' : 'warn' ?>"><?= Mailer::configured() ? 'настроена' : 'не настроена' ?></span></div>
     <form method="post" class="panel-b">
         <?= admin_post_fields($csrf, 'mail_save') ?>
-        <p class="muted">Нужна для писем со ссылкой на смену пароля. Если на хостинге работает обычная отправка, оставьте «Почта хостинга». Если письма не доходят или попадают в спам, подключите SMTP-сервер: его данные есть в панели почты вашего хостинга или у почтового сервиса.</p>
+        <p class="muted">Письма уходят от имени <b><?= h(Mailer::from() ?: 'noreply@ваш-домен') ?></b>: адрес система берёт сама из адреса сайта, менять его не нужно. Нужна для писем со ссылкой на смену пароля и для заявок с сайта. Если на хостинге работает обычная отправка, оставьте «Почта хостинга». Если письма не доходят или попадают в спам, подключите SMTP-сервер: его данные есть в панели почты вашего хостинга.</p>
         <div class="row">
             <label class="f"><span>Способ отправки</span><select class="in" name="mail_transport"><option value="mail"<?= $tr === 'mail' ? ' selected' : '' ?>>Почта хостинга (PHP mail)</option><option value="smtp"<?= $tr === 'smtp' ? ' selected' : '' ?>>SMTP-сервер</option></select></label>
             <label class="f"><span>Адрес отправителя</span><input class="in" type="email" name="mail_from" value="<?= h((string)Config::get('mail.from', '')) ?>" placeholder="<?= h(Mailer::from() ?: 'noreply@example.com') ?>" maxlength="120"></label>
@@ -44,6 +44,10 @@ $settings = Seo::settings();
             <label class="f"><span>Логин SMTP</span><input class="in" type="text" name="smtp_user" value="<?= h((string)($smtp['user'] ?? '')) ?>" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
             <label class="f"><span>Пароль SMTP</span><input class="in" type="password" name="smtp_pass" autocomplete="new-password" placeholder="<?= ($smtp['pass'] ?? '') !== '' ? 'сохранён, оставьте пустым' : '' ?>"></label>
         </div>
+        <div class="f"><span class="lbl">Заявки с сайта</span>
+            <label class="chk"><input type="checkbox" name="leads_notify" value="1"<?= Config::get('mail.leads_notify', true) === true ? ' checked' : '' ?>><span>Присылать новые заявки на почту</span></label>
+        </div>
+        <label class="f"><span>Куда присылать <small>(через запятую; пусто означает всем администраторам, у кого указана почта)</small></span><input class="in" type="text" name="leads_to" value="<?= h((string)Config::get('mail.leads_to', '')) ?>" placeholder="manager@example.com" maxlength="300" autocapitalize="none" spellcheck="false"></label>
         <div class="actions-row"><button class="btn primary" type="submit">Сохранить</button></div>
     </form>
     <form method="post" class="panel-b">

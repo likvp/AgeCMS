@@ -378,3 +378,6 @@ details.rename { margin-bottom: 16px; }
 details.rename > summary { display: flex; align-items: center; gap: 8px; padding: 12px 18px; cursor: pointer; font-weight: 600; list-style: none; }
 details.rename > summary::-webkit-details-marker { display: none; }
 details.rename[open] > summary { border-bottom: 1px solid var(--line, #e4e4e8); }
+
+.agent-text { margin: 8px 0; padding: 10px 12px; background: var(--hover); border-radius: var(--r-sm); font-family: var(--mono); font-size: 0.86em; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
+.tag.blocked { background: var(--err-soft); color: var(--err); }

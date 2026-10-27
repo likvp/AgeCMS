@@ -167,6 +167,7 @@ final class Router
         echo json_encode(['ok' => true]);
         Http::finishResponse();
         EventBus::trigger('lead.created', ['name' => $name, 'phone' => $phone, 'message' => $message, 'page' => $page]);
+        Mailer::notifyLead(['name' => $name, 'phone' => $phone, 'message' => $message, 'page' => $page]);
         exit;
     }
 

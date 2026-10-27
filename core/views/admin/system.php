@@ -5,7 +5,7 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{Backup, Config, Database, Seo, SkillRegistry};
+use AgeCMS\{Backup, Config, Database, SkillRegistry};
 
 $modules = SkillRegistry::modules();
 ?>
@@ -18,9 +18,9 @@ $modules = SkillRegistry::modules();
         <button class="btn" name="action" value="clear_cache" type="submit"><?= icon('database') ?>Очистить кэш</button>
         <?php if ($isAdmin): ?><button class="btn" name="action" value="backup" type="submit"><?= icon('copy') ?>Сделать бэкап</button><?php endif; ?>
     </form>
-    <?php if ($isAdmin): $backups = array_slice(Backup::list(), 0, 5); if ($backups !== []): ?>
-        <table class="tbl"><thead><tr><th>Последние бэкапы</th><th class="r">Размер</th></tr></thead><tbody>
-        <?php foreach ($backups as $b): ?><tr><td class="mono"><?= h($b['file']) ?></td><td class="r num muted"><?= round($b['size'] / 1024) ?> КБ</td></tr><?php endforeach; ?>
+    <?php if ($isAdmin): $backups = array_slice(Backup::list(), 0, 8); if ($backups !== []): ?>
+        <table class="tbl"><thead><tr><th>Последние бэкапы</th><th>Откуда</th><th class="r">Размер</th></tr></thead><tbody>
+        <?php foreach ($backups as $b): ?><tr><td class="mono"><?= h($b['file']) ?></td><td><?= $b['auto'] ? '<span class="tag plain">перед правкой агента</span>' : '<span class="tag plain">вручную</span>' ?></td><td class="r num muted"><?= round($b['size'] / 1024) ?> КБ</td></tr><?php endforeach; ?>
         </tbody></table>
     <?php endif; endif; ?>
 </section>
@@ -38,38 +38,61 @@ $modules = SkillRegistry::modules();
     <?php endif; ?>
 </section>
 
-<?php if ($isAdmin): $tokens = Database::rows('SELECT name, role, last_used_at, revoked_at FROM api_tokens ORDER BY id'); $selfIssue = Config::get('agent_access.self_issue', true) === true; ?>
+<?php if ($isAdmin):
+    $tokens = Database::rows('SELECT t.name, t.role, t.last_used_at, t.revoked_at, t.expires_at, u.username FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id ORDER BY t.id');
+    $selfIssue = Config::get('agent_access.self_issue', true) === true;
+    $tokenDays = (int)Config::get('agent_access.token_days', 90);
+    $beforeAgent = Config::get('backup.before_agent', true) === true;
+    $now = gmdate('Y-m-d\TH:i:s\Z');
+?>
 <section class="panel">
-    <div class="panel-h"><h2>Доступ для ИИ-агентов</h2><span class="tag <?= $selfIssue ? 'ok' : 'warn' ?>"><?= $selfIssue ? 'агент получает токен сам' : 'выдача вручную' ?></span></div>
-    <div class="panel-b">
-        <p>Обычно токены создаёте не вы. Дайте агенту адрес сайта, логин и пароль и попросите прочитать инструкцию: она лежит по адресу <a href="/AGENT.md" target="_blank" rel="noopener"><code><?= h(Seo::siteUrl()) ?>/AGENT.md</code></a> и указана в <a href="/llms.txt" target="_blank" rel="noopener"><code>/llms.txt</code></a>. Агент войдёт, выдаст себе токен и появится в списке ниже. Роль токена не выше роли того пользователя, чей пароль вы дали, поэтому для агента удобно создать отдельного пользователя-редактора.</p>
-        <p class="muted">Ниже вы видите, кто и когда обращался, и можете отозвать любой токен. Создавать токен вручную нужно только если выдачу выключили.</p>
-        <form method="post" class="row center">
-            <?= admin_post_fields($csrf, 'agent_access_save') ?>
-            <label class="chk"><input type="checkbox" name="self_issue" value="1" data-autosubmit<?= $selfIssue ? ' checked' : '' ?>><span>Разрешить агентам получать токен по логину и паролю</span></label>
-            <noscript><button class="btn sm" type="submit">Сохранить</button></noscript>
-        </form>
-    </div>
+    <div class="panel-h"><h2>Подключить ИИ-агента</h2></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'invite_create') ?>
+        <p>Нажмите кнопку, скопируйте готовый текст и вставьте его в чат с агентом. В нём адрес сайта, ссылка на инструкцию <a href="/AGENT.md" target="_blank" rel="noopener"><code>/AGENT.md</code></a> и одноразовый код. Агент обменяет код на собственный токен, пароль ему не нужен. Код действует сутки и сработает один раз.</p>
+        <div class="row">
+            <label class="f"><span>Что разрешить</span><select class="in" name="role"><option value="editor">Править контент (editor)</option><option value="viewer">Только читать (viewer)</option><option value="admin">Всё, включая настройки (admin)</option></select></label>
+            <label class="f"><span>На сколько дней токен <small>(0 без срока)</small></span><input class="in" type="number" name="token_days" min="0" max="3650" value="<?= $tokenDays ?>"></label>
+            <label class="f"><span>Пометка <small>(для себя)</small></span><input class="in" type="text" name="note" maxlength="80" placeholder="сео-аудит"></label>
+        </div>
+        <button class="btn primary" type="submit"><?= icon('key') ?>Получить текст для агента</button>
+    </form>
+</section>
+<section class="panel">
+    <div class="panel-h"><h2>Правила для агентов</h2></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'agent_access_save') ?>
+        <div class="f">
+            <label class="chk"><input type="checkbox" name="self_issue" value="1"<?= $selfIssue ? ' checked' : '' ?>><span>Агент может получить токен по логину и паролю пользователя <small>(для тех, кому вы дали логин)</small></span></label>
+            <label class="chk"><input type="checkbox" name="before_agent" value="1"<?= $beforeAgent ? ' checked' : '' ?>><span>Делать копию базы перед правками агента <small>(одна на сеанс, хранятся последние пять)</small></span></label>
+        </div>
+        <label class="f"><span>Срок жизни токена по умолчанию, дней <small>(0 без срока; агент предупреждается за неделю до конца)</small></span><input class="in" type="number" name="token_days" min="0" max="3650" value="<?= $tokenDays ?>"></label>
+        <button class="btn primary" type="submit">Сохранить</button>
+    </form>
 </section>
 <section class="panel">
     <div class="panel-h"><h2>Токены для ИИ-агентов</h2></div>
     <?php if ($tokens !== []): ?>
-    <table class="tbl"><thead><tr><th>Имя</th><th>Роль</th><th>Последний вызов</th><th></th></tr></thead><tbody>
-        <?php foreach ($tokens as $t): ?>
-            <tr><td class="mono"><?= h($t['name']) ?></td><td><span class="tag plain"><?= h($t['role']) ?></span></td><td class="num muted"><?= $t['last_used_at'] === null ? 'не было' : admin_date($t['last_used_at']) ?></td>
-                <td class="r"><?php if ($t['revoked_at'] === null): ?>
+    <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Имя</th><th>Роль</th><th>Действует до</th><th>Последний вызов</th><th></th></tr></thead><tbody>
+        <?php foreach ($tokens as $t): $dead = $t['revoked_at'] !== null; $expired = !$dead && $t['expires_at'] !== null && $t['expires_at'] < $now; ?>
+            <tr><td class="mono"><?= h($t['name']) ?><?= $t['username'] !== null ? ' <small class="muted">(' . h($t['username']) . ')</small>' : '' ?></td><td><span class="tag plain"><?= h($t['role']) ?></span></td>
+                <td class="num muted"><?= $t['expires_at'] === null ? 'без срока' : admin_date($t['expires_at']) ?><?= $expired ? ' <span class="tag warn">истёк</span>' : '' ?></td>
+                <td class="num muted"><?= $t['last_used_at'] === null ? 'не было' : admin_date($t['last_used_at']) ?></td>
+                <td class="r"><?php if (!$dead): ?>
                     <form method="post" class="inline" data-confirm="Отозвать токен «<?= h($t['name']) ?>»?" data-confirm-text="Агент с этим токеном сразу потеряет доступ." data-confirm-ok="Отозвать" data-danger>
                         <?= admin_post_fields($csrf, 'token_revoke') ?><input type="hidden" name="name" value="<?= h($t['name']) ?>"><button class="btn sm ghost danger" type="submit">Отозвать</button>
                     </form>
                 <?php else: ?><span class="tag err">отозван</span><?php endif; ?></td></tr>
         <?php endforeach; ?>
-    </tbody></table>
+    </tbody></table></div>
     <?php endif; ?>
     <form method="post" class="panel-b">
         <?= admin_post_fields($csrf, 'token_create') ?>
+        <p class="muted">Токен вручную нужен, если агент не может обменять код сам. Его показывают один раз.</p>
         <div class="row">
             <label class="f"><span>Имя токена</span><input class="in" type="text" name="name" placeholder="seo-agent" required pattern="[A-Za-z0-9_.\-]{2,40}" autocapitalize="none" spellcheck="false"></label>
             <label class="f"><span>Роль</span><select class="in" name="role"><option value="editor">editor: правит контент</option><option value="viewer">viewer: только чтение</option><option value="admin">admin: полный доступ</option></select></label>
+            <label class="f"><span>Дней <small>(0 без срока)</small></span><input class="in" type="number" name="days" min="0" max="3650" value="<?= $tokenDays ?>"></label>
             <button class="btn primary" type="submit"><?= icon('key') ?>Создать токен вручную</button>
         </div>
     </form>

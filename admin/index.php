@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Slug};
+use AgeCMS\{AgeCMSException, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -26,6 +26,7 @@ $flash = '';
 $error = '';
 $newToken = '';
 $newPassword = null;
+$newAgent = null;
 $notice = '';
 $user = Auth::user();
 $section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'trash', 'menus', 'settings', 'history', 'leads', 'users', 'system', 'forgot', 'reset'], true) ? (string)$_GET['s'] : 'overview';
@@ -184,7 +185,16 @@ try {
                     $secure = (string)($_POST['smtp_secure'] ?? 'ssl');
                     $old = (array)Config::get('mail.smtp', []);
                     $pass = (string)($_POST['smtp_pass'] ?? '');
+                    $leadsTo = [];
+                    foreach (preg_split('~[,;\s]+~', (string)($_POST['leads_to'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $addr) {
+                        if (filter_var($addr, FILTER_VALIDATE_EMAIL) === false) {
+                            throw new AgeCMSException('Адрес для заявок записан неверно: ' . $addr);
+                        }
+                        $leadsTo[] = $addr;
+                    }
                     Config::set('mail', [
+                        'leads_notify' => isset($_POST['leads_notify']),
+                        'leads_to' => implode(', ', array_slice($leadsTo, 0, 5)),
                         'transport' => in_array($transport, ['mail', 'smtp'], true) ? $transport : 'mail',
                         'from' => $from,
                         'from_name' => mb_substr(trim((string)($_POST['mail_from_name'] ?? '')), 0, 80),
@@ -264,12 +274,43 @@ try {
                 case 'agent_access_save':
                     Security::requirePermission($actor, 'system.manage');
                     Config::set('agent_access.self_issue', isset($_POST['self_issue']));
-                    $flash = isset($_POST['self_issue']) ? 'Агенты снова могут получать токен по логину и паролю' : 'Самостоятельная выдача токенов агентам выключена';
+                    Config::set('backup.before_agent', isset($_POST['before_agent']));
+                    $days = (int)($_POST['token_days'] ?? 90);
+                    if ($days < 0 || $days > 3650) {
+                        throw new AgeCMSException('Срок токена: от 0 (без срока) до 3650 дней');
+                    }
+                    Config::set('agent_access.token_days', $days);
+                    $flash = 'Настройки доступа для агентов сохранены';
                     $section = 'system';
+                    break;
+                case 'invite_create':
+                    Security::requirePermission($actor, 'system.manage');
+                    $role = (string)($_POST['role'] ?? 'editor');
+                    $days = (int)($_POST['token_days'] ?? Config::get('agent_access.token_days', 90));
+                    $code = Auth::createInvite($role, $days, (string)($_POST['note'] ?? ''), (string)$user['username']);
+                    $newAgent = ['kind' => 'invite', 'secret' => $code, 'text' => agent_invite_text($code), 'hours' => max(1, (int)Config::get('agent_access.invite_hours', 24))];
+                    $flash = 'Код подключения создан';
+                    $section = 'system';
+                    break;
+                case 'agent_user_create':
+                    Security::requirePermission($actor, 'system.manage');
+                    $login = 'agent-' . substr(bin2hex(random_bytes(3)), 0, 5);
+                    $password = Auth::generatePassword();
+                    Auth::createUser($login, $password, 'editor', '');
+                    $newAgent = ['kind' => 'user', 'secret' => $password, 'text' => agent_user_text($login, $password), 'user' => $login];
+                    $flash = 'Пользователь ' . $login . ' для агента создан';
+                    $section = 'users';
+                    break;
+                case 'user_block':
+                    Security::requirePermission($actor, 'system.manage');
+                    $block = (string)($_POST['blocked'] ?? '1') === '1';
+                    Auth::setBlocked((int)($_POST['id'] ?? 0), $block, (int)$user['id']);
+                    $flash = $block ? 'Пользователь заблокирован: вход и его токены не работают' : 'Пользователь разблокирован';
+                    $section = 'users';
                     break;
                 case 'token_create':
                     Security::requirePermission($actor, 'system.manage');
-                    $newToken = Auth::createToken((string)$_POST['name'], (string)$_POST['role']);
+                    $newToken = Auth::createToken((string)$_POST['name'], (string)$_POST['role'], max(0, (int)($_POST['days'] ?? 0)));
                     $flash = 'Токен создан. Скопируйте его сейчас, второй раз он не показывается.';
                     $section = 'system';
                     break;
@@ -324,6 +365,20 @@ function admin_post_fields(string $csrf, string $action): string
     return '<input type="hidden" name="csrf" value="' . h($csrf) . '"><input type="hidden" name="action" value="' . h($action) . '">';
 }
 
+/** The message the owner pastes into the chat with an agent: address and a one-time code, no password. */
+function agent_invite_text(string $code): string
+{
+    $url = Seo::siteUrl();
+    return "Нужно поправить сайт {$url}. Инструкция для тебя: {$url}/AGENT.md\nКод подключения: {$code}\nОн одноразовый и действует сутки: обменяй его на свой токен, как написано в инструкции.";
+}
+
+/** The same for an agent that gets its own login and password instead of a code. */
+function agent_user_text(string $login, string $password): string
+{
+    $url = Seo::siteUrl();
+    return "Нужно поправить сайт {$url}. Инструкция для тебя: {$url}/AGENT.md\nЛогин: {$login}\nПароль: {$password}\nВыдай себе токен по инструкции и дальше работай только с ним.";
+}
+
 /** URL of an admin section. @param array<string,string> $params */
 function admin_url(string $section, array $params = []): string
 {
@@ -353,7 +408,7 @@ if ($user === null) {
     $csrf = Auth::csrf();
     $isAdmin = Security::can($user['role'], 'system.manage');
     $canWrite = Security::can($user['role'], 'content.write');
-    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword'));
+    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword', 'newAgent'));
 }
 ?>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>

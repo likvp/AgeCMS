@@ -25,7 +25,7 @@ $rolesFor = static fn(string $current): array => $current === 'viewer' ? $roles 
         <tbody>
         <?php foreach ($users as $u): $self = (int)$u['id'] === (int)$user['id']; ?>
             <tr>
-                <td><b class="cell-title"><?= h($u['username']) ?></b><?= $self ? ' <span class="tag plain">это вы</span>' : '' ?></td>
+                <td><b class="cell-title"><?= h($u['username']) ?></b><?= $self ? ' <span class="tag plain">это вы</span>' : '' ?><?= $u['blocked_at'] !== null ? ' <span class="tag err">заблокирован</span>' : '' ?></td>
                 <td>
                     <form method="post" class="role-form mail-form"><?= admin_post_fields($csrf, 'user_email') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                         <input class="in sm" type="email" name="email" value="<?= h($u['email']) ?>" placeholder="нет почты" maxlength="120" autocomplete="off" aria-label="Почта <?= h($u['username']) ?>">
@@ -44,6 +44,8 @@ $rolesFor = static fn(string $current): array => $current === 'viewer' ? $roles 
                 <td class="num muted"><?= admin_date($u['created_at']) ?></td>
                 <td class="r"><div class="actions">
                     <?php if (!$self): ?>
+                    <?php $blocked = $u['blocked_at'] !== null; ?>
+                    <form method="post" class="inline"<?= $blocked ? '' : ' data-confirm="Заблокировать ' . h($u['username']) . '?" data-confirm-text="Войти он не сможет, а его токены для агентов перестанут работать. Пользователь и история останутся, блокировку можно снять." data-confirm-ok="Заблокировать" data-danger' ?>><?= admin_post_fields($csrf, 'user_block') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><input type="hidden" name="blocked" value="<?= $blocked ? '0' : '1' ?>"><button class="btn sm ghost" type="submit"><?= icon($blocked ? 'check-circle' : 'lock-key') ?><?= $blocked ? 'Разблокировать' : 'Заблокировать' ?></button></form>
                     <form method="post" class="inline" data-confirm="Создать новый пароль для <?= h($u['username']) ?>?" data-confirm-text="Старый пароль перестанет работать. Новый покажется один раз." data-confirm-ok="Создать"><?= admin_post_fields($csrf, 'user_reset') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><button class="btn sm ghost" type="submit"><?= icon('key') ?>Новый пароль</button></form>
                     <form method="post" class="inline" data-confirm="Удалить пользователя <?= h($u['username']) ?>?" data-confirm-text="Войти он больше не сможет. Его правки в истории останутся." data-confirm-ok="Удалить" data-danger><?= admin_post_fields($csrf, 'user_delete') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><button class="ib danger" type="submit" title="Удалить" aria-label="Удалить"><?= icon('trash') ?></button></form>
                     <?php endif; ?>
@@ -71,6 +73,14 @@ $rolesFor = static fn(string $current): array => $current === 'viewer' ? $roles 
         </div>
         <div id="pw-own"><label class="f"><span>Пароль</span><input class="in" type="password" name="password" minlength="10" autocomplete="new-password"></label></div>
         <button class="btn primary" type="submit"><?= icon('user-plus') ?>Создать пользователя</button>
+    </form>
+</section>
+<section class="panel">
+    <div class="panel-h"><h2>Пользователь для ИИ-агента</h2></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'agent_user_create') ?>
+        <p>Если агенту нужен именно логин и пароль, создайте ему отдельного пользователя-редактора. Вы получите готовый текст для чата с агентом: адрес, инструкция, логин и пароль. Свой пароль агенту давать не нужно, а лишнего пользователя потом можно заблокировать или удалить. Проще и безопаснее <a href="<?= h(admin_url('system')) ?>">код подключения</a> в разделе «Система»: он одноразовый и без пароля.</p>
+        <button class="btn" type="submit"><?= icon('user-plus') ?>Создать пользователя для агента</button>
     </form>
 </section>
 <?php endif; ?>

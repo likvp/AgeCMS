@@ -8,6 +8,11 @@ use PDO;
 /** Human login (PHP session + CSRF) and agent API tokens. */
 final class Auth
 {
+    /** Why the last bearer token was refused: 'expired', 'blocked' or ''. */
+    private static string $tokenProblem = '';
+    /** @var array<string,mixed>|null the token of the current request */
+    private static ?array $currentToken = null;
+
     public const SESSION_NAME = 'agecms';
     public const MARKER_COOKIE = 'agecms_admin';
 
@@ -48,9 +53,9 @@ final class Auth
         if (!is_int($uid)) {
             return null;
         }
-        $user = Database::row('SELECT id, username, role, email, pwd_epoch FROM users WHERE id = ?', [$uid]);
-        // A password change or reset ends every other session of that person.
-        if ($user === null || (int)($_SESSION['epoch'] ?? 0) !== (int)$user['pwd_epoch']) {
+        $user = Database::row('SELECT id, username, role, email, pwd_epoch, blocked_at FROM users WHERE id = ?', [$uid]);
+        // A password change or reset ends every other session of that person, blocking ends them all.
+        if ($user === null || $user['blocked_at'] !== null || (int)($_SESSION['epoch'] ?? 0) !== (int)$user['pwd_epoch']) {
             return null;
         }
         return $user;
@@ -110,6 +115,9 @@ final class Auth
         if ($user === null) {
             return null;
         }
+        if ($user['blocked_at'] !== null) {
+            throw new ForbiddenException('Учётная запись заблокирована. Обратитесь к администратору сайта.');
+        }
 
         self::startSession();
         session_regenerate_id(true);
@@ -148,14 +156,55 @@ final class Auth
     /** Resolves a Bearer token to an actor. Sessions are scoped to token and hour, so an agent cannot reset its own breaker. */
     public static function tokenActor(string $bearer): ?Actor
     {
-        $row = Database::row('SELECT id, name, role, last_used_at FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL', [Security::hashToken($bearer)]);
+        self::$tokenProblem = '';
+        self::$currentToken = null;
+        $row = Database::row(
+            'SELECT t.id, t.name, t.role, t.last_used_at, t.expires_at, t.user_id, u.id AS uid, u.blocked_at
+             FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND t.revoked_at IS NULL',
+            [Security::hashToken($bearer)],
+        );
         if ($row === null) {
+            return null;
+        }
+        if ($row['user_id'] !== null && ($row['uid'] === null || $row['blocked_at'] !== null)) {
+            self::$tokenProblem = 'blocked';
+            return null;
+        }
+        if ($row['expires_at'] !== null && strtotime((string)$row['expires_at']) < time()) {
+            self::$tokenProblem = 'expired';
             return null;
         }
         if ($row['last_used_at'] === null || strtotime((string)$row['last_used_at']) < time() - 60) {
             Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?')->execute([ag_now(), $row['id']]));
         }
+        self::$currentToken = ['name' => (string)$row['name'], 'role' => (string)$row['role'], 'expires_at' => $row['expires_at']];
         return new Actor('agent', (string)$row['name'], (string)$row['role'], 'tok-' . $row['id'] . '-' . gmdate('YmdH'));
+    }
+
+    /** What the agent should read when its request is refused with 401. */
+    public static function authError(): string
+    {
+        $doc = Seo::siteUrl() . '/AGENT.md';
+        return match (self::$tokenProblem) {
+            'expired' => "The token has expired. Ask the owner for a new one: a ready token or a one-time invitation code, see {$doc}",
+            'blocked' => 'The user behind this token is blocked or deleted. Ask the owner.',
+            default => "Authentication required: send a Bearer token. If the owner gave you a token, use it; if you got a one-time invitation code or the owner's login and password, see {$doc}",
+        };
+    }
+
+    /**
+     * Facts about the token of the current request for the agent: when it expires, and a warning a week ahead.
+     *
+     * @return array{name:string,role:string,expires_at:?string,days_left:?int,warning:?string}|null
+     */
+    public static function currentToken(): ?array
+    {
+        if (self::$currentToken === null) {
+            return null;
+        }
+        $left = self::$currentToken['expires_at'] === null ? null : max(0, (int)ceil((strtotime((string)self::$currentToken['expires_at']) - time()) / 86400));
+        $warn = $left !== null && $left <= 7 ? "This token expires in {$left} day(s). Tell the owner now so that a new one can be issued." : null;
+        return ['name' => self::$currentToken['name'], 'role' => self::$currentToken['role'], 'expires_at' => self::$currentToken['expires_at'], 'days_left' => $left, 'warning' => $warn];
     }
 
     public static function createUser(string $username, string $password, string $role = 'admin', string $email = ''): int
@@ -242,9 +291,9 @@ final class Auth
         if ($identifier === '' || strlen($identifier) > 120) {
             return;
         }
-        $user = Database::row('SELECT id, username, email FROM users WHERE username = ? COLLATE NOCASE OR email = ?', [$identifier, $identifier]);
-        if ($user === null || $user['email'] === '') {
-            Logger::log('info', 'user.reset_skipped', ['reason' => $user === null ? 'unknown' : 'no_email']);
+        $user = Database::row('SELECT id, username, email, blocked_at FROM users WHERE username = ? COLLATE NOCASE OR email = ?', [$identifier, $identifier]);
+        if ($user === null || $user['email'] === '' || $user['blocked_at'] !== null) {
+            Logger::log('info', 'user.reset_skipped', ['reason' => $user === null ? 'unknown' : ($user['blocked_at'] !== null ? 'blocked' : 'no_email')]);
             return;
         }
         $userBucket = 'reset-user:' . $user['id'];
@@ -318,7 +367,7 @@ final class Auth
     /** @return list<array<string,mixed>> */
     public static function listUsers(): array
     {
-        return Database::rows('SELECT id, username, email, role, created_at FROM users ORDER BY id');
+        return Database::rows('SELECT id, username, email, role, blocked_at, created_at FROM users ORDER BY id');
     }
 
     public static function changeRole(int $userId, string $role, int $actingUserId): void
@@ -331,7 +380,7 @@ final class Auth
         }
         Database::write(static function (PDO $pdo) use ($userId, $role): void {
             $user = self::lockedUser($pdo, $userId);
-            if ($user['role'] === 'admin' && $role !== 'admin' && self::adminCount($pdo) <= 1) {
+            if ($user['role'] === 'admin' && $user['blocked_at'] === null && $role !== 'admin' && self::adminCount($pdo) <= 1) {
                 throw new ValidationException(['The last administrator cannot be demoted']);
             }
             $pdo->prepare('UPDATE users SET role = ? WHERE id = ?')->execute([$role, $userId]);
@@ -346,11 +395,32 @@ final class Auth
         }
         Database::write(static function (PDO $pdo) use ($userId): void {
             $user = self::lockedUser($pdo, $userId);
-            if ($user['role'] === 'admin' && self::adminCount($pdo) <= 1) {
+            if ($user['role'] === 'admin' && $user['blocked_at'] === null && self::adminCount($pdo) <= 1) {
                 throw new ValidationException(['The last administrator cannot be deleted']);
             }
+            $pdo->prepare('UPDATE api_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL')->execute([ag_now(), $userId]);
             $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
             Logger::log('info', 'user.deleted', ['user' => $user['username']]);
+        });
+    }
+
+    /**
+     * Blocks or unblocks a person. A blocked user cannot sign in, open sessions end, and tokens that
+     * were issued on that user's behalf stop working. History and name stay. The last active administrator
+     * and your own account cannot be blocked.
+     */
+    public static function setBlocked(int $userId, bool $blocked, int $actingUserId): void
+    {
+        if ($blocked && $userId === $actingUserId) {
+            throw new ValidationException(['You cannot block your own account']);
+        }
+        Database::write(static function (PDO $pdo) use ($userId, $blocked): void {
+            $user = self::lockedUser($pdo, $userId);
+            if ($blocked && $user['role'] === 'admin' && $user['blocked_at'] === null && self::adminCount($pdo) <= 1) {
+                throw new ValidationException(['The last administrator cannot be blocked']);
+            }
+            $pdo->prepare('UPDATE users SET blocked_at = ?, pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([$blocked ? ag_now() : null, $userId]);
+            Logger::log('info', $blocked ? 'user.blocked' : 'user.unblocked', ['user' => $user['username']]);
         });
     }
 
@@ -401,7 +471,7 @@ final class Auth
     /** @return array<string,mixed> */
     private static function lockedUser(PDO $pdo, int $userId): array
     {
-        $stmt = $pdo->prepare('SELECT id, username, role FROM users WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT id, username, role, blocked_at FROM users WHERE id = ?');
         $stmt->execute([$userId]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($user === false) {
@@ -412,7 +482,7 @@ final class Auth
 
     private static function adminCount(PDO $pdo): int
     {
-        return (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
+        return (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND blocked_at IS NULL")->fetchColumn();
     }
 
     /** Stores a new password and ends the person's other sessions. Returns the new session epoch. */
@@ -433,7 +503,8 @@ final class Auth
     }
 
     /** Creates an API token. The plain value is returned once and only its hash is stored. */
-    public static function createToken(string $name, string $role): string
+    /** @param ?int $days lifetime in days, null or 0 for no expiry; $userId ties the token to a person, so blocking that person stops it */
+    public static function createToken(string $name, string $role, ?int $days = null, ?int $userId = null): string
     {
         if (preg_match('/^[A-Za-z0-9_.-]{2,40}$/', $name) !== 1) {
             throw new ValidationException(['Token name must be 2-40 characters: letters, digits, _ . -']);
@@ -441,21 +512,35 @@ final class Auth
         if (!in_array($role, Security::roles(), true)) {
             throw new ValidationException(["Unknown role '{$role}'"]);
         }
+        if ($days !== null && ($days < 0 || $days > 3650)) {
+            throw new ValidationException(['Token lifetime must be 0 (no expiry) to 3650 days']);
+        }
+        $expires = $days === null || $days === 0 ? null : gmdate('Y-m-d\TH:i:s\Z', time() + $days * 86400);
         $plain = 'agc_' . Security::token(32);
-        Database::write(static fn(PDO $pdo) => $pdo->prepare('INSERT INTO api_tokens (name, token_hash, role, created_at) VALUES (?, ?, ?, ?)')
-            ->execute([$name, Security::hashToken($plain), $role, ag_now()]));
+        Database::write(static fn(PDO $pdo) => $pdo->prepare('INSERT INTO api_tokens (name, token_hash, role, created_at, user_id, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$name, Security::hashToken($plain), $role, ag_now(), $userId, $expires]));
         return $plain;
+    }
+
+    /** Lifetime for a new agent token in days: the owner's default, a shorter wish of the agent is honoured. 0 means no expiry. */
+    public static function tokenDays(?int $wanted = null): int
+    {
+        $max = max(0, (int)Config::get('agent_access.token_days', 90));
+        if ($wanted === null || $wanted <= 0) {
+            return $max;
+        }
+        return $max > 0 ? min($wanted, $max) : $wanted;
     }
 
     /**
      * An agent exchanges the owner's login and password for its own token, as the instructions at /AGENT.md describe.
      * The role cannot be higher than the user's. The plain token is returned once.
      *
-     * @return array{token:string,role:string,name:string}
+     * @return array{token:string,role:string,name:string,expires_at:?string}
      * @throws ForbiddenException when the owner switched self-service off, or too many attempts
      * @throws ValidationException on bad name or role, wrong login or password
      */
-    public static function issueTokenForCredentials(string $username, string $password, string $name, string $role = ''): array
+    public static function issueTokenForCredentials(string $username, string $password, string $name, string $role = '', ?int $days = null): array
     {
         if (Config::get('agent_access.self_issue', true) !== true) {
             throw new ForbiddenException('self_issue_disabled: the owner switched off self-service tokens. Ask the owner for a token (Admin, System).');
@@ -463,6 +548,9 @@ final class Auth
         $user = self::checkCredentials($username, $password);
         if ($user === null) {
             throw new ValidationException(['Wrong login or password']);
+        }
+        if ($user['blocked_at'] !== null) {
+            throw new ForbiddenException('This account is blocked. Ask the owner.');
         }
         $rank = ['viewer' => 1, 'editor' => 2, 'admin' => 3];
         $userRank = $rank[$user['role']] ?? 1;
@@ -479,9 +567,65 @@ final class Auth
         if (Database::row('SELECT id FROM api_tokens WHERE name = ?', [$name]) !== null) {
             throw new ValidationException(["The token name '{$name}' is taken, pick another"]);
         }
-        $token = self::createToken($name, $role);
-        Logger::log('info', 'token.self_issued', ['user' => $user['username'], 'name' => $name, 'role' => $role]);
-        return ['token' => $token, 'role' => $role, 'name' => $name];
+        $lifetime = self::tokenDays($days);
+        $token = self::createToken($name, $role, $lifetime, (int)$user['id']);
+        Logger::log('info', 'token.self_issued', ['user' => $user['username'], 'name' => $name, 'role' => $role, 'days' => $lifetime]);
+        return ['token' => $token, 'role' => $role, 'name' => $name, 'expires_at' => $lifetime > 0 ? gmdate('Y-m-d\TH:i:s\Z', time() + $lifetime * 86400) : null];
+    }
+
+    /**
+     * A one-time invitation for an agent: the owner pastes the code into the chat with the agent, the agent
+     * exchanges it for its own token. No password is shared, the code works once and dies after a day.
+     * The role and lifetime of the token are fixed here, by the owner.
+     *
+     * @return string the plain code, shown once
+     */
+    public static function createInvite(string $role, int $tokenDays, string $note, string $createdBy): string
+    {
+        if (!in_array($role, Security::roles(), true)) {
+            throw new ValidationException(["Unknown role '{$role}'"]);
+        }
+        if ($tokenDays < 0 || $tokenDays > 3650) {
+            throw new ValidationException(['Token lifetime must be 0 (no expiry) to 3650 days']);
+        }
+        $code = 'agi_' . Security::token(24);
+        $hours = max(1, (int)Config::get('agent_access.invite_hours', 24));
+        Database::write(static fn(PDO $pdo) => $pdo->prepare('INSERT INTO agent_invites (code_hash, role, token_days, note, expires_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([Security::hashToken($code), $role, $tokenDays, mb_substr(trim($note), 0, 80), time() + $hours * 3600, $createdBy, ag_now()]));
+        return $code;
+    }
+
+    /**
+     * The agent exchanges an invitation code for a token.
+     *
+     * @return array{token:string,role:string,name:string,expires_at:?string}
+     */
+    public static function redeemInvite(string $code, string $name): array
+    {
+        $bucket = 'invite-bad:' . Http::clientIp();
+        if (AntiSpam::count($bucket, 3600) >= 10) {
+            throw new ForbiddenException('Too many wrong codes. Try again in an hour.');
+        }
+        $row = Database::row('SELECT id, role, token_days FROM agent_invites WHERE code_hash = ? AND used_at IS NULL AND expires_at >= ?', [Security::hashToken(trim($code)), time()]);
+        if ($row === null) {
+            AntiSpam::hit($bucket);
+            throw new ValidationException(['The invitation code is wrong, already used or expired. Ask the owner for a new one.']);
+        }
+        if (Database::row('SELECT id FROM api_tokens WHERE name = ?', [$name]) !== null) {
+            throw new ValidationException(["The token name '{$name}' is taken, pick another"]);
+        }
+        $used = (int)Database::write(static function (PDO $pdo) use ($row): int {
+            $stmt = $pdo->prepare('UPDATE agent_invites SET used_at = ? WHERE id = ? AND used_at IS NULL');
+            $stmt->execute([time(), $row['id']]);
+            return $stmt->rowCount();
+        });
+        if ($used !== 1) {
+            throw new ValidationException(['The invitation code is wrong, already used or expired. Ask the owner for a new one.']);
+        }
+        $days = (int)$row['token_days'];
+        $token = self::createToken($name, (string)$row['role'], $days);
+        Logger::log('info', 'token.invite_redeemed', ['name' => $name, 'role' => $row['role'], 'days' => $days]);
+        return ['token' => $token, 'role' => (string)$row['role'], 'name' => $name, 'expires_at' => $days > 0 ? gmdate('Y-m-d\TH:i:s\Z', time() + $days * 86400) : null];
     }
 
     public static function revokeToken(string $name): bool

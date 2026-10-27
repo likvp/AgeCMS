@@ -176,7 +176,7 @@ final class Seo
         foreach (Database::rows('SELECT slug, title, meta_description FROM pages WHERE is_published = 1 AND is_noindex = 0 ORDER BY sort_order, slug') as $row) {
             $out .= '- [' . $row['title'] . '](' . self::url($row['slug']) . ')' . ($row['meta_description'] !== '' ? ': ' . $row['meta_description'] : '') . "\n";
         }
-        $out .= "\n## For agents\n\n- [Agent instructions](" . self::siteUrl() . "/AGENT.md): start here. How to get access with the owner's login and password, rules, limits\n- MCP endpoint: " . self::siteUrl() . "/admin/mcp.php (JSON-RPC 2.0, Bearer token)\n";
+        $out .= "\n## For agents\n\n- [Agent instructions](" . self::siteUrl() . "/AGENT.md): start here. How to get access (a one-time invitation code from the owner, or a login and password), rules, limits\n- MCP endpoint: " . self::siteUrl() . "/admin/mcp.php (JSON-RPC 2.0, Bearer token)\n";
         return $out;
     }
 

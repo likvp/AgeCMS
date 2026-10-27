@@ -209,6 +209,25 @@ CREATE TABLE redirects (
 CREATE INDEX redirects_to ON redirects (to_slug);
 SQL);
             },
+            // Blocked users, tokens that belong to a user and may expire, one-time invitations for agents.
+            4 => static function (PDO $pdo): void {
+                $pdo->exec(<<<'SQL'
+ALTER TABLE users ADD COLUMN blocked_at TEXT;
+ALTER TABLE api_tokens ADD COLUMN user_id INTEGER;
+ALTER TABLE api_tokens ADD COLUMN expires_at TEXT;
+CREATE TABLE agent_invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code_hash TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL,
+    token_days INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+SQL);
+            },
         ];
     }
 }

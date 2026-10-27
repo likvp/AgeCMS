@@ -106,7 +106,10 @@ try {
     $actor = $bearer === null ? null : Auth::tokenActor($bearer);
     if ($actor === null) {
         header('WWW-Authenticate: Bearer realm="agecms"');
-        Http::json(rpcError(null, -32001, 'Authentication required: send a Bearer token. To get one with the owner\'s login and password, read ' . Seo::siteUrl() . '/AGENT.md'), 401);
+        Http::json(rpcError(null, -32001, Auth::authError()), 401);
+    }
+    if (($tokenInfo = Auth::currentToken()) !== null && $tokenInfo['warning'] !== null) {
+        header('X-AgeCMS-Token-Warning: ' . $tokenInfo['warning']);
     }
     if (!AntiSpam::rateLimit('api:' . $actor->name, (int)Config::get('rate_limit.mcp_per_minute', 120), 60)) {
         Http::json(rpcError(null, -32002, 'Rate limit exceeded'), 429);

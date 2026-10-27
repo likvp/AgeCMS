@@ -37,7 +37,7 @@ try {
         }
     }
     if ($actor === null) {
-        Http::json(['ok' => false, 'error' => 'Authentication required: send a Bearer token, see ' . Seo::siteUrl() . '/AGENT.md', 'instructions' => Seo::siteUrl() . '/AGENT.md'], 401);
+        Http::json(['ok' => false, 'error' => Auth::authError(), 'instructions' => Seo::siteUrl() . '/AGENT.md'], 401);
     }
     Security::requirePermission($actor, 'content.write');
     if (!AntiSpam::rateLimit('upload:' . $actor->name, (int)Config::get('rate_limit.upload_per_minute', 30), 60)) {

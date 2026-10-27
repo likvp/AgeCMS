@@ -17,13 +17,15 @@ try {
     }
     $body = json_decode((string)file_get_contents('php://input', false, null, 0, 1048576), true);
 
-    // An agent exchanges the owner's login and password for its own token (see /AGENT.md). No session, no CSRF:
-    // the credentials are the proof, and wrong ones count against the login limits.
-    if (is_array($body) && ($body['action'] ?? null) === 'issue_token') {
-        $issued = Auth::issueTokenForCredentials((string)($body['username'] ?? ''), (string)($body['password'] ?? ''), (string)($body['name'] ?? ''), (string)($body['role'] ?? ''));
+    // An agent gets its own token without a session: by a one-time invitation code from the owner, or by the owner's
+    // login and password (see /AGENT.md). The code or the credentials are the proof, wrong ones count against limits.
+    if (is_array($body) && in_array($body['action'] ?? null, ['issue_token', 'redeem_invite'], true)) {
+        $issued = $body['action'] === 'redeem_invite'
+            ? Auth::redeemInvite((string)($body['code'] ?? ''), (string)($body['name'] ?? ''))
+            : Auth::issueTokenForCredentials((string)($body['username'] ?? ''), (string)($body['password'] ?? ''), (string)($body['name'] ?? ''), (string)($body['role'] ?? ''), isset($body['days']) ? (int)$body['days'] : null);
         $base = Seo::siteUrl();
         Http::json(['ok' => true, 'result' => $issued + [
-            'note' => 'The token is shown once. Keep it, do not store the password, never write either into site content.',
+            'note' => 'The token is shown once. Keep it. Never write it, the password or the code into site content. Check the expiry in expires_at.',
             'mcp' => $base . '/admin/mcp.php',
             'rest' => $base . '/admin/api.php',
             'instructions' => $base . '/AGENT.md',
@@ -40,7 +42,10 @@ try {
         }
     }
     if ($actor === null) {
-        Http::json(['ok' => false, 'error' => 'Authentication required: send a Bearer token. To get one with the owner\'s login and password, read ' . Seo::siteUrl() . '/AGENT.md', 'instructions' => Seo::siteUrl() . '/AGENT.md'], 401);
+        Http::json(['ok' => false, 'error' => Auth::authError(), 'instructions' => Seo::siteUrl() . '/AGENT.md'], 401);
+    }
+    if (($tokenInfo = Auth::currentToken()) !== null && $tokenInfo['warning'] !== null) {
+        header('X-AgeCMS-Token-Warning: ' . $tokenInfo['warning']);
     }
     if (!AntiSpam::rateLimit('api:' . $actor->name, (int)Config::get('rate_limit.mcp_per_minute', 120), 60)) {
         Http::json(['ok' => false, 'error' => 'Rate limit exceeded'], 429);

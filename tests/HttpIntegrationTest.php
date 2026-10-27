@@ -499,11 +499,11 @@ final class HttpIntegrationTest extends TestCase
         // the owner can switch self-service off
         // switched in the admin, in the server's own process, as the owner would do it
         $csrf = $this->adminLogin();
-        $this->form(['action' => 'agent_access_save'], $csrf);
+        $this->form(['action' => 'agent_access_save', 'token_days' => '90'], $csrf);
         $off = $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'late-agent']);
         $this->assertSame(403, $off['status'], 'switched off');
         $this->assertContains('self_issue_disabled', $off['json']['error']);
-        $this->form(['action' => 'agent_access_save', 'self_issue' => '1'], $csrf);
+        $this->form(['action' => 'agent_access_save', 'self_issue' => '1', 'token_days' => '90'], $csrf);
 
         // wrong passwords are counted like failed logins, and then even the right one is refused
         for ($i = 0; $i < 5; $i++) {
@@ -518,18 +518,116 @@ final class HttpIntegrationTest extends TestCase
         $this->boot();
         $csrf = $this->adminLogin();
         $page = $this->http('GET', '/admin/?s=system', null, [], true)['body'];
-        $this->assertContains('Доступ для ИИ-агентов', $page);
+        $this->assertContains('Подключить ИИ-агента', $page);
+        $this->assertContains('Правила для агентов', $page);
         $this->assertContains('/AGENT.md', $page);
-        $this->assertContains('агент получает токен сам', $page);
 
-        $off = $this->form(['action' => 'agent_access_save'], $csrf);
-        $this->assertContains('выключена', $off['body']);
-        $this->assertContains('выдача вручную', $off['body']);
+        $off = $this->form(['action' => 'agent_access_save', 'token_days' => '90', 'before_agent' => '1'], $csrf);
+        $this->assertContains('Настройки доступа для агентов сохранены', $off['body']);
         \AgeCMS\Config::reset();
         $this->assertSame(false, \AgeCMS\Config::get('agent_access.self_issue'));
-        $on = $this->form(['action' => 'agent_access_save', 'self_issue' => '1'], $csrf);
-        $this->assertContains('агент получает токен сам', $on['body']);
+        $this->form(['action' => 'agent_access_save', 'self_issue' => '1', 'token_days' => '90', 'before_agent' => '1'], $csrf);
+        \AgeCMS\Config::reset();
+        $this->assertSame(true, \AgeCMS\Config::get('agent_access.self_issue'));
         $this->assertContains('/AGENT.md', $this->http('GET', '/admin/', null, [], false)['body'], 'the login page points agents to the instructions');
+    }
+
+    public function testInvitationCodeGivesAnAgentATokenOnceAndWithAnExpiry(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $made = $this->form(['action' => 'invite_create', 'role' => 'editor', 'token_days' => '30', 'note' => 'seo'], $csrf)['body'];
+        $this->assertContains('Код подключения: agi_', $made, 'the owner gets a ready text for the chat');
+        $this->assertContains('/AGENT.md', $made);
+        preg_match('/agi_[A-Za-z0-9_-]+/', $made, $m);
+        $code = $m[0] ?? '';
+        $this->assertSame(false, str_contains((string)Database::value('SELECT code_hash FROM agent_invites LIMIT 1'), $code), 'only the hash of the code is stored');
+
+        $this->assertSame(422, $this->issue(['action' => 'redeem_invite', 'code' => 'agi_wrong', 'name' => 'inv-agent'])['status'], 'a wrong code');
+        $ok = $this->issue(['action' => 'redeem_invite', 'code' => $code, 'name' => 'inv-agent']);
+        $this->assertSame(200, $ok['status']);
+        $token = $ok['json']['result']['token'];
+        $this->assertSame('editor', $ok['json']['result']['role']);
+        $days = (strtotime($ok['json']['result']['expires_at']) - time()) / 86400;
+        $this->assertTrue($days > 29 && $days < 31, 'the owner chose 30 days');
+        $this->assertSame(422, $this->issue(['action' => 'redeem_invite', 'code' => $code, 'name' => 'inv-agent-2'])['status'], 'the code works once');
+
+        $structure = $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
+        $this->assertSame(200, $structure['status']);
+        $info = json_decode($structure['body'], true)['result']['token'];
+        $this->assertSame('inv-agent', $info['name']);
+        $this->assertTrue($info['days_left'] >= 29);
+
+        // an expired invitation is refused
+        $code2 = Auth::createInvite('editor', 0, '', 'admin');
+        Database::write(static fn(PDO $pdo) => $pdo->exec('UPDATE agent_invites SET expires_at = ' . (time() - 10) . ' WHERE used_at IS NULL'));
+        $this->assertSame(422, $this->issue(['action' => 'redeem_invite', 'code' => $code2, 'name' => 'late-agent'])['status']);
+
+        // an expired token says so
+        Database::write(static fn(PDO $pdo) => $pdo->exec("UPDATE api_tokens SET expires_at = '2020-01-01T00:00:00Z' WHERE name = 'inv-agent'"));
+        $dead = $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
+        $this->assertSame(401, $dead['status']);
+        $this->assertContains('expired', $dead['body']);
+
+        // wrong codes are counted
+        for ($i = 0; $i < 10; $i++) {
+            $this->issue(['action' => 'redeem_invite', 'code' => 'agi_guess' . $i, 'name' => 'g' . $i . 'x']);
+        }
+        $fresh = Auth::createInvite('editor', 0, '', 'admin');
+        $this->assertSame(403, $this->issue(['action' => 'redeem_invite', 'code' => $fresh, 'name' => 'after-guess'])['status'], 'the address is locked after ten misses');
+    }
+
+    public function testBlockingAUserStopsTheLoginAndTheTokensOfThatUser(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $made = $this->form(['action' => 'agent_user_create'], $csrf)['body'];
+        $this->assertContains('Логин: agent-', $made);
+        preg_match('/Логин: (agent-[a-z0-9]+)/', $made, $l);
+        preg_match('/Пароль: (\S+)/', $made, $p);
+        $login = $l[1];
+        $got = $this->issue(['action' => 'issue_token', 'username' => $login, 'password' => html_entity_decode($p[1]), 'name' => 'user-agent']);
+        $this->assertSame(200, $got['status']);
+        $token = $got['json']['result']['token'];
+        $call = fn() => $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
+        $this->assertSame(200, $call()['status']);
+
+        $id = (int)Database::value('SELECT id FROM users WHERE username = ?', [$login]);
+        $this->form(['action' => 'user_block', 'id' => (string)$id, 'blocked' => '1'], $csrf);
+        $r = $call();
+        $this->assertSame(401, $r['status']);
+        $this->assertContains('blocked', $r['body']);
+        $this->assertSame(403, $this->issue(['action' => 'issue_token', 'username' => $login, 'password' => html_entity_decode($p[1]), 'name' => 'other-agent'])['status']);
+
+        $this->form(['action' => 'user_block', 'id' => (string)$id, 'blocked' => '0'], $csrf);
+        $this->assertSame(200, $call()['status'], 'unblocked, the token works again');
+
+        // the last active administrator cannot be blocked
+        $adminId = (int)Database::value("SELECT id FROM users WHERE username = 'admin'");
+        $self = $this->form(['action' => 'user_block', 'id' => (string)$adminId, 'blocked' => '1'], $csrf)['body'];
+        $this->assertSame(0, (int)Database::value('SELECT COUNT(*) FROM users WHERE blocked_at IS NOT NULL AND id = ?', [$adminId]));
+        $this->assertContains('role="alert"', $self);
+    }
+
+    public function testAnAgentEditCreatesASafetyCopyAndLeadsAreMailedFromNoreply(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $token = Auth::createToken('copy-agent', 'editor', 30);
+        $before = count(glob(AGECMS_DATA . '/backups/agecms-auto-*') ?: []);
+        $r = $this->rpc($token, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'create_page', 'params' => ['slug' => 'copy-test', 'fields' => ['title' => 'Копия']]]);
+        $this->assertSame(200, $r['status']);
+        clearstatcache();
+        $this->assertSame($before + 1, count(glob(AGECMS_DATA . '/backups/agecms-auto-*') ?: []), 'a copy is made before the first agent edit');
+        $this->rpc($token, ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'create_page', 'params' => ['slug' => 'copy-test-2', 'fields' => ['title' => 'Копия 2']]]);
+        clearstatcache();
+        $this->assertSame($before + 1, count(glob(AGECMS_DATA . '/backups/agecms-auto-*') ?: []), 'one copy per session, not per edit');
+        $page = $this->http('GET', '/admin/?s=system', null, [], true)['body'];
+        $this->assertContains('перед правкой агента', $page);
+
+        $settings = $this->http('GET', '/admin/?s=settings', null, [], true)['body'];
+        $this->assertContains('noreply@127.0.0.1', $settings, 'the sender comes from the site address');
+        $this->assertContains('Присылать новые заявки на почту', $settings);
     }
 
     public function testSavingRebuildsTheCacheAndLeftoversAreFinishedOnVisits(): void

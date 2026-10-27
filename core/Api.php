@@ -117,6 +117,7 @@ final class Api
             'block_types' => Theme::blocks($theme),
             'modules' => array_map(static fn(array $m): array => ['status' => $m['status'], 'reason' => $m['reason']], SkillRegistry::modules()),
             'frozen' => CircuitBreaker::frozenInfo(),
+            'token' => Auth::currentToken(),
         ];
     }
 

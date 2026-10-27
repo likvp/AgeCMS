@@ -418,6 +418,7 @@ final class Content
             throw new FrozenException('Writes are frozen since ' . ($info['since'] ?? '?') . ': ' . ($info['reason'] ?? 'circuit breaker') . '. An administrator must run bin/unfreeze.php.');
         }
 
+        Backup::beforeAgentEdit($actor);
         try {
             $result = Database::write($operation);
         } catch (CircuitBreakerException $e) {
