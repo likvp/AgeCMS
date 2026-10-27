@@ -328,4 +328,58 @@ final class HttpIntegrationTest extends TestCase
         $denied = $this->http('POST', '/admin/api.php', json_encode(['action' => 'set_settings', 'values' => ['site_name' => 'Hacked']]), ['Authorization' => "Bearer {$editor}", 'Content-Type' => 'application/json']);
         $this->assertSame(403, $denied['status'], 'only administrators change settings');
     }
+
+    public function testWebInstallerWizard(): void
+    {
+        $sock = stream_socket_server('tcp://127.0.0.1:0');
+        $this->port = (int)substr(strrchr((string)stream_socket_get_name($sock, false), ':'), 1);
+        fclose($sock);
+        TestEnv::wipe();
+        \AgeCMS\Config::reset();
+        \AgeCMS\Database::reset();
+        TestEnv::copyModules();
+        mkdir(AGECMS_DATA, 0700, true);
+        $this->jar = TEST_TMP . '/cookies.txt';
+        $root = dirname(__DIR__);
+        $env = ['AGECMS_DATA_DIR' => AGECMS_DATA, 'AGECMS_CACHE_DIR' => AGECMS_CACHE, 'AGECMS_MODULES_DIR' => AGECMS_MODULES, 'AGECMS_UPLOADS_DIR' => AGECMS_UPLOADS, 'PATH' => (string)getenv('PATH')];
+        $this->proc = proc_open([PHP_BINARY, '-S', "127.0.0.1:{$this->port}", '-t', $root, $root . '/tests/support/router.php'], [['file', '/dev/null', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']], $pipes, $root, $env);
+        for ($i = 0; $i < 50 && !@fsockopen('127.0.0.1', $this->port, $e, $s, 0.1); $i++) {
+            usleep(100000);
+        }
+        $key = str_repeat('k', 40);
+
+        $this->assertSame(404, $this->http('GET', "/admin/install.php?key={$key}")['status'], 'closed without data/install.key');
+        $this->assertSame(503, $this->http('GET', '/')['status'], 'nothing is installed by a plain visit');
+        $this->assertSame(false, is_file(AGECMS_DATA . '/data.sqlite'));
+
+        file_put_contents(AGECMS_DATA . '/install.key', $key);
+        $this->assertSame(404, $this->http('GET', '/admin/install.php?key=wrong')['status']);
+        $step1 = $this->http('GET', "/admin/install.php?key={$key}");
+        $this->assertSame(200, $step1['status']);
+        $this->assertContains('Проверка среды', $step1['body']);
+        $this->assertContains('Всё необходимое есть', $step1['body']);
+        $step2 = $this->http('GET', "/admin/install.php?key={$key}&step=2");
+        $this->assertContains('127.0.0.1:' . $this->port, $step2['body'], 'address is prefilled from the request');
+        $this->assertContains('confirm_url', $step2['body']);
+
+        $form = fn(array $d) => $this->http('POST', '/admin/install.php', http_build_query(['key' => $key] + $d), ['Content-Type' => 'application/x-www-form-urlencoded']);
+        $base = ['site_url' => "http://127.0.0.1:{$this->port}", 'site_name' => 'Мастер', 'admin_user' => 'boss', 'password_mode' => 'generate', 'confirm_url' => '1'];
+        $this->assertContains('Подтвердите адрес', $form(array_diff_key($base, ['confirm_url' => 1]))['body']);
+        $this->assertContains('at least 10', $form(['password_mode' => 'own', 'admin_password' => 'short'] + $base)['body']);
+        $this->assertContains('Username must be', $form(['admin_user' => 'a b'] + $base)['body']);
+        $this->assertSame(false, is_file(AGECMS_DATA . '/data.sqlite'), 'failed attempts leave nothing behind');
+
+        $done = $form($base + ['demo' => '1']);
+        $this->assertContains('Установлено', $done['body']);
+        $this->assertContains('queue-worker.php', $done['body']);
+        preg_match('~Пароль</th><td><strong>([A-Za-z0-9]{16})</strong>~', $done['body'], $m);
+        $this->assertTrue(isset($m[1]), 'generated password is shown once');
+        $this->assertSame(false, is_file(AGECMS_DATA . '/install.key'), 'key file is removed');
+        $this->assertSame(404, $this->http('GET', "/admin/install.php?key={$key}")['status'], 'closed for good');
+        $this->assertSame(404, $form($base)['status']);
+
+        $login = $this->http('POST', '/admin/index.php', http_build_query(['action' => 'login', 'username' => 'boss', 'password' => $m[1]]), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+        $this->assertSame(302, $login['status'], 'the shown password works');
+        $this->assertSame(200, $this->http('GET', '/')['status']);
+    }
 }

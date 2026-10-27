@@ -53,6 +53,13 @@ final class Installer
         if ($generated) {
             $password = self::generatePassword();
         }
+        // Checked before anything is written, so a typo cannot leave a half-installed site behind.
+        if (preg_match('/^[A-Za-z0-9_.@-]{3,40}$/', $user) !== 1) {
+            throw new ValidationException(['Username must be 3-40 characters: letters, digits, _ . @ -']);
+        }
+        if (strlen($password) < 10) {
+            throw new ValidationException(['Password must be at least 10 characters']);
+        }
 
         foreach ([AGECMS_DATA, AGECMS_DATA . '/logs', AGECMS_DATA . '/queue', AGECMS_DATA . '/backups', AGECMS_DATA . '/sessions', AGECMS_CACHE, Media::dir()] as $dir) {
             if (!is_dir($dir) && !@mkdir($dir, str_starts_with($dir, AGECMS_DATA) ? 0700 : 0755, true) && !is_dir($dir)) {
@@ -95,15 +102,41 @@ final class Installer
         return ['site_url' => $siteUrl, 'admin_user' => $user, 'admin_password' => $password, 'generated' => $generated];
     }
 
+    /**
+     * Environment checks shown by the web installer and enforced by install().
+     *
+     * @return list<array{label:string,ok:bool,required:bool,note:string}>
+     */
+    public static function checks(): array
+    {
+        $fts = false;
+        if (extension_loaded('pdo_sqlite')) {
+            try {
+                (new \PDO('sqlite::memory:'))->exec('CREATE VIRTUAL TABLE t USING fts5(a)');
+                $fts = true;
+            } catch (\Throwable) {
+            }
+        }
+        $webp = extension_loaded('gd') && function_exists('imagewebp');
+        return [
+            ['label' => 'PHP 8.1 или новее', 'ok' => PHP_VERSION_ID >= 80100, 'required' => true, 'note' => 'найден ' . PHP_VERSION],
+            ['label' => 'pdo_sqlite', 'ok' => extension_loaded('pdo_sqlite'), 'required' => true, 'note' => 'драйвер базы данных'],
+            ['label' => 'SQLite с полнотекстовым поиском (FTS5)', 'ok' => $fts, 'required' => true, 'note' => 'нужен для поиска по сайту'],
+            ['label' => 'mbstring', 'ok' => extension_loaded('mbstring'), 'required' => true, 'note' => 'работа с русским текстом'],
+            ['label' => 'json', 'ok' => extension_loaded('json'), 'required' => true, 'note' => ''],
+            ['label' => 'gd с WebP', 'ok' => $webp, 'required' => false, 'note' => 'без неё картинки не сжимаются в WebP'],
+            ['label' => 'curl', 'ok' => extension_loaded('curl'), 'required' => false, 'note' => 'вебхуки, Telegram, IndexNow'],
+            ['label' => 'sodium', 'ok' => extension_loaded('sodium'), 'required' => false, 'note' => 'подписи модулей Ed25519'],
+            ['label' => 'zip', 'ok' => extension_loaded('zip'), 'required' => false, 'note' => 'резервные копии'],
+        ];
+    }
+
     private static function requirements(): void
     {
         $missing = [];
-        if (PHP_VERSION_ID < 80100) {
-            $missing[] = 'PHP 8.1 or newer (found ' . PHP_VERSION . ')';
-        }
-        foreach (['pdo_sqlite', 'mbstring', 'json'] as $ext) {
-            if (!extension_loaded($ext)) {
-                $missing[] = "PHP extension {$ext}";
+        foreach (self::checks() as $check) {
+            if ($check['required'] && !$check['ok']) {
+                $missing[] = $check['label'];
             }
         }
         if ($missing !== []) {

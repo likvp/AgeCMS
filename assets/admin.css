@@ -46,3 +46,6 @@ button.btn:disabled { opacity: 0.45; cursor: default; }
 .ag-status { font-size: 0.9rem; color: var(--muted); }
 .ag-status.ok { color: #2f9e44; }
 .ag-status.error { color: #d63031; font-weight: 600; }
+.stack label.check { display: flex; gap: 10px; align-items: center; font-weight: 400; margin: 0 0 10px; }
+.stack label.check input { width: auto; margin: 0; flex: none; }
+.stack fieldset { margin: 0 0 16px; }
