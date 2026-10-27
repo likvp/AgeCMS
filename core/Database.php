@@ -92,8 +92,11 @@ final class Database
             $pdo->exec('COMMIT');
             return $result;
         } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
+            // Not PDO::inTransaction(): before PHP 8.4 it does not see a BEGIN issued through exec().
+            try {
                 $pdo->exec('ROLLBACK');
+            } catch (PDOException) {
+                // SQLite already ended the transaction on its own.
             }
             throw $e;
         } finally {

@@ -22,8 +22,10 @@ final class Schema
                 $pdo->exec('PRAGMA user_version = ' . $target);
                 $pdo->exec('COMMIT');
             } catch (Throwable $e) {
-                if ($pdo->inTransaction()) {
+                try {
                     $pdo->exec('ROLLBACK');
+                } catch (\PDOException) {
+                    // Already ended by SQLite. PDO::inTransaction() is not reliable before PHP 8.4.
                 }
                 throw $e;
             }
