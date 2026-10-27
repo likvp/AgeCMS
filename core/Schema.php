@@ -198,6 +198,17 @@ CREATE TABLE password_resets (
 CREATE INDEX password_resets_user ON password_resets (user_id);
 SQL);
             },
+            // A page that moved to another address leaves a permanent redirect behind.
+            3 => static function (PDO $pdo): void {
+                $pdo->exec(<<<'SQL'
+CREATE TABLE redirects (
+    from_slug TEXT PRIMARY KEY,
+    to_slug TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX redirects_to ON redirects (to_slug);
+SQL);
+            },
         ];
     }
 }

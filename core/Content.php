@@ -15,6 +15,9 @@ final class Content
 {
     public const DELETE_DESC = 'Удаление страницы';
     public const PURGE_DESC = 'Удаление навсегда';
+    /** The last revision of an address a page moved away from reads "Перенос на /new-address". */
+    public const MOVED_TO = 'Перенос на ';
+    public const MOVED_FROM = 'Перенос с ';
 
     /**
      * Sets one field of one block. $path is dotted: "h1" or "items.2.title".
@@ -105,6 +108,9 @@ final class Content
             if ($before === [] && Database::value('SELECT action_desc FROM revisions WHERE page_slug = ? ORDER BY id DESC LIMIT 1', [$slug]) === self::PURGE_DESC) {
                 throw new ValidationException(["Page '{$slug}' was deleted for good and cannot be brought back"]);
             }
+            if ($before === [] && str_starts_with((string)Database::value('SELECT action_desc FROM revisions WHERE page_slug = ? ORDER BY id DESC LIMIT 1', [$slug]), self::MOVED_TO)) {
+                throw new ValidationException(["Page '{$slug}' moved to another address, open the page at its new address"]);
+            }
             $target = Revisions::stateAt($slug, $revisionId);
             if ($target === []) {
                 throw new ValidationException(["Revision {$revisionId} is the deletion of the page, pick an earlier one or use restore_page"]);
@@ -116,6 +122,92 @@ final class Content
             }
             $isNew = $before === [];
             return self::commit($pdo, $actor, $slug, $isNew ? "Восстановление страницы из ревизии #{$revisionId}" : "Откат к ревизии #{$revisionId}", $before, $target, $isNew);
+        });
+    }
+
+    /**
+     * Moves a page to another address and leaves a permanent redirect (301) at the old one. The page keeps its
+     * content and settings, child pages follow it as their parent, menu entries are updated. History stays at the
+     * old address up to the move and continues at the new one.
+     *
+     * @return array<string,mixed>
+     */
+    public static function renamePage(Actor $actor, string $slug, string $newSlug): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $newSlug): array {
+            if ($slug === 'index') {
+                throw new ValidationException(['The home page keeps its address']);
+            }
+            if ($newSlug === $slug) {
+                throw new ValidationException(['The new address is the same as the current one']);
+            }
+            if (!Pages::slugValid($newSlug)) {
+                throw new ValidationException(["'{$newSlug}' is not a valid slug"]);
+            }
+            $before = self::requireDoc($slug);
+            if (Pages::row($newSlug) !== null) {
+                throw new ValidationException(["Page '{$newSlug}' already exists"]);
+            }
+            // An address that belongs to a deleted page stays reserved so that it can still be restored.
+            $lastAtTarget = Database::value('SELECT action_desc FROM revisions WHERE page_slug = ? ORDER BY id DESC LIMIT 1', [$newSlug]);
+            if ($lastAtTarget !== null && !str_starts_with((string)$lastAtTarget, self::MOVED_TO)) {
+                throw new ValidationException(["The address '{$newSlug}' belongs to a deleted page, pick another"]);
+            }
+            $session = CircuitBreaker::ensureSession($pdo, $actor);
+            CircuitBreaker::guardModify($pdo, $session, $slug);
+
+            $created = (string)Database::value('SELECT created_at FROM pages WHERE slug = ?', [$slug]);
+            $tags = ['page:' . $slug, 'page:' . $newSlug];
+
+            $revisionId = Revisions::record($pdo, $newSlug, $actor, self::MOVED_FROM . '/' . $slug, [], $before);
+            Pages::save($pdo, $newSlug, $before, true);
+            $pdo->prepare('UPDATE pages SET created_at = ? WHERE slug = ?')->execute([$created, $newSlug]);
+
+            Revisions::record($pdo, $slug, $actor, self::MOVED_TO . '/' . $newSlug, $before, []);
+            Pages::delete($pdo, $slug);
+
+            // Redirects: the old address points to the new one, earlier redirects to the old one follow along.
+            $now = ag_now();
+            $pdo->prepare('UPDATE redirects SET to_slug = ? WHERE to_slug = ?')->execute([$newSlug, $slug]);
+            $pdo->prepare('INSERT OR REPLACE INTO redirects (from_slug, to_slug, created_at) VALUES (?, ?, ?)')->execute([$slug, $newSlug, $now]);
+
+            // Children keep their own addresses and now point at the moved parent.
+            $kids = $pdo->prepare('SELECT slug FROM pages WHERE parent_slug = ?');
+            $kids->execute([$slug]);
+            foreach ($kids->fetchAll(PDO::FETCH_COLUMN) as $child) {
+                $childBefore = self::requireDoc((string)$child);
+                $childAfter = $childBefore;
+                $childAfter['parent_slug'] = $newSlug;
+                if (Revisions::record($pdo, (string)$child, $actor, "Родитель перенесён: /{$slug} на /{$newSlug}", $childBefore, $childAfter) !== null) {
+                    Pages::save($pdo, (string)$child, $childAfter, false);
+                    $tags[] = 'page:' . $child;
+                }
+            }
+
+            // Menu entries that pointed at the old address.
+            $from = '/' . $slug;
+            foreach ($pdo->query('SELECT name, items_json FROM menus')->fetchAll(PDO::FETCH_ASSOC) as $menu) {
+                $items = json_decode((string)$menu['items_json'], true, 512, JSON_THROW_ON_ERROR);
+                $changed = false;
+                foreach ($items as &$item) {
+                    $url = (string)($item['url'] ?? '');
+                    if ($url === $from || str_starts_with($url, $from . '#') || str_starts_with($url, $from . '?')) {
+                        $item['url'] = '/' . $newSlug . substr($url, strlen($from));
+                        $changed = true;
+                    }
+                }
+                unset($item);
+                if ($changed) {
+                    Revisions::record($pdo, '@menu/' . $menu['name'], $actor, "Меню {$menu['name']}: адрес /{$slug} заменён на /{$newSlug}", ['items' => json_decode((string)$menu['items_json'], true)], ['items' => $items]);
+                    $pdo->prepare('UPDATE menus SET items_json = ? WHERE name = ?')->execute([json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $menu['name']]);
+                    $tags[] = 'menu:' . $menu['name'];
+                }
+            }
+
+            return [
+                'slug' => $newSlug, 'old_slug' => $slug, 'revision_id' => $revisionId, 'changed' => true, 'tags' => $tags,
+                'ping' => (int)$before['is_published'] === 1 && (int)$before['is_noindex'] === 0,
+            ];
         });
     }
 

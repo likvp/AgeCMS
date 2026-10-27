@@ -78,6 +78,12 @@ final class Router
         $generation = Cache::generation();
         $page = Renderer::renderSlug($slug, $editing, $editing ? Auth::csrf() : '');
         if ($page === null) {
+            // A page that moved leaves a permanent redirect at its old address.
+            $to = Pages::redirectFor($slug);
+            if ($to !== null) {
+                $query = (string)($_SERVER['QUERY_STRING'] ?? '');
+                self::redirect('/' . ($to === 'index' ? '' : $to) . ($query !== '' ? '?' . $query : ''));
+            }
             self::notFound();
         }
         $cacheable = !$editing && $method === 'GET' && ($_SERVER['QUERY_STRING'] ?? '') === '';

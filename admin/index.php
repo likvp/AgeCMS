@@ -103,6 +103,12 @@ try {
                     Queue::submit($actor, 'restore_page', ['slug' => $slug]);
                     header('Location: /admin/?s=edit&slug=' . rawurlencode($slug) . '&restored=1');
                     exit;
+                case 'page_rename':
+                    $slug = (string)($_POST['slug'] ?? '');
+                    $newSlug = trim((string)($_POST['new_slug'] ?? ''), " \t/");
+                    Queue::submit($actor, 'rename_page', ['slug' => $slug, 'new_slug' => $newSlug]);
+                    header('Location: /admin/?s=edit&slug=' . rawurlencode($newSlug) . '&renamed=' . rawurlencode($slug));
+                    exit;
                 case 'media_upload':
                     Security::requirePermission($actor, 'content.write');
                     $files = $_FILES['files'] ?? null;

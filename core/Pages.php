@@ -88,7 +88,18 @@ final class Pages
                 'UPDATE pages SET parent_slug = ?, title = ?, meta_title = ?, meta_description = ?, canonical_url = ?, og_image = ?, is_noindex = ?, is_published = ?, sort_order = ?, schema_type = ?, theme = ?, blocks_json = ?, updated_at = ? WHERE slug = ?'
             )->execute([$doc['parent_slug'], $doc['title'], $doc['meta_title'], $doc['meta_description'], $doc['canonical_url'], $doc['og_image'], $doc['is_noindex'], $doc['is_published'], $doc['sort_order'], $doc['schema_type'], $doc['theme'], $blocksJson, $now, $slug]);
         }
+        if ($isNew) {
+            // A page now lives at this address: an old redirect from it must not shadow the page.
+            $pdo->prepare('DELETE FROM redirects WHERE from_slug = ?')->execute([$slug]);
+        }
         self::index($pdo, $slug, $doc);
+    }
+
+    /** Where an address that no longer holds a page now lives, or null. Only when the target page exists. */
+    public static function redirectFor(string $slug): ?string
+    {
+        $to = Database::value('SELECT to_slug FROM redirects WHERE from_slug = ?', [$slug]);
+        return $to !== null && self::row((string)$to) !== null ? (string)$to : null;
     }
 
     /** Removes the page row and its search entry. Must run inside Database::write(). */

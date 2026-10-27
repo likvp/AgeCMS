@@ -573,6 +573,41 @@ final class HttpIntegrationTest extends TestCase
         $this->assertContains('необязательно', $form);
     }
 
+    public function testMovedPageRedirectsAndTheAdminCanChangeAnAddress(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $this->assertSame(200, $this->http('GET', '/about')['status']);
+        $this->assertTrue(is_file(AGECMS_CACHE . '/about.html'));
+        $this->assertContains('Изменить адрес страницы', $this->http('GET', '/admin/?s=edit&slug=about', null, [], true)['body']);
+        $this->assertNotContains('Изменить адрес страницы', $this->http('GET', '/admin/?s=edit&slug=index', null, [], true)['body'], 'the home page keeps its address');
+
+        $r = $this->form(['action' => 'page_rename', 'slug' => 'about', 'new_slug' => 'o-kompanii'], $csrf);
+        $this->assertSame(302, $r['status']);
+        $this->assertContains('slug=o-kompanii', $r['headers']['location']);
+        $this->assertContains('Адрес изменён', $this->http('GET', '/admin/?s=edit&slug=o-kompanii&renamed=about', null, [], true)['body']);
+
+        $old = $this->http('GET', '/about?utm=1');
+        $this->assertSame(301, $old['status']);
+        $this->assertSame('/o-kompanii?utm=1', $old['headers']['location'], 'the redirect keeps the query');
+        clearstatcache();
+        $this->assertSame(false, is_file(AGECMS_CACHE . '/about.html'), 'no stale copy of the old address is left for the web server');
+        $this->assertSame(200, $this->http('GET', '/o-kompanii')['status']);
+        $sitemap = $this->http('GET', '/sitemap.xml')['body'];
+        $this->assertContains('/o-kompanii', $sitemap);
+        $this->assertNotContains('/about<', $sitemap);
+
+        $bad = $this->form(['action' => 'page_rename', 'slug' => 'o-kompanii', 'new_slug' => 'index'], $csrf);
+        $this->assertSame(200, $bad['status']);
+        $this->assertSame(200, $this->http('GET', '/o-kompanii')['status'], 'a refused change leaves the page where it was');
+
+        $editor = Auth::createToken('rename-bot', 'editor');
+        $tool = $this->rpc($editor, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => ['name' => 'rename_page', 'arguments' => ['slug' => 'o-kompanii', 'new_slug' => 'about-us']]]);
+        $this->assertSame(false, $tool['json']['result']['isError']);
+        $this->assertSame('/about-us', $this->http('GET', '/about')['headers']['location']);
+        $this->assertSame('/about-us', $this->http('GET', '/o-kompanii')['headers']['location']);
+    }
+
     public function testAdminDeletePagesMediaAndUsers(): void
     {
         $this->boot();

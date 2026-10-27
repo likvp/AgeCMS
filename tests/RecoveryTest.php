@@ -171,6 +171,7 @@ final class RecoveryTest extends TestCase
         Database::write(static function (PDO $pdo): void {
             $pdo->exec('DROP INDEX users_email');
             $pdo->exec('DROP TABLE password_resets');
+            $pdo->exec('DROP TABLE redirects');
             $pdo->exec('ALTER TABLE users DROP COLUMN email');
             $pdo->exec('ALTER TABLE users DROP COLUMN pwd_epoch');
         });
@@ -182,6 +183,7 @@ final class RecoveryTest extends TestCase
         $this->assertSame('', Database::value('SELECT email FROM users WHERE id = ?', [$id]));
         $this->assertSame(0, (int)Database::value('SELECT pwd_epoch FROM users WHERE id = ?', [$id]));
         $this->assertSame(0, (int)Database::value('SELECT COUNT(*) FROM password_resets'));
+        $this->assertSame(0, (int)Database::value('SELECT COUNT(*) FROM redirects'), 'later steps are applied too');
         // a second open changes nothing
         Database::reset();
         $this->assertSame(AgeCMS\Schema::latest(), (int)Database::value('PRAGMA user_version'));
