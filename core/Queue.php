@@ -20,6 +20,7 @@ final class Queue
         'update_page' => ['updatePage', 'content.write'],
         'rollback' => ['rollback', 'content.write'],
         'set_menu' => ['setMenu', 'content.write'],
+        'set_settings' => ['setSettings', 'system.manage'],
     ];
 
     public static function dir(): string
@@ -164,6 +165,7 @@ final class Queue
             'update_page' => Content::updatePage($actor, (string)$a['slug'], (array)($a['fields'] ?? [])),
             'rollback' => Content::rollback($actor, (string)$a['slug'], (int)$a['revision_id']),
             'set_menu' => Content::setMenu($actor, (string)$a['name'], (array)($a['items'] ?? [])),
+            'set_settings' => Content::setSettings($actor, (array)($a['values'] ?? [])),
         };
     }
 

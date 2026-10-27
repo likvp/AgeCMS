@@ -131,4 +131,25 @@ final class ContentTest extends TestCase
         Queue::submit($this->admin(), 'set_menu', ['name' => 'header', 'items' => [['title' => 'Home', 'url' => '/'], ['title' => 'New', 'url' => '/new']]]);
         $this->assertSame(false, is_file(Cache::fileFor('b')), 'a menu change drops every page that used the menu');
     }
+
+    public function testSettingsAreAdminOnlyValidatedAndVersioned(): void
+    {
+        $this->freshSite();
+        $this->createPage('a');
+        \AgeCMS\Cache::store('a', '<html></html>', ['page:a', 'settings'], \AgeCMS\Cache::generation());
+
+        $editor = Actor::agent('ed', 'editor');
+        $this->assertThrows(ForbiddenException::class, fn() => Queue::submit($editor, 'set_settings', ['values' => ['site_name' => 'Hacked']]));
+        $this->assertThrows(ValidationException::class, fn() => Queue::submit($this->admin(), 'set_settings', ['values' => ['site_name' => '']]));
+        $this->assertThrows(ValidationException::class, fn() => Queue::submit($this->admin(), 'set_settings', ['values' => ['active_theme' => 'x']]), 'Unknown setting');
+        $this->assertThrows(ValidationException::class, fn() => Queue::submit($this->admin(), 'set_settings', ['values' => ['site_name' => "two\nlines"]]));
+
+        $r = Queue::submit($this->admin(), 'set_settings', ['values' => ['site_name' => 'Новое имя', 'site_description' => 'Описание']]);
+        $this->assertSame(true, $r['changed']);
+        $this->assertSame('Новое имя', Database::value("SELECT value FROM settings WHERE key = 'site_name'"));
+        $this->assertSame('@settings', Database::value('SELECT page_slug FROM revisions ORDER BY id DESC LIMIT 1'));
+        $this->assertSame(false, is_file(\AgeCMS\Cache::fileFor('a')), 'settings tag drops cached pages');
+        $this->assertSame(false, Queue::submit($this->admin(), 'set_settings', ['values' => ['site_name' => 'Новое имя']])['changed']);
+        $this->assertSame('Новое имя', \AgeCMS\Seo::settings()['site_name']);
+    }
 }

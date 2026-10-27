@@ -157,6 +157,58 @@ final class Content
     }
 
     /**
+     * Site name and description (administrators only). Versioned as the pseudo page "@settings".
+     *
+     * @param array<string,mixed> $values only "site_name" and "site_description" are accepted
+     * @return array<string,mixed>
+     */
+    public static function setSettings(Actor $actor, array $values): array
+    {
+        Security::requirePermission($actor, 'system.manage');
+        return self::run($actor, static function (PDO $pdo) use ($actor, $values): array {
+            $limits = ['site_name' => [1, 100], 'site_description' => [0, 300]];
+            $errors = [];
+            $clean = [];
+            foreach ($values as $key => $value) {
+                if (!isset($limits[$key])) {
+                    $errors[] = "Unknown setting '{$key}'";
+                } elseif (!is_string($value) || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
+                    $errors[] = "{$key} must be plain text on one line";
+                } else {
+                    $value = trim($value);
+                    $length = mb_strlen($value);
+                    if ($length < $limits[$key][0] || $length > $limits[$key][1]) {
+                        $errors[] = "{$key} must be {$limits[$key][0]}-{$limits[$key][1]} characters";
+                    }
+                    $clean[$key] = $value;
+                }
+            }
+            if ($clean === [] && $errors === []) {
+                $errors[] = 'No settings to update';
+            }
+            if ($errors !== []) {
+                throw new ValidationException($errors);
+            }
+
+            $before = [];
+            foreach (array_keys($limits) as $key) {
+                $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
+                $stmt->execute([$key]);
+                $before[$key] = (string)($stmt->fetchColumn() ?: '');
+            }
+            $after = array_replace($before, $clean);
+            $revisionId = Revisions::record($pdo, '@settings', $actor, 'Настройки сайта: ' . implode(', ', array_keys($clean)), $before, $after);
+            if ($revisionId !== null) {
+                $set = $pdo->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+                foreach ($after as $key => $value) {
+                    $set->execute([$key, $value]);
+                }
+            }
+            return ['slug' => '@settings', 'revision_id' => $revisionId, 'changed' => $revisionId !== null, 'tags' => ['settings'], 'ping' => false];
+        });
+    }
+
+    /**
      * Role check, freeze check, one IMMEDIATE transaction, then side effects after commit.
      *
      * @param callable(PDO):array<string,mixed> $operation

@@ -12,7 +12,7 @@ if (preg_match('~^/admin/(index|api|mcp|install)\.php$~', $path) === 1) {
     require $root . $path;
     return true;
 }
-if (preg_match('~^/(themes/[a-z0-9_-]+/assets|assets/uploads|admin/assets)/[A-Za-z0-9_./-]+$~', $path) === 1 && !str_contains($path, '..') && is_file($root . $path)) {
+if (preg_match('~^/assets/(?!cache/)[A-Za-z0-9_./-]+$~', $path) === 1 && !str_contains($path, '..') && is_file($root . $path)) {
     return false;
 }
 require $root . '/index.php';

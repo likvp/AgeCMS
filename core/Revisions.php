@@ -82,7 +82,7 @@ final class Revisions
     public static function history(string $slug, int $limit = 50): array
     {
         return Database::rows(
-            'SELECT id, created_at, actor_type, actor_name, session_id, action_desc FROM revisions WHERE page_slug = ? ORDER BY id DESC LIMIT ?',
+            'SELECT id, page_slug, created_at, actor_type, actor_name, session_id, action_desc FROM revisions WHERE page_slug = ? ORDER BY id DESC LIMIT ?',
             [$slug, max(1, min(500, $limit))],
         );
     }

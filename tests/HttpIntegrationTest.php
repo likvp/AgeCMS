@@ -280,4 +280,52 @@ final class HttpIntegrationTest extends TestCase
         $r = $this->http('GET', '/admin/install.php');
         $this->assertTrue(in_array($r['status'], [403, 404], true));
     }
+
+    private function adminLogin(): string
+    {
+        $this->http('POST', '/admin/index.php', http_build_query(['action' => 'login', 'username' => 'admin', 'password' => 'Passw0rd-test-1']), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+        $page = $this->http('GET', '/admin/', null, [], true);
+        preg_match('/name="csrf" value="([^"]+)"/', $page['body'], $m);
+        return $m[1] ?? '';
+    }
+
+    private function form(array $data, string $csrf): array
+    {
+        return $this->http('POST', '/admin/index.php', http_build_query($data + ['csrf' => $csrf]), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+    }
+
+    public function testAdminSectionsPageCreationAndSettings(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $this->assertTrue($csrf !== '');
+
+        foreach (['pages' => 'Новая страница', 'menus' => 'ag-editor-data', 'history' => 'История изменений', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Токены для ИИ-агентов'] as $section => $marker) {
+            $r = $this->http('GET', '/admin/?s=' . $section, null, [], true);
+            $this->assertSame(200, $r['status'], $section);
+            $this->assertContains($marker, $r['body'], $section);
+        }
+        $edit = $this->http('GET', '/admin/?s=edit&slug=about', null, [], true);
+        $this->assertContains('"slug":"about"', $edit['body']);
+        $this->assertContains('/assets/admin-editor.js', $edit['body']);
+        $this->assertContains('Страница не найдена', $this->http('GET', '/admin/?s=edit&slug=nope', null, [], true)['body']);
+        $this->assertSame(200, $this->http('GET', '/assets/admin-editor.js')['status']);
+
+        $created = $this->form(['action' => 'page_create', 'slug' => 'uslugi/remont', 'title' => 'Ремонт <b>', 'schema_type' => 'Service'], $csrf);
+        $this->assertSame(302, $created['status']);
+        $this->assertContains('s=edit', $created['headers']['location']);
+        $this->assertSame('0', (string)Database::value("SELECT is_published FROM pages WHERE slug = 'uslugi/remont'"), 'new pages start hidden');
+        $this->assertSame(404, $this->http('GET', '/uslugi/remont')['status']);
+        $bad = $this->form(['action' => 'page_create', 'slug' => 'Bad Slug', 'title' => 'x'], $csrf);
+        $this->assertContains('not a valid slug', $bad['body']);
+
+        $saved = $this->form(['action' => 'settings_save', 'site_name' => 'Сайт Кати', 'site_description' => 'Описание'], $csrf);
+        $this->assertContains('Настройки сохранены', $saved['body']);
+        $this->assertContains('Сайт Кати', $this->http('GET', '/')['body']);
+        $this->assertContains('page_slug', (string)json_encode(Database::rows("SELECT page_slug FROM revisions WHERE page_slug = '@settings'")));
+
+        $editor = Auth::createToken('ed-bot', 'editor');
+        $denied = $this->http('POST', '/admin/api.php', json_encode(['action' => 'set_settings', 'values' => ['site_name' => 'Hacked']]), ['Authorization' => "Bearer {$editor}", 'Content-Type' => 'application/json']);
+        $this->assertSame(403, $denied['status'], 'only administrators change settings');
+    }
 }
