@@ -268,6 +268,10 @@ final class RecoveryTest extends TestCase
             $pdo->exec('DROP TABLE password_resets');
             $pdo->exec('DROP TABLE redirects');
             $pdo->exec('DROP TABLE agent_invites');
+            $pdo->exec('DROP TABLE totp_recovery');
+            $pdo->exec('ALTER TABLE users DROP COLUMN totp_secret');
+            $pdo->exec('ALTER TABLE users DROP COLUMN totp_enabled_at');
+            $pdo->exec('ALTER TABLE users DROP COLUMN totp_last_step');
             $pdo->exec('ALTER TABLE api_tokens DROP COLUMN user_id');
             $pdo->exec('ALTER TABLE api_tokens DROP COLUMN expires_at');
             $pdo->exec('ALTER TABLE users DROP COLUMN blocked_at');

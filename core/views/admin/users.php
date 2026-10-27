@@ -21,7 +21,7 @@ $rolesFor = static fn(string $current): array => $current === 'viewer' ? $roles 
 <?php if ($isAdmin): $users = Auth::listUsers(); ?>
 <section class="panel">
     <div class="tbl-scroll"><table class="tbl">
-        <thead><tr><th>Логин</th><th>Почта</th><th>Роль</th><th>Создан</th><th></th></tr></thead>
+        <thead><tr><th>Логин</th><th>Почта</th><th>Роль</th><th>2 шага</th><th>Создан</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($users as $u): $self = (int)$u['id'] === (int)$user['id']; ?>
             <tr>
@@ -41,8 +41,12 @@ $rolesFor = static fn(string $current): array => $current === 'viewer' ? $roles 
                     </form>
                     <?php endif; ?>
                 </td>
+                <td><?= $u['totp_enabled_at'] !== null ? '<span class="tag ok">включены</span>' : '<span class="muted">нет</span>' ?></td>
                 <td class="num muted"><?= admin_date($u['created_at']) ?></td>
                 <td class="r"><div class="actions">
+                    <?php if (!$self && $u['totp_enabled_at'] !== null): ?>
+                    <form method="post" class="inline" data-confirm="Убрать второй шаг входа у <?= h($u['username']) ?>?" data-confirm-text="Для случая, когда телефон и коды восстановления потеряны. Сеансы пользователя закроются, второй шаг он включит заново сам." data-confirm-ok="Убрать" data-danger><?= admin_post_fields($csrf, 'user_totp_reset') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><button class="btn sm ghost" type="submit"><?= icon('lock-key') ?>Сбросить 2 шага</button></form>
+                    <?php endif; ?>
                     <?php if (!$self): ?>
                     <?php $blocked = $u['blocked_at'] !== null; ?>
                     <form method="post" class="inline"<?= $blocked ? '' : ' data-confirm="Заблокировать ' . h($u['username']) . '?" data-confirm-text="Войти он не сможет, а его токены для агентов перестанут работать. Пользователь и история останутся, блокировку можно снять." data-confirm-ok="Заблокировать" data-danger' ?>><?= admin_post_fields($csrf, 'user_block') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><input type="hidden" name="blocked" value="<?= $blocked ? '0' : '1' ?>"><button class="btn sm ghost" type="submit"><?= icon($blocked ? 'check-circle' : 'lock-key') ?><?= $blocked ? 'Разблокировать' : 'Заблокировать' ?></button></form>
@@ -97,6 +101,38 @@ $rolesFor = static fn(string $current): array => $current === 'viewer' ? $roles 
         <p class="muted">От 10 символов. После смены вы останетесь в системе на этом устройстве, а на остальных придётся войти заново.</p>
         <button class="btn primary" type="submit">Сменить пароль</button>
     </form>
+</section>
+
+<?php
+$totpOn = $user['totp_enabled_at'] !== null;
+$setup = $totpOn ? null : Auth::totpPending($user);
+?>
+<section class="panel" id="totp">
+    <div class="panel-h"><h2>Двухфакторный вход</h2><span class="muted"><?= $totpOn ? 'включён' : 'выключен' ?></span></div>
+    <?php if ($totpOn): ?>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'totp_disable') ?>
+        <p>После пароля у вас спрашивают код из приложения. Кодов восстановления осталось: <b><?= Auth::recoveryLeft((int)$user['id']) ?></b>.</p>
+        <label class="f"><span>Чтобы выключить, введите пароль</span><input class="in" type="password" name="current_password" required autocomplete="current-password"></label>
+        <button class="btn" type="submit">Выключить</button>
+    </form>
+    <?php elseif ($setup !== null): ?>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'totp_enable') ?>
+        <p>1. В приложении-аутентификаторе (Google Authenticator, Яндекс Ключ, 1Password и другие) добавьте ключ вручную или откройте ссылку на телефоне.</p>
+        <p>Ключ: <code id="totp-secret"><?= h($setup['pretty']) ?></code> <button class="btn sm" type="button" data-copy="#totp-secret"><?= icon('copy') ?>Копировать</button></p>
+        <p class="muted">Ссылка для приложения: <a href="<?= h($setup['uri']) ?>"><?= h($setup['uri']) ?></a></p>
+        <p>2. Введите шесть цифр, которые покажет приложение:</p>
+        <label class="f"><span>Код</span><input class="in" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required></label>
+        <button class="btn primary" type="submit">Включить</button>
+    </form>
+    <?php else: ?>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'totp_start') ?>
+        <p>Пароль можно украсть или подсмотреть. Второй шаг (шесть цифр из приложения на телефоне) защитит админку, даже если пароль узнали. Включение займёт минуту. Для входа ИИ-агентов это ничего не меняет: у них свои токены и коды подключения. Агенту с логином и паролем такого пользователя токен выдан не будет, нужен код подключения.</p>
+        <button class="btn primary" type="submit"><?= icon('lock-key') ?>Включить двухфакторный вход</button>
+    </form>
+    <?php endif; ?>
 </section>
 
 <section class="panel">

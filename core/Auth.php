@@ -53,7 +53,7 @@ final class Auth
         if (!is_int($uid)) {
             return null;
         }
-        $user = Database::row('SELECT id, username, role, email, pwd_epoch, blocked_at FROM users WHERE id = ?', [$uid]);
+        $user = Database::row('SELECT id, username, role, email, pwd_epoch, blocked_at, totp_enabled_at FROM users WHERE id = ?', [$uid]);
         // A password change or reset ends every other session of that person, blocking ends them all.
         if ($user === null || $user['blocked_at'] !== null || (int)($_SESSION['epoch'] ?? 0) !== (int)$user['pwd_epoch']) {
             return null;
@@ -119,16 +119,208 @@ final class Auth
             throw new ForbiddenException('Учётная запись заблокирована. Обратитесь к администратору сайта.');
         }
 
-        self::startSession();
-        session_regenerate_id(true);
-        $_SESSION['uid'] = (int)$user['id'];
-        $_SESSION['epoch'] = (int)$user['pwd_epoch'];
-        $_SESSION['csrf'] = Security::token(24);
-        setcookie(self::MARKER_COOKIE, '1', ['path' => '/', 'secure' => self::https(), 'httponly' => true, 'samesite' => 'Lax']);
+        if (self::hasTotp($user)) {
+            // The password is right, but nobody is signed in until the code from the authenticator app is too.
+            self::startSession();
+            session_regenerate_id(true);
+            unset($_SESSION['uid'], $_SESSION['epoch']);
+            $_SESSION['pending2fa'] = ['uid' => (int)$user['id'], 'at' => time(), 'epoch' => (int)$user['pwd_epoch']];
+            return $user + ['second_factor' => true];
+        }
+        self::establishSession($user);
         if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
             self::setPassword((int)$user['id'], $password);
         }
         return $user;
+    }
+
+    /** @param array<string,mixed> $user */
+    private static function establishSession(array $user): void
+    {
+        self::startSession();
+        session_regenerate_id(true);
+        unset($_SESSION['pending2fa']);
+        $_SESSION['uid'] = (int)$user['id'];
+        $_SESSION['epoch'] = (int)$user['pwd_epoch'];
+        $_SESSION['csrf'] = Security::token(24);
+        setcookie(self::MARKER_COOKIE, '1', ['path' => '/', 'secure' => self::https(), 'httponly' => true, 'samesite' => 'Lax']);
+    }
+
+    /** @param array<string,mixed> $user */
+    public static function hasTotp(array $user): bool
+    {
+        return ($user['totp_enabled_at'] ?? null) !== null;
+    }
+
+    /** The person who typed the right password and now owes the second factor (valid for five minutes), or null. @return array<string,mixed>|null */
+    public static function pendingSecondFactor(): ?array
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            if (!isset($_COOKIE[self::SESSION_NAME])) {
+                return null;
+            }
+            self::startSession();
+        }
+        $p = $_SESSION['pending2fa'] ?? null;
+        if (!is_array($p) || (int)($p['at'] ?? 0) < time() - 300) {
+            return null;
+        }
+        $user = Database::row('SELECT * FROM users WHERE id = ?', [(int)$p['uid']]);
+        // A password change since the first step cancels it.
+        return $user !== null && $user['blocked_at'] === null && (int)($p['epoch'] ?? -1) === (int)$user['pwd_epoch'] && self::hasTotp($user) ? $user : null;
+    }
+
+    public static function cancelSecondFactor(): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            unset($_SESSION['pending2fa']);
+        }
+    }
+
+    /**
+     * Second step: a six-digit code from the authenticator app, or one of the recovery codes (each works once).
+     * Wrong codes are counted per account and per address like wrong passwords.
+     *
+     * @return array<string,mixed>|null the user row on success
+     * @throws ForbiddenException when too many wrong codes were sent
+     */
+    public static function completeSecondFactor(string $code): ?array
+    {
+        $user = self::pendingSecondFactor();
+        if ($user === null) {
+            return null;
+        }
+        $limit = (int)Config::get('rate_limit.login_fails', 5);
+        $window = (int)Config::get('rate_limit.login_window', 900);
+        $buckets = ['totp-ip:' . Http::clientIp(), 'totp-user:' . $user['id']];
+        foreach ($buckets as $bucket) {
+            if (AntiSpam::count($bucket, $window) >= $limit) {
+                unset($_SESSION['pending2fa']);
+                throw new ForbiddenException('Too many wrong codes. Try again later.');
+            }
+        }
+        $ok = false;
+        $code = trim($code);
+        if (preg_match('/^[a-z0-9]{5}-?[a-z0-9]{5}$/i', $code) === 1 && preg_match('/^\d{6}$/', $code) !== 1) {
+            $hash = Security::hashToken(strtolower(str_replace('-', '', $code)));
+            $ok = (bool)Database::write(static function (PDO $pdo) use ($user, $hash): bool {
+                $stmt = $pdo->prepare('UPDATE totp_recovery SET used_at = ? WHERE user_id = ? AND code_hash = ? AND used_at IS NULL');
+                $stmt->execute([ag_now(), $user['id'], $hash]);
+                return $stmt->rowCount() === 1;
+            });
+        } else {
+            $step = Totp::verify(Totp::open((string)$user['totp_secret']), $code, (int)$user['totp_last_step']);
+            if ($step !== null) {
+                $ok = (bool)Database::write(static function (PDO $pdo) use ($user, $step): bool {
+                    // The step is taken only if nobody used it in the meantime, so two requests cannot share one code.
+                    $stmt = $pdo->prepare('UPDATE users SET totp_last_step = ? WHERE id = ? AND totp_last_step < ?');
+                    $stmt->execute([$step, $user['id'], $step]);
+                    return $stmt->rowCount() === 1;
+                });
+            }
+        }
+        if (!$ok) {
+            foreach ($buckets as $bucket) {
+                AntiSpam::hit($bucket);
+            }
+            return null;
+        }
+        foreach ($buckets as $bucket) {
+            AntiSpam::clear($bucket);
+        }
+        self::establishSession($user);
+        return $user;
+    }
+
+    /** Starts turning the second step on: a new secret kept in the session until a code from the app confirms it. @return array{secret:string,pretty:string,uri:string} */
+    public static function totpStart(array $user): array
+    {
+        self::startSession();
+        if (self::hasTotp($user)) {
+            throw new ValidationException(['Двухфакторный вход уже включён']);
+        }
+        $secret = Totp::generateSecret();
+        $_SESSION['totp_setup'] = ['secret' => $secret, 'uid' => (int)$user['id'], 'at' => time()];
+        return ['secret' => $secret, 'pretty' => Totp::pretty($secret), 'uri' => Totp::uri($secret, (string)$user['username'], (string)Config::get('site_name', parse_url(Seo::siteUrl(), PHP_URL_HOST) ?: 'AgeCMS'))];
+    }
+
+    /** The secret waiting for confirmation, if this user started the setup less than 15 minutes ago. @return array{secret:string,pretty:string,uri:string}|null */
+    public static function totpPending(array $user): ?array
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return null;
+        }
+        $p = $_SESSION['totp_setup'] ?? null;
+        if (!is_array($p) || (int)$p['uid'] !== (int)$user['id'] || (int)$p['at'] < time() - 900) {
+            return null;
+        }
+        return ['secret' => $p['secret'], 'pretty' => Totp::pretty($p['secret']), 'uri' => Totp::uri($p['secret'], (string)$user['username'], (string)Config::get('site_name', parse_url(Seo::siteUrl(), PHP_URL_HOST) ?: 'AgeCMS'))];
+    }
+
+    /**
+     * Confirms the setup with a code from the app, turns the second step on and returns the recovery codes, shown once.
+     *
+     * @return list<string>
+     * @throws ValidationException
+     */
+    public static function totpEnable(array $user, string $code): array
+    {
+        $pending = self::totpPending($user);
+        if ($pending === null) {
+            throw new ValidationException(['Настройка устарела, начните заново']);
+        }
+        $step = Totp::verify($pending['secret'], $code);
+        if ($step === null) {
+            throw new ValidationException(['Код не подошёл. Проверьте время на телефоне и введите свежий код']);
+        }
+        $codes = [];
+        for ($i = 0; $i < 8; $i++) {
+            $codes[] = strtolower(substr(Totp::generateSecret(), 0, 5) . '-' . substr(Totp::generateSecret(), 0, 5));
+        }
+        $sealed = Totp::seal($pending['secret']);
+        Database::write(static function (PDO $pdo) use ($user, $sealed, $step, $codes): void {
+            $pdo->prepare('UPDATE users SET totp_secret = ?, totp_enabled_at = ?, totp_last_step = ? WHERE id = ?')->execute([$sealed, ag_now(), $step, $user['id']]);
+            $pdo->prepare('DELETE FROM totp_recovery WHERE user_id = ?')->execute([$user['id']]);
+            $insert = $pdo->prepare('INSERT INTO totp_recovery (user_id, code_hash) VALUES (?, ?)');
+            foreach ($codes as $c) {
+                $insert->execute([$user['id'], Security::hashToken(str_replace('-', '', $c))]);
+            }
+        });
+        unset($_SESSION['totp_setup']);
+        Logger::log('info', 'auth.totp_enabled', ['user' => $user['username']]);
+        return $codes;
+    }
+
+    /** Turns the second step off for the signed-in user, who proves it with the password. */
+    public static function totpDisable(array $user, string $password): void
+    {
+        $row = Database::row('SELECT password_hash FROM users WHERE id = ?', [$user['id']]);
+        if ($row === null || !password_verify($password, $row['password_hash'])) {
+            throw new ValidationException(['Неверный пароль']);
+        }
+        self::clearTotp((int)$user['id']);
+        Logger::log('info', 'auth.totp_disabled', ['user' => $user['username']]);
+    }
+
+    /** An administrator removes the second step of someone who lost the phone and the recovery codes; that person's sessions end. */
+    public static function totpReset(int $userId): void
+    {
+        self::clearTotp($userId);
+        Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE users SET pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([$userId]));
+        Logger::log('warning', 'auth.totp_reset', ['user_id' => $userId]);
+    }
+
+    private static function clearTotp(int $userId): void
+    {
+        Database::write(static function (PDO $pdo) use ($userId): void {
+            $pdo->prepare("UPDATE users SET totp_secret = '', totp_enabled_at = NULL, totp_last_step = 0 WHERE id = ?")->execute([$userId]);
+            $pdo->prepare('DELETE FROM totp_recovery WHERE user_id = ?')->execute([$userId]);
+        });
+    }
+
+    public static function recoveryLeft(int $userId): int
+    {
+        return (int)Database::value('SELECT COUNT(*) FROM totp_recovery WHERE user_id = ? AND used_at IS NULL', [$userId]);
     }
 
     public static function logout(): void
@@ -367,7 +559,7 @@ final class Auth
     /** @return list<array<string,mixed>> */
     public static function listUsers(): array
     {
-        return Database::rows('SELECT id, username, email, role, blocked_at, created_at FROM users ORDER BY id');
+        return Database::rows('SELECT id, username, email, role, blocked_at, created_at, totp_enabled_at FROM users ORDER BY id');
     }
 
     public static function changeRole(int $userId, string $role, int $actingUserId): void
@@ -551,6 +743,9 @@ final class Auth
         }
         if ($user['blocked_at'] !== null) {
             throw new ForbiddenException('This account is blocked. Ask the owner.');
+        }
+        if (self::hasTotp($user)) {
+            throw new ForbiddenException('two_factor: this user signs in with a second factor, so a password alone cannot get a token. Ask the owner for a one-time invitation code (Admin, System).');
         }
         $rank = ['viewer' => 1, 'editor' => 2, 'admin' => 3];
         $userRank = $rank[$user['role']] ?? 1;

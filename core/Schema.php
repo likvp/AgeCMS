@@ -228,6 +228,21 @@ CREATE TABLE agent_invites (
 );
 SQL);
             },
+            // Second sign-in step: an authenticator secret (stored encrypted) and one-time recovery codes (stored as hashes).
+            5 => static function (PDO $pdo): void {
+                $pdo->exec(<<<'SQL'
+ALTER TABLE users ADD COLUMN totp_secret TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN totp_enabled_at TEXT;
+ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE totp_recovery (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    code_hash TEXT NOT NULL UNIQUE,
+    used_at TEXT
+);
+CREATE INDEX totp_recovery_user ON totp_recovery (user_id);
+SQL);
+            },
         ];
     }
 }

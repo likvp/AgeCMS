@@ -10,6 +10,7 @@
  * @var string $newToken
  * @var array<string,string>|null $newPassword
  * @var array<string,mixed>|null $newAgent
+ * @var list<string>|null $recoveryCodes
  * @var array<string,mixed>|null $adminModule
  * @var \AgeCMS\ModuleResponse|null $moduleReply
  */
@@ -82,6 +83,13 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
                 <div class="notice warn" role="status"><?= icon('key') ?><div>
                     <p><b>Пароль для <?= h($newPassword['user']) ?>. Передайте его человеку сейчас.</b> Потом он не показывается.</p>
                     <p class="row center"><code id="new-password"><?= h($newPassword['value']) ?></code> <button class="btn sm" type="button" data-copy="#new-password"><?= icon('copy') ?>Копировать</button></p>
+                </div></div>
+            <?php endif; ?>
+            <?php if (!empty($recoveryCodes)): ?>
+                <div class="notice warn" role="status"><?= icon('key') ?><div>
+                    <p><b>Сохраните коды восстановления.</b> Если телефон потеряется, каждый из них один раз заменит код из приложения. Показываются только сейчас.</p>
+                    <pre class="agent-text" id="recovery-codes"><?= h(implode("\n", $recoveryCodes)) ?></pre>
+                    <p><button class="btn sm" type="button" data-copy="#recovery-codes"><?= icon('copy') ?>Копировать</button></p>
                 </div></div>
             <?php endif; ?>
             <?php if (!empty($newAgent)): ?>

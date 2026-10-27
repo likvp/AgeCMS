@@ -27,6 +27,7 @@ $error = '';
 $newToken = '';
 $newPassword = null;
 $newAgent = null;
+$recoveryCodes = null;
 $notice = '';
 $user = Auth::user();
 // Set by the router for /admin/m/<module>/...: a page that a module declared in its manifest (ModuleAdmin).
@@ -38,12 +39,22 @@ try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminModule === null) {
         $action = (string)($_POST['action'] ?? '');
         if ($action === 'login') {
-            if (Auth::login((string)($_POST['username'] ?? ''), (string)($_POST['password'] ?? '')) === null) {
+            $signedIn = Auth::login((string)($_POST['username'] ?? ''), (string)($_POST['password'] ?? ''));
+            if ($signedIn === null) {
                 $error = 'Неверный логин или пароль';
+            } elseif (empty($signedIn['second_factor'])) {
+                header('Location: /admin/');
+                exit;
+            }
+        } elseif ($action === 'login_2fa') {
+            if (Auth::completeSecondFactor((string)($_POST['code'] ?? '')) === null) {
+                $error = Auth::pendingSecondFactor() === null ? 'Время входа истекло, начните заново' : 'Код не подошёл';
             } else {
                 header('Location: /admin/');
                 exit;
             }
+        } elseif ($action === 'login_2fa_cancel') {
+            Auth::cancelSecondFactor();
         } elseif ($action === 'forgot') {
             // Same answer whether or not the account exists. The link goes only to the address stored for it.
             Auth::requestReset((string)($_POST['identifier'] ?? ''));
@@ -304,6 +315,30 @@ try {
                     $flash = 'Пользователь ' . $login . ' для агента создан';
                     $section = 'users';
                     break;
+                case 'totp_start':
+                    Auth::totpStart($user);
+                    $section = 'users';
+                    break;
+                case 'totp_enable':
+                    $recoveryCodes = Auth::totpEnable($user, (string)($_POST['code'] ?? ''));
+                    $flash = 'Двухфакторный вход включён';
+                    $section = 'users';
+                    break;
+                case 'totp_disable':
+                    Auth::totpDisable($user, (string)($_POST['current_password'] ?? ''));
+                    $flash = 'Двухфакторный вход выключен';
+                    $section = 'users';
+                    break;
+                case 'user_totp_reset':
+                    Security::requirePermission($actor, 'system.manage');
+                    $target = Database::row('SELECT id, username FROM users WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
+                    if ($target === null) {
+                        throw new AgeCMSException('Пользователь не найден');
+                    }
+                    Auth::totpReset((int)$target['id']);
+                    $flash = 'Второй шаг входа для ' . $target['username'] . ' убран, его сеансы закрыты';
+                    $section = 'users';
+                    break;
                 case 'user_block':
                     Security::requirePermission($actor, 'system.manage');
                     $block = (string)($_POST['blocked'] ?? '1') === '1';
@@ -458,12 +493,12 @@ if ($user === null) {
     if ($section === 'reset') {
         header('Referrer-Policy: no-referrer'); // the link carries the secret
     }
-    admin_view(in_array($section, ['forgot', 'reset'], true) ? $section : 'login', ['error' => $error, 'notice' => $notice, 'resetDone' => ($_GET['reset'] ?? '') === 'ok']);
+    admin_view(in_array($section, ['forgot', 'reset'], true) ? $section : (Auth::pendingSecondFactor() !== null ? 'login2' : 'login'), ['error' => $error, 'notice' => $notice, 'resetDone' => ($_GET['reset'] ?? '') === 'ok']);
 } else {
     $csrf = Auth::csrf();
     $isAdmin = Security::can($user['role'], 'system.manage');
     $canWrite = Security::can($user['role'], 'content.write');
-    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword', 'newAgent', 'adminModule', 'moduleReply'));
+    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword', 'newAgent', 'recoveryCodes', 'adminModule', 'moduleReply'));
 }
 ?>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
