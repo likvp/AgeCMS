@@ -13,6 +13,8 @@ final class ModuleResponse
     /** @var list<array{name:string,value:string,ttl:int}> */
     private array $cookies = [];
 
+    private string $description = '';
+
     private function __construct(
         public readonly string $kind,
         public readonly int $status,
@@ -44,6 +46,19 @@ final class ModuleResponse
         $copy = clone $this;
         $copy->cookies[] = ['name' => $name, 'value' => $value, 'ttl' => $ttlSeconds];
         return $copy;
+    }
+
+    /** Text for the description meta tag of a page of an indexable route (cut to 300 characters); other routes ignore it. */
+    public function withDescription(string $description): self
+    {
+        $copy = clone $this;
+        $copy->description = mb_substr(trim(strip_tags($description)), 0, 300);
+        return $copy;
+    }
+
+    public function description(): string
+    {
+        return $this->description;
     }
 
     public function withoutCookie(string $name): self

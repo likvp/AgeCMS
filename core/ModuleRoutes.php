@@ -21,7 +21,7 @@ final class ModuleRoutes
 
     /**
      * @param array<string,mixed> $manifest
-     * @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int}>
+     * @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int,indexable:bool}>
      */
     public static function parse(string $module, array $manifest): array
     {
@@ -32,7 +32,7 @@ final class ModuleRoutes
         $routes = [];
         $seen = [];
         foreach ($declared as $i => $route) {
-            if (!is_array($route) || array_diff(array_keys($route), ['path', 'methods', 'rate', 'cache', 'max_age']) !== []) {
+            if (!is_array($route) || array_diff(array_keys($route), ['path', 'methods', 'rate', 'cache', 'max_age', 'indexable']) !== []) {
                 throw new AgeCMSException("routes[{$i}]: unknown or missing fields");
             }
             $path = $route['path'] ?? null;
@@ -91,10 +91,14 @@ final class ModuleRoutes
             if ($cache === 'private' && isset($route['max_age'])) {
                 throw new AgeCMSException("routes[{$i}]: max_age only goes with cache public");
             }
+            $indexable = $route['indexable'] ?? false;
+            if (!is_bool($indexable) || ($indexable && $cache !== 'public')) {
+                throw new AgeCMSException("routes[{$i}]: indexable is true or false and only goes with cache public");
+            }
             $routes[] = [
                 'module' => $module, 'path' => $path, 'segments' => $segments, 'methods' => $methods,
                 'rate' => ['limit' => (int)$rate['limit'], 'window' => (int)$rate['window']],
-                'cache' => $cache, 'max_age' => $cache === 'public' ? (int)$maxAge : 0,
+                'cache' => $cache, 'max_age' => $cache === 'public' ? (int)$maxAge : 0, 'indexable' => $indexable,
             ];
         }
         return $routes;
@@ -137,7 +141,7 @@ final class ModuleRoutes
         }
     }
 
-    /** @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int}> */
+    /** @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int,indexable:bool}> */
     public static function all(): array
     {
         $out = [];

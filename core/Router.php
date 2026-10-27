@@ -183,7 +183,7 @@ final class Router
         if ($response->kind === 'json') {
             self::moduleSend($route, $status, 'application/json; charset=utf-8', $response->body);
         }
-        self::moduleReply($route, $status, $response->title, $response->body);
+        self::moduleReply($route, $status, $response->title, $response->body, [], $response->description(), $path);
     }
 
     /**
@@ -192,9 +192,11 @@ final class Router
      * @param array<string,mixed> $route
      * @param array<string,string> $headers
      */
-    private static function moduleReply(array $route, int $status, string $title, string $bodyHtml, array $headers = []): never
+    private static function moduleReply(array $route, int $status, string $title, string $bodyHtml, array $headers = [], string $description = '', string $path = ''): never
     {
-        self::moduleSend($route, $status, 'text/html; charset=utf-8', Renderer::shell($title, $bodyHtml), $headers);
+        // Only a successful page of a route declared "indexable" goes to search engines; everything else stays noindex.
+        $seo = $route['indexable'] && $status === 200 ? ['slug' => trim($path, '/'), 'description' => $description] : null;
+        self::moduleSend($route, $status, 'text/html; charset=utf-8', Renderer::shell($title, $bodyHtml, false, $seo), $headers);
     }
 
     /**

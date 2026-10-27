@@ -238,6 +238,31 @@ final class ModuleRoutesTest extends HttpCase
         $this->assertSame('public, max-age=120', $pub['headers']['cache-control'], 'only when the manifest says so');
         $this->assertSame(false, is_file(AGECMS_CACHE . '/rt_priv/pub.html'), 'even a public page stays out of the shadow cache');
         $this->assertSame(500, $this->http('GET', '/rt_priv/pubcookie')['status'], 'a public page cannot set cookies');
+        $this->assertContains('content="noindex, nofollow"', $pub['body'], 'a public page is still noindex unless the route says indexable');
+    }
+
+    public function testAnIndexableRouteIsOfferedToSearchEnginesAndOthersAreNot(): void
+    {
+        $this->boot();
+        ModuleFixture::make('rt_idx', ModuleFixture::routes('rt_idx'));
+        $page = $this->http('GET', '/rt_idx/idx');
+        $this->assertSame(200, $page['status']);
+        $this->assertContains('content="index, follow"', $page['body']);
+        $this->assertNotContains('noindex', $page['body']);
+        $this->assertContains('<meta name="description" content="Описание витрины модуля">', $page['body'], 'tags are stripped from the description');
+        $this->assertContains('<link rel="canonical" href="http://127.0.0.1:' . $this->port . '/rt_idx/idx">', $page['body']);
+        $this->assertSame('public, max-age=120', $page['headers']['cache-control']);
+        $this->assertContains('noindex', $this->http('GET', '/rt_idx/hello')['body'], 'a route without the flag stays out of search');
+        $this->assertContains('noindex', $this->http('GET', '/rt_idx/nothing')['body'], 'an error page of an indexable route is not offered either');
+    }
+
+    public function testIndexableNeedsAPublicRoute(): void
+    {
+        $this->boot();
+        ModuleFixture::make('rt_idxbad', [['path' => '/rt-idxbad', 'indexable' => true]]);
+        $this->assertSame('blocked', $this->status('rt_idxbad')['status']);
+        ModuleFixture::make('rt_idxtype', [['path' => '/rt-idxtype', 'cache' => 'public', 'indexable' => 'yes']]);
+        $this->assertSame('blocked', $this->status('rt_idxtype')['status']);
     }
 
     // A module whose migration fails is off and costs the site nothing.

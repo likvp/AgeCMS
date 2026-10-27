@@ -41,6 +41,7 @@
 | `methods` | `GET` и/или `POST`; `HEAD` обслуживается как `GET` |
 | `rate` | своё ограничение запросов с одного IP: `limit` 1-600, `window` 10-3600 секунд. Без поля: 120 в минуту для чтения, 10 в минуту для адреса с `POST` |
 | `cache` | `private` (по умолчанию: `Cache-Control: private, no-store`) или `public` (только `GET`, с `max_age` 1-86400; ответ без cookie) |
+| `indexable` | `true` только вместе с `cache: public`: успешная страница адреса отдаётся поисковикам (`index, follow`, `canonical` на сам адрес без параметров, описание из `ModuleResponse::withDescription()`). Без флага страницы модулей остаются `noindex`. Страницы ошибок `noindex` всегда |
 
 Что делает ядро, а модуль не может отключить:
 

@@ -55,6 +55,7 @@ PHP;
             "/{$name}/go" => ModuleResponse::redirect("/{$name}/hello"),
             "/{$name}/evil" => ModuleResponse::redirect('https://evil.example/'),
             "/{$name}/pub" => ModuleResponse::html('Каталог', '<p class="mod-pub">public</p>'),
+            "/{$name}/idx" => ModuleResponse::html('Витрина', '<p class="mod-idx">idx</p>')->withDescription('Описание <b>витрины</b> модуля'),
             "/{$name}/pubcookie" => ModuleResponse::html('Каталог', '<p>x</p>')->withCookie('sid', 'x', 60),
             default => ModuleResponse::html('Пусто', '<p>empty</p>', 404),
         };
@@ -96,6 +97,7 @@ PHP;
             ['path' => "/{$name}/evil"],
             ['path' => "/{$name}/pub", 'cache' => 'public', 'max_age' => 120],
             ['path' => "/{$name}/pubcookie", 'cache' => 'public', 'max_age' => 120],
+            ['path' => "/{$name}/idx", 'cache' => 'public', 'max_age' => 120, 'indexable' => true],
         ];
     }
 }

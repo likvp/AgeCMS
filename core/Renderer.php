@@ -67,13 +67,23 @@ final class Renderer
         return ['status' => 200, 'html' => $html, 'tags' => $tags];
     }
 
-    /** A page around ready-made HTML: 404, search results, errors. Never cached. */
-    public static function shell(string $title, string $contentHtml, bool $editing = false): string
+    /**
+     * A page around ready-made HTML: 404, search results, errors. Never cached.
+     *
+     * @param array{slug:string,description:string}|null $seo set only for a page of an indexable module route: it is offered to search engines
+     */
+    public static function shell(string $title, string $contentHtml, bool $editing = false, ?array $seo = null): string
     {
         $theme = Theme::active();
         $settings = Seo::settings();
         $doc = ['title' => $title, 'meta_title' => '', 'meta_description' => '', 'canonical_url' => '', 'og_image' => '', 'is_noindex' => 1, 'is_published' => 1, 'schema_type' => 'WebPage', 'blocks' => []];
-        $head = '<title>' . ag_e($title . ($settings['site_name'] ?? '' ? ' - ' . $settings['site_name'] : '')) . '</title>' . "\n    " . '<meta name="robots" content="noindex, nofollow">';
+        if ($seo !== null) {
+            $doc['is_noindex'] = 0;
+            $doc['meta_description'] = $seo['description'];
+            $head = Seo::head($seo['slug'], $doc, $settings);
+        } else {
+            $head = '<title>' . ag_e($title . ($settings['site_name'] ?? '' ? ' - ' . $settings['site_name'] : '')) . '</title>' . "\n    " . '<meta name="robots" content="noindex, nofollow">';
+        }
         return self::layout($theme, [
             'doc' => $doc,
             'slug' => '',
