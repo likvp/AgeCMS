@@ -22,3 +22,12 @@ function ag_edit(string $field, bool $multiline = false): string
     }
     return ' data-ag-slug="' . ag_e($ctx['slug']) . '" data-ag-block="' . ag_e($ctx['block']) . '" data-ag-field="' . ag_e($field) . '"' . ($multiline ? ' data-ag-multi' : '');
 }
+
+/**
+ * Hidden form fields for a form that a module posts to its own route: the signed fill-time token the core checks
+ * on every POST to a module address. Put it inside the <form>; the page of the module is never cached.
+ */
+function ag_module_form_fields(): string
+{
+    return '<input type="hidden" name="token" value="' . ag_e(\AgeCMS\AntiSpam::issueToken()) . '">';
+}

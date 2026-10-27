@@ -7,7 +7,7 @@ namespace AgeCMS;
 final class ModuleSigner
 {
     /**
-     * Rewrites manifest.json "files" and "skills" and writes manifest.json.sig.
+     * Rewrites manifest.json "files", "skills" (skills/*.json) and "migrations" (migrations/*.sql, in name order) and writes manifest.json.sig.
      * Without a secret key file the site's own HMAC key is used.
      *
      * @return array{files:int,alg:string}
@@ -22,6 +22,7 @@ final class ModuleSigner
 
         $files = [];
         $skills = [];
+        $migrations = [];
         $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
         foreach ($it as $file) {
             $relative = ltrim(substr($file->getPathname(), strlen($dir)), '/');
@@ -32,12 +33,21 @@ final class ModuleSigner
             if (preg_match('~^skills/[^/]+\.json$~', $relative) === 1) {
                 $skills[] = $relative;
             }
+            if (preg_match('~^migrations/[A-Za-z0-9_.-]+\.sql$~', $relative) === 1) {
+                $migrations[] = $relative;
+            }
         }
         ksort($files);
         sort($skills);
+        sort($migrations);
         $manifest['name'] = $name;
         $manifest['files'] = $files;
         $manifest['skills'] = $skills;
+        if ($migrations !== []) {
+            $manifest['migrations'] = $migrations;
+        } else {
+            unset($manifest['migrations']);
+        }
         $bytes = json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
 
         if ($ed25519SecretFile !== null) {

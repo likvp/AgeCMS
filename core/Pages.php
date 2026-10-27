@@ -8,7 +8,7 @@ use PDO;
 /** Page storage. A page is a document: meta fields plus a list of blocks. */
 final class Pages
 {
-    private const RESERVED = ['admin', 'assets', 'core', 'data', 'modules', 'themes', 'bin', 'tests', 'bench', 'docs', 'search', '_'];
+    public const RESERVED = ['admin', 'assets', 'core', 'data', 'modules', 'themes', 'bin', 'tests', 'bench', 'docs', 'search', '_'];
     private const JSON = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
     public static function slugValid(string $slug): bool

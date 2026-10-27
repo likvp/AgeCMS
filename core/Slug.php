@@ -37,7 +37,7 @@ final class Slug
         $base = ($prefix !== '' && $prefix !== 'index' ? $prefix . '/' : '') . $base;
         for ($i = 1; $i < 1000; $i++) {
             $slug = $i === 1 ? $base : $base . '-' . $i;
-            if (Pages::slugValid($slug) && Pages::row($slug) === null && Database::row('SELECT 1 FROM revisions WHERE page_slug = ? LIMIT 1', [$slug]) === null) {
+            if (Pages::slugValid($slug) && Pages::row($slug) === null && ModuleRoutes::claimedBy($slug) === null && Database::row('SELECT 1 FROM revisions WHERE page_slug = ? LIMIT 1', [$slug]) === null) {
                 return $slug;
             }
         }

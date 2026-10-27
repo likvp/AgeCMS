@@ -74,6 +74,9 @@ final class Content
             if (Pages::row($slug) !== null) {
                 throw new ValidationException(["Page '{$slug}' already exists"]);
             }
+            if (($owner = ModuleRoutes::claimedBy($slug)) !== null) {
+                throw new ValidationException(["The address '/{$slug}' belongs to the module {$owner}"]);
+            }
             return self::commit($pdo, $actor, $slug, 'Создание страницы', [], SchemaValidator::document($fields), true);
         });
     }
@@ -147,6 +150,9 @@ final class Content
             $before = self::requireDoc($slug);
             if (Pages::row($newSlug) !== null) {
                 throw new ValidationException(["Page '{$newSlug}' already exists"]);
+            }
+            if (($owner = ModuleRoutes::claimedBy($newSlug)) !== null) {
+                throw new ValidationException(["The address '/{$newSlug}' belongs to the module {$owner}"]);
             }
             // An address that belongs to a deleted page stays reserved so that it can still be restored.
             $lastAtTarget = Database::value('SELECT action_desc FROM revisions WHERE page_slug = ? ORDER BY id DESC LIMIT 1', [$newSlug]);

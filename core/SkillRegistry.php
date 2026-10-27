@@ -11,6 +11,7 @@ use Throwable;
  * when a listed file changed, or when an executable file exists that the manifest does not list.
  * Signatures: hmac-sha256 with the site's own key (modules signed on this server by bin/sign-module.php),
  * or ed25519 with a publisher key listed in config trusted_publishers (modules from outside).
+ * A verified module may also declare "routes" (ModuleRoutes) and "migrations" (ModuleMigrator) in its manifest.
  */
 final class SkillRegistry
 {
@@ -50,6 +51,7 @@ final class SkillRegistry
                 Logger::log('warning', 'module.blocked', ['module' => $name, 'reason' => $e->getMessage()]);
             }
         }
+        ModuleRoutes::validateAll(self::$modules);
         return self::$modules;
     }
 
@@ -65,7 +67,12 @@ final class SkillRegistry
                 continue;
             }
             try {
-                self::instance($name)->register();
+                ModuleMigrator::run($name, $info['manifest'], self::modulesDir() . '/' . $name);
+                $instance = self::instance($name);
+                if (($info['manifest']['routes'] ?? []) !== [] && !$instance instanceof RoutedModuleInterface) {
+                    throw new AgeCMSException("Module {$name} declares routes but does not implement RoutedModuleInterface");
+                }
+                $instance->register();
             } catch (Throwable $e) {
                 self::$modules[$name] = ['status' => 'blocked', 'reason' => 'load failed: ' . $e->getMessage(), 'manifest' => null];
                 Logger::log('error', 'module.load_failed', ['module' => $name, 'error' => $e->getMessage()]);
@@ -116,6 +123,20 @@ final class SkillRegistry
             }
         }
         throw new NotFoundException("Skill {$module}/{$skill} not found or its module is blocked");
+    }
+
+    /** The module that answers its routes. Only a verified, migrated module is returned. */
+    public static function routed(string $name): RoutedModuleInterface
+    {
+        self::boot();
+        if ((self::modules()[$name]['status'] ?? '') !== 'ok') {
+            throw new NotFoundException("Module {$name} is not available");
+        }
+        $instance = self::instance($name);
+        if (!$instance instanceof RoutedModuleInterface) {
+            throw new AgeCMSException("Module {$name} does not implement RoutedModuleInterface");
+        }
+        return $instance;
     }
 
     private static function instance(string $name): ModuleInterface
@@ -172,6 +193,15 @@ final class SkillRegistry
         foreach ((array)($manifest['skills'] ?? []) as $skillFile) {
             if (!isset($files[$skillFile])) {
                 throw new AgeCMSException("Skill file is not covered by the manifest: {$skillFile}");
+            }
+        }
+        $migrations = $manifest['migrations'] ?? [];
+        if (!is_array($migrations) || !array_is_list($migrations)) {
+            throw new AgeCMSException('migrations must be a list of files');
+        }
+        foreach ($migrations as $migration) {
+            if (!is_string($migration) || preg_match('~^migrations/[A-Za-z0-9_.-]+\.sql$~', $migration) !== 1 || !isset($files[$migration])) {
+                throw new AgeCMSException('Migration file is not covered by the manifest: ' . (is_string($migration) ? $migration : 'invalid entry'));
             }
         }
 

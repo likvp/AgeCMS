@@ -39,7 +39,7 @@ final class Router
             match ($path) {
                 '/_/lead' => self::lead(),
                 '/_/hit' => self::hit(),
-                default => self::send(405, 'text/plain; charset=utf-8', "Method not allowed\n"),
+                default => self::moduleOr405($method, $path),
             };
             return;
         }
@@ -71,6 +71,11 @@ final class Router
             self::redirect($target . ($query !== '' ? '?' . $query : ''));
         }
 
+        $module = ModuleRoutes::match($method, $path);
+        if ($module !== null) {
+            self::module($module, $method, $path);
+        }
+
         $slug = Cache::slugForPath($path);
         if ($slug === null) {
             self::notFound();
@@ -96,6 +101,139 @@ final class Router
             'Cache-Control' => $editing ? 'private, no-store' : 'public, max-age=0, must-revalidate',
             'X-AgeCMS-Cache' => 'miss',
         ]);
+    }
+
+    private static function moduleOr405(string $method, string $path): never
+    {
+        $module = ModuleRoutes::match($method, $path);
+        if ($module === null) {
+            self::send(405, 'text/plain; charset=utf-8', "Method not allowed\n");
+        }
+        self::module($module, $method, $path);
+    }
+
+    /**
+     * Answers an address that a module owns. The core does the work that must not be left to a module: the request
+     * limit, the same-site and form-token checks for POST, the security headers, the cache policy and the error page.
+     *
+     * @param array{route:?array<string,mixed>,params:array<string,string>,allow:list<string>} $hit
+     */
+    private static function module(array $hit, string $method, string $path): never
+    {
+        $route = $hit['route'];
+        if ($route === null) {
+            self::send(405, 'text/plain; charset=utf-8', "Method not allowed\n", ['Allow' => implode(', ', $hit['allow'])]);
+        }
+        $name = (string)$route['module'];
+        $post = $method === 'POST';
+        $ip = Http::clientIp();
+
+        if (!AntiSpam::rateLimit('mod:' . $name . ':' . $route['path'] . ':' . ($post ? 'p' : 'g') . ':' . $ip, $route['rate']['limit'], $route['rate']['window'])) {
+            self::moduleReply($route, 429, 'Слишком много запросов', '<section class="section"><div class="container narrow"><h1>Слишком много запросов</h1><p>Попробуйте чуть позже.</p></div></section>', ['Retry-After' => (string)$route['rate']['window']]);
+        }
+
+        $body = [];
+        if ($post) {
+            self::sameSiteOnly();
+            if (($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '') === 'cross-site') {
+                self::moduleReply($route, 403, 'Запрос отклонён', '<section class="section"><div class="container narrow"><h1>Запрос отклонён</h1></div></section>');
+            }
+            $body = self::input();
+            if (!AntiSpam::validate($body)) {
+                self::moduleReply($route, 400, 'Форма устарела', '<section class="section"><div class="container narrow"><h1>Форма устарела</h1><p>Вернитесь на предыдущую страницу, обновите её и отправьте форму ещё раз.</p></div></section>');
+            }
+            unset($body['token'], $body['website_hp']);
+        }
+
+        try {
+            $module = SkillRegistry::routed($name);
+            $request = new ModuleRequest($name, $method === 'HEAD' ? 'GET' : $method, $path, $hit['params'], $_GET, $body, $ip, self::moduleCookies($name));
+            $response = $module->handle($request);
+        } catch (NotFoundException) {
+            self::notFound();
+        } catch (Throwable $e) {
+            Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => $e->getMessage(), 'at' => basename($e->getFile()) . ':' . $e->getLine()]);
+            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1><p>Мы уже знаем об ошибке. Попробуйте позже.</p></div></section>');
+        }
+        if (!$response instanceof ModuleResponse) {
+            Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => 'handle() did not return a ModuleResponse']);
+            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+        }
+
+        $status = $response->status;
+        if ($response->kind === 'redirect') {
+            $to = $response->body;
+            if (!in_array($status, [302, 303], true) || preg_match('~^/(?![/\\\\])[^\x00-\x1F\x7F\\\\]*$~', $to) !== 1) {
+                Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => 'redirect must be 302 or 303 to an address on this site']);
+                self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+            }
+        } elseif ($status < 200 || $status > 599 || ($status >= 300 && $status < 400)) {
+            Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => "status {$status} is not allowed"]);
+            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+        }
+        if ($route['cache'] === 'public' && $response->cookies() !== []) {
+            Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => 'a public route cannot set cookies']);
+            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+        }
+        self::moduleSetCookies($name, $response);
+
+        if ($response->kind === 'redirect') {
+            self::moduleSend($route, $status, 'text/plain; charset=utf-8', '', ['Location' => $response->body]);
+        }
+        if ($response->kind === 'json') {
+            self::moduleSend($route, $status, 'application/json; charset=utf-8', $response->body);
+        }
+        self::moduleReply($route, $status, $response->title, $response->body);
+    }
+
+    /**
+     * An HTML page of a module (or an error page for it), drawn inside the theme.
+     *
+     * @param array<string,mixed> $route
+     * @param array<string,string> $headers
+     */
+    private static function moduleReply(array $route, int $status, string $title, string $bodyHtml, array $headers = []): never
+    {
+        self::moduleSend($route, $status, 'text/html; charset=utf-8', Renderer::shell($title, $bodyHtml), $headers);
+    }
+
+    /**
+     * Pages of modules are never written to the shadow cache. Unless the manifest marks the route public they
+     * are private and not stored by browsers or proxies either (they may show personal data).
+     *
+     * @param array<string,mixed> $route
+     * @param array<string,string> $headers
+     */
+    private static function moduleSend(array $route, int $status, string $type, string $body, array $headers = []): never
+    {
+        $cache = $route['cache'] === 'public' && $status === 200 ? 'public, max-age=' . $route['max_age'] : 'private, no-store';
+        self::send($status, $type, $body, $headers + ['Cache-Control' => $cache, 'X-AgeCMS-Cache' => 'bypass']);
+    }
+
+    /** @return array<string,string> cookies of the module, without its prefix */
+    private static function moduleCookies(string $module): array
+    {
+        $out = [];
+        $prefix = $module . '_';
+        foreach ($_COOKIE as $name => $value) {
+            if (is_string($name) && is_string($value) && str_starts_with($name, $prefix) && strlen($name) > strlen($prefix)) {
+                $out[substr($name, strlen($prefix))] = $value;
+            }
+        }
+        return $out;
+    }
+
+    private static function moduleSetCookies(string $module, ModuleResponse $response): void
+    {
+        $secure = str_starts_with((string)Config::get('site_url', ''), 'https://');
+        foreach ($response->cookies() as $cookie) {
+            if (preg_match('/^[a-z0-9_]{1,30}$/', $cookie['name']) !== 1 || preg_match('/^[A-Za-z0-9._~+\/=-]{0,1024}$/', $cookie['value']) !== 1) {
+                Logger::log('warning', 'module.cookie_refused', ['module' => $module, 'name' => $cookie['name']]);
+                continue;
+            }
+            $expires = $cookie['ttl'] < 0 ? time() - 86400 : ($cookie['ttl'] > 0 ? time() + min($cookie['ttl'], 31536000) : 0);
+            setcookie($module . '_' . $cookie['name'], $cookie['ttl'] < 0 ? '' : $cookie['value'], ['expires' => $expires, 'path' => '/', 'secure' => $secure, 'httponly' => true, 'samesite' => 'Lax']);
+        }
     }
 
     private static function notFound(): never
