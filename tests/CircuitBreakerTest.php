@@ -35,6 +35,59 @@ final class CircuitBreakerTest extends TestCase
         $this->assertTrue(CircuitBreaker::isFrozen());
     }
 
+    public function testAnAgentCannotBeatTheLimitByWaitingForTheNextHour(): void
+    {
+        $this->siteWithPages(100);
+        $first = Actor::agent('slow', 'editor', 'tok-7-2026102701');
+        for ($i = 1; $i <= 10; $i++) {
+            $this->edit($first, $i);
+        }
+        // The next hour is a new session with an empty counter, but the agent is the same.
+        $second = Actor::agent('slow', 'editor', 'tok-7-2026102702');
+        for ($i = 11; $i <= 15; $i++) {
+            $this->edit($second, $i);
+        }
+        $this->assertSame(false, CircuitBreaker::isFrozen(), '15 pages over two hours is exactly 15%');
+        $e = $this->assertThrows(CircuitBreakerException::class, fn() => $this->edit($second, 16));
+        $this->assertContains('agent changed 16 of 100 pages in 24 hours', $e->getMessage());
+        $this->assertTrue(CircuitBreaker::isFrozen());
+    }
+
+    public function testTheRollingWindowIsPerAgentAndAgentsOnly(): void
+    {
+        $this->siteWithPages(100);
+        $a = Actor::agent('one', 'editor', 'tok-1-2026102701');
+        $b = Actor::agent('two', 'editor', 'tok-2-2026102701');
+        for ($i = 1; $i <= 10; $i++) {
+            $this->edit($a, $i);
+        }
+        for ($i = 11; $i <= 20; $i++) {
+            $this->edit($b, $i);
+        }
+        $this->assertSame(false, CircuitBreaker::isFrozen(), 'two agents with 10 pages each do not add up');
+        // A person editing in several sessions is not counted over a day.
+        $person = Actor::human('anna', 'editor');
+        for ($i = 21; $i <= 35; $i++) {
+            Queue::submit($person->withSession('h-a' . $i), 'update_page', ['slug' => 'p' . $i, 'fields' => ['meta_title' => 'x']]);
+        }
+        $this->assertSame(false, CircuitBreaker::isFrozen());
+    }
+
+    public function testAnOldSessionOfTheAgentLeavesTheWindow(): void
+    {
+        $this->siteWithPages(100);
+        $old = Actor::agent('slow', 'editor', 'tok-9-2026102601');
+        for ($i = 1; $i <= 10; $i++) {
+            $this->edit($old, $i);
+        }
+        Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE agent_sessions SET created_at = ? WHERE id = ?')->execute([gmdate('Y-m-d\\TH:i:s\\Z', time() - 90000), 'tok-9-2026102601']));
+        $new = Actor::agent('slow', 'editor', 'tok-9-2026102701');
+        for ($i = 11; $i <= 25; $i++) {
+            $this->edit($new, $i);
+        }
+        $this->assertSame(false, CircuitBreaker::isFrozen(), 'the first ten pages are older than a day');
+    }
+
     public function testFrozenBlocksEveryoneUntilUnfrozen(): void
     {
         $this->siteWithPages(10);
@@ -86,11 +139,11 @@ final class CircuitBreakerTest extends TestCase
         $this->assertTrue(CircuitBreaker::isFrozen());
     }
 
-    public function testSessionsAreIndependent(): void
+    public function testSessionsOfDifferentAgentsAreIndependent(): void
     {
         $this->siteWithPages(100);
         for ($s = 0; $s < 3; $s++) {
-            $agent = Actor::agent('bot', 'editor', 'session-' . $s);
+            $agent = Actor::agent('bot' . $s, 'editor', 'session-' . $s);
             for ($i = 1; $i <= 10; $i++) {
                 $this->edit($agent, $s * 10 + $i);
             }

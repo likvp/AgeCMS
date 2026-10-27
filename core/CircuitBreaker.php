@@ -8,6 +8,8 @@ use PDO;
 /**
  * Stops mass edits. Within one session an actor may change at most `ratio` of the pages that existed
  * when the session started (and at least `min_touched` pages, so tiny sites stay editable).
+ * An agent session lasts an hour, so an agent is also counted over a rolling 24 hours across its sessions: spreading
+ * a mass edit over several hours does not get around the limit.
  * Creating new pages is counted separately: it is additive and reversible, and is how a migration works.
  * On a trip the surrounding transaction rolls back, writes are frozen and the owner is notified.
  */
@@ -70,17 +72,37 @@ final class CircuitBreaker
         $stmt->execute([$sessionId]);
         $touched = (int)$stmt->fetchColumn();
 
-        $stmt = $pdo->prepare('SELECT baseline_pages FROM agent_sessions WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT baseline_pages, actor_type, actor_name FROM agent_sessions WHERE id = ?');
         $stmt->execute([$sessionId]);
-        $baseline = max(1, (int)$stmt->fetchColumn());
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['baseline_pages' => 1, 'actor_type' => '', 'actor_name' => ''];
+        $baseline = max(1, (int)$row['baseline_pages']);
+        $window = '';
+
+        // Rolling window: the same agent over the last 24 hours, whatever its hourly session was. The oldest baseline counts.
+        if ($row['actor_type'] === 'agent') {
+            $since = gmdate('Y-m-d\\TH:i:s\\Z', time() - self::SESSION_TTL);
+            $stmt = $pdo->prepare('SELECT COUNT(DISTINCT sp.page_slug) FROM session_pages sp JOIN agent_sessions s ON s.id = sp.session_id WHERE s.actor_type = ? AND s.actor_name = ? AND s.created_at >= ?');
+            $stmt->execute(['agent', $row['actor_name'], $since]);
+            $windowTouched = (int)$stmt->fetchColumn();
+            $stmt = $pdo->prepare('SELECT baseline_pages FROM agent_sessions WHERE actor_type = ? AND actor_name = ? AND created_at >= ? ORDER BY created_at LIMIT 1');
+            $stmt->execute(['agent', $row['actor_name'], $since]);
+            $windowBaseline = max(1, (int)$stmt->fetchColumn());
+            if ($windowTouched > $touched) {
+                $touched = $windowTouched;
+                $baseline = $windowBaseline;
+                $window = ' in 24 hours';
+            }
+        }
 
         $ratio = (float)Config::get('circuit_breaker.ratio', 0.15);
         $min = (int)Config::get('circuit_breaker.min_touched', 3);
         if ($touched >= $min && $touched / $baseline > $ratio) {
             throw new CircuitBreakerException(sprintf(
-                'Circuit breaker: this session changed %d of %d pages (%.0f%%, limit %.0f%%). The change was rolled back and writes are frozen.',
+                'Circuit breaker: this %s changed %d of %d pages%s (%.0f%%, limit %.0f%%). The change was rolled back and writes are frozen.',
+                $window === '' ? 'session' : 'agent',
                 $touched,
                 $baseline,
+                $window,
                 $touched / $baseline * 100,
                 $ratio * 100,
             ));
