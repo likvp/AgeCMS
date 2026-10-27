@@ -182,7 +182,7 @@ final class ModuleRoutesTest extends HttpCase
         ModuleFixture::make('rt_one', ModuleFixture::routes('rt_one'));
 
         $page = $this->http('GET', '/rt_one/hello');
-        $this->assertSame("default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'", $page['headers']['content-security-policy']);
+        $this->assertSame("default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html; frame-ancestors 'self'", $page['headers']['content-security-policy']);
         $this->assertSame('nosniff', $page['headers']['x-content-type-options']);
         $this->assertSame('SAMEORIGIN', $page['headers']['x-frame-options']);
         $this->assertSame('strict-origin-when-cross-origin', $page['headers']['referrer-policy']);
@@ -373,5 +373,18 @@ final class ModuleRoutesTest extends HttpCase
         $this->assertTrue(in_array('rt_skilled/ping', $names, true), 'tools <module>__<skill> keep working');
         $this->assertTrue(in_array('telegram_leads/status', $names, true));
         $this->assertSame(['pong' => true], SkillRegistry::call('rt_skilled', 'ping', [], $this->admin()));
+    }
+
+    public function testThePolicyInEveryPlaceIsTheSameAndAllowsOnlyMapWidgets(): void
+    {
+        $root = dirname(__DIR__);
+        $php = (require $root . '/core/security-headers.php')['Content-Security-Policy'];
+        $this->assertContains("frame-src 'self' https://yandex.ru/map-widget/", $php);
+        $this->assertContains('https://www.openstreetmap.org/export/embed.html', $php);
+        $this->assertNotContains('https://*', $php, 'no wildcard hosts');
+        $this->assertNotContains("'unsafe-inline'", $php);
+        foreach (['/.htaccess', '/nginx.vhost.example'] as $file) {
+            $this->assertContains($php, (string)file_get_contents($root . $file), $file . ' repeats the policy of core/security-headers.php');
+        }
     }
 }
