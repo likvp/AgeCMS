@@ -1,0 +1,9 @@
+/data/*
+!/data/.gitkeep
+/assets/cache/*.html
+/assets/cache/*/
+/assets/uploads/*
+!/assets/uploads/.htaccess
+modules/*/manifest.json.sig
+.DS_Store
+*.log

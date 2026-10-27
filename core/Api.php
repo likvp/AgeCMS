@@ -1,0 +1,187 @@
+<?php
+declare(strict_types=1);
+
+namespace AgeCMS;
+
+/**
+ * One tool registry for both front doors: the REST endpoint used by the in-page editor (admin/api.php)
+ * and the MCP endpoint used by agents (admin/mcp.php). Writes always go through the queue.
+ */
+final class Api
+{
+    /** Tool name => [permission, description, JSON schema of arguments]. */
+    private static function definitions(): array
+    {
+        $slug = ['type' => 'string', 'description' => 'Page slug, "index" is the home page'];
+        $obj = static fn(array $props, array $required): array => ['type' => 'object', 'properties' => $props, 'required' => $required, 'additionalProperties' => false];
+        return [
+            'get_site_structure' => ['content.read', 'Pages, settings, menus, theme block schemas, modules and the freeze state. Call this first.', $obj([], [])],
+            'get_page' => ['content.read', 'Full document of one page: meta fields and blocks.', $obj(['slug' => $slug], ['slug'])],
+            'search_pages' => ['search', 'Full-text search over published pages.', $obj(['q' => ['type' => 'string']], ['q'])],
+            'update_block_field' => ['content.write', 'Set one text field of one block. field_path is dotted, e.g. "h1" or "items.2.title".', $obj(['slug' => $slug, 'block_id' => ['type' => 'string'], 'field_path' => ['type' => 'string'], 'value' => ['type' => 'string']], ['slug', 'block_id', 'field_path', 'value'])],
+            'update_block_data' => ['content.write', 'Merge new values into a block (top-level fields of its data).', $obj(['slug' => $slug, 'block_id' => ['type' => 'string'], 'payload' => ['type' => 'object']], ['slug', 'block_id', 'payload'])],
+            'create_page' => ['content.write', 'Create a page. fields: title (required), meta_title, meta_description, parent_slug, schema_type, blocks.', $obj(['slug' => $slug, 'fields' => ['type' => 'object']], ['slug', 'fields'])],
+            'batch_create_pages' => ['content.write', 'Create up to 100 pages in order. Each item is {slug, ...page fields}. Stops at the first failure.', $obj(['pages' => ['type' => 'array', 'items' => ['type' => 'object']]], ['pages'])],
+            'update_page' => ['content.write', 'Change meta fields and/or replace the whole blocks list of a page.', $obj(['slug' => $slug, 'fields' => ['type' => 'object']], ['slug', 'fields'])],
+            'set_menu' => ['content.write', 'Replace a menu ("header" or "footer"). items: [{title, url}].', $obj(['name' => ['type' => 'string'], 'items' => ['type' => 'array', 'items' => ['type' => 'object']]], ['name', 'items'])],
+            'list_revisions' => ['content.read', 'Revision history of a page, newest first.', $obj(['slug' => $slug, 'limit' => ['type' => 'integer']], ['slug'])],
+            'rollback_revision' => ['content.write', 'Restore a page to its state right after the given revision. Creates a new revision.', $obj(['slug' => $slug, 'revision_id' => ['type' => 'integer']], ['slug', 'revision_id'])],
+            'import_image' => ['content.write', 'Download a public image by https URL, convert it to WebP and return its site path for use in og_image or url fields.', $obj(['url' => ['type' => 'string']], ['url'])],
+            'clear_cache' => ['cache.clear', 'Drop all cached pages. They are rebuilt on the next visit.', $obj([], [])],
+        ];
+    }
+
+    /**
+     * Tool descriptors the caller is allowed to use, in MCP format.
+     *
+     * @return list<array{name:string,description:string,inputSchema:array<string,mixed>}>
+     */
+    public static function tools(Actor $actor): array
+    {
+        $tools = [];
+        foreach (self::definitions() as $name => [$permission, $description, $schema]) {
+            if ($actor->can($permission)) {
+                $tools[] = ['name' => $name, 'description' => $description, 'inputSchema' => $schema];
+            }
+        }
+        foreach (SkillRegistry::skills() as $skill) {
+            if ($actor->can($skill['permission'])) {
+                $tools[] = ['name' => $skill['module'] . '__' . $skill['name'], 'description' => '[module ' . $skill['module'] . '] ' . $skill['description'], 'inputSchema' => $skill['inputSchema']];
+            }
+        }
+        return $tools;
+    }
+
+    /**
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>
+     */
+    public static function call(Actor $actor, string $tool, array $args): array
+    {
+        if (str_contains($tool, '__')) {
+            [$module, $skill] = explode('__', $tool, 2);
+            return SkillRegistry::call($module, $skill, $args, $actor);
+        }
+        $definitions = self::definitions();
+        if (!isset($definitions[$tool])) {
+            throw new NotFoundException("Unknown tool '{$tool}'");
+        }
+        Security::requirePermission($actor, $definitions[$tool][0]);
+
+        return match ($tool) {
+            'get_site_structure' => self::structure(),
+            'get_page' => self::page(self::string($args, 'slug')),
+            'search_pages' => ['results' => Search::query(self::string($args, 'q'))],
+            'update_block_field' => Queue::submit($actor, 'update_block_field', [
+                'slug' => self::string($args, 'slug'), 'block_id' => self::string($args, 'block_id'),
+                'field_path' => self::string($args, 'field_path'), 'value' => $args['value'] ?? '',
+            ]),
+            'update_block_data' => Queue::submit($actor, 'update_block_data', [
+                'slug' => self::string($args, 'slug'), 'block_id' => self::string($args, 'block_id'), 'payload' => self::object($args, 'payload'),
+            ]),
+            'create_page' => Queue::submit($actor, 'create_page', ['slug' => self::string($args, 'slug'), 'fields' => self::object($args, 'fields')]),
+            'batch_create_pages' => self::batchCreate($actor, $args),
+            'update_page' => Queue::submit($actor, 'update_page', ['slug' => self::string($args, 'slug'), 'fields' => self::object($args, 'fields')]),
+            'set_menu' => Queue::submit($actor, 'set_menu', ['name' => self::string($args, 'name'), 'items' => self::object($args, 'items')]),
+            'list_revisions' => ['revisions' => Revisions::history(self::string($args, 'slug'), (int)($args['limit'] ?? 50))],
+            'rollback_revision' => Queue::submit($actor, 'rollback', ['slug' => self::string($args, 'slug'), 'revision_id' => (int)($args['revision_id'] ?? 0)]),
+            'import_image' => ['path' => Media::importUrl(self::string($args, 'url'))],
+            'clear_cache' => ['cleared' => Cache::clearAll()],
+        };
+    }
+
+    /** @return array<string,mixed> */
+    private static function structure(): array
+    {
+        $menus = [];
+        foreach (Database::rows('SELECT name, items_json FROM menus ORDER BY name') as $row) {
+            $menus[$row['name']] = json_decode((string)$row['items_json'], true);
+        }
+        $theme = Theme::active();
+        return [
+            'site_url' => Seo::siteUrl(),
+            'active_theme' => $theme,
+            'pages' => Pages::listing(),
+            'settings' => Seo::settings(),
+            'menus' => $menus,
+            'block_types' => Theme::blocks($theme),
+            'modules' => array_map(static fn(array $m): array => ['status' => $m['status'], 'reason' => $m['reason']], SkillRegistry::modules()),
+            'frozen' => CircuitBreaker::frozenInfo(),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private static function page(string $slug): array
+    {
+        $doc = Pages::doc($slug);
+        if ($doc === null) {
+            throw new NotFoundException("Page '{$slug}' not found");
+        }
+        return ['slug' => $slug, 'page' => $doc];
+    }
+
+    /**
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>
+     */
+    private static function batchCreate(Actor $actor, array $args): array
+    {
+        $pages = $args['pages'] ?? null;
+        if (!is_array($pages) || !array_is_list($pages) || $pages === [] || count($pages) > 100) {
+            throw new ValidationException(['pages must be a list of 1-100 items']);
+        }
+        $created = [];
+        foreach ($pages as $i => $item) {
+            if (!is_array($item) || !isset($item['slug']) || !is_string($item['slug'])) {
+                throw new ValidationException(["pages[{$i}] needs a string slug"]);
+            }
+            $slug = $item['slug'];
+            unset($item['slug']);
+            try {
+                Queue::submit($actor, 'create_page', ['slug' => $slug, 'fields' => $item]);
+                $created[] = $slug;
+            } catch (AgeCMSException $e) {
+                // Report what was done so the agent can continue from here instead of starting over.
+                throw new AgeCMSException("pages[{$i}] ('{$slug}') failed after " . count($created) . ' created: ' . $e->getMessage());
+            }
+        }
+        return ['created' => $created, 'count' => count($created)];
+    }
+
+    /** @param array<string,mixed> $args */
+    private static function string(array $args, string $key): string
+    {
+        $value = $args[$key] ?? null;
+        if (!is_string($value) || $value === '') {
+            throw new ValidationException(["'{$key}' is required and must be a non-empty string"]);
+        }
+        return $value;
+    }
+
+    /**
+     * @param array<string,mixed> $args
+     * @return array<int|string,mixed>
+     */
+    private static function object(array $args, string $key): array
+    {
+        $value = $args[$key] ?? null;
+        if (!is_array($value)) {
+            throw new ValidationException(["'{$key}' is required and must be an object or list"]);
+        }
+        return $value;
+    }
+
+    /** HTTP status for an exception raised by a tool. */
+    public static function statusFor(\Throwable $e): int
+    {
+        return match (true) {
+            $e instanceof ValidationException => 422,
+            $e instanceof NotFoundException => 404,
+            $e instanceof ForbiddenException => 403,
+            $e instanceof FrozenException => 423,
+            $e instanceof CircuitBreakerException => 409,
+            $e instanceof AgeCMSException => 400,
+            default => 500,
+        };
+    }
+}
