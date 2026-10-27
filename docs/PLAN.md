@@ -100,7 +100,7 @@ docs/        ТЗ.md PLAN.md gemini-analysis.md gemini-links.md
 - [x] Сквозная проверка: установка, открытие страниц, правка, откат, MCP-вызовы curl
 
 ### Этап 5. Публичность (ТЗ этап 4)
-- [x] `LICENSE` (Apache 2.0), `CONTRIBUTING.md`, `ROADMAP.md`, `HOSTER_INTEGRATION_WHITEPAPER.md`
+- [x] `LICENSE` (Proprietary, решение Валентина 27.10.2026; сначала была Apache 2.0), `CONTRIBUTING.md`, `ROADMAP.md`, `HOSTER_INTEGRATION_WHITEPAPER.md`
 - [x] `README.md` с установкой
 - [x] Заготовка `SKILL_AUTO_MIGRATOR` и Pitch-Deck: только описание в ROADMAP, код и презентация вне этого прохода
 
