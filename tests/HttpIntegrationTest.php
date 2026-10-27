@@ -300,16 +300,16 @@ final class HttpIntegrationTest extends TestCase
         $csrf = $this->adminLogin();
         $this->assertTrue($csrf !== '');
 
-        foreach (['pages' => 'Новая страница', 'menus' => 'ag-editor-data', 'history' => 'История изменений', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Токены для ИИ-агентов'] as $section => $marker) {
+        foreach (['pages' => 'Новая страница', 'menus' => 'ag-editor-data', 'history' => 'История изменений', 'overview' => 'Просмотры по дням', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Токены для ИИ-агентов'] as $section => $marker) {
             $r = $this->http('GET', '/admin/?s=' . $section, null, [], true);
             $this->assertSame(200, $r['status'], $section);
             $this->assertContains($marker, $r['body'], $section);
         }
         $edit = $this->http('GET', '/admin/?s=edit&slug=about', null, [], true);
         $this->assertContains('"slug":"about"', $edit['body']);
-        $this->assertContains('/assets/admin-editor.js', $edit['body']);
+        $this->assertContains('/assets/admin/editor.js', $edit['body']);
         $this->assertContains('Страница не найдена', $this->http('GET', '/admin/?s=edit&slug=nope', null, [], true)['body']);
-        $this->assertSame(200, $this->http('GET', '/assets/admin-editor.js')['status']);
+        $this->assertSame(200, $this->http('GET', '/assets/admin/editor.js')['status']);
 
         $created = $this->form(['action' => 'page_create', 'slug' => 'uslugi/remont', 'title' => 'Ремонт <b>', 'schema_type' => 'Service'], $csrf);
         $this->assertSame(302, $created['status']);
@@ -370,9 +370,9 @@ final class HttpIntegrationTest extends TestCase
         $this->assertSame(false, is_file(AGECMS_DATA . '/data.sqlite'), 'failed attempts leave nothing behind');
 
         $done = $form($base + ['demo' => '1']);
-        $this->assertContains('Установлено', $done['body']);
+        $this->assertContains('AgeCMS установлена', $done['body']);
         $this->assertContains('queue-worker.php', $done['body']);
-        preg_match('~Пароль</th><td><strong>([A-Za-z0-9]{16})</strong>~', $done['body'], $m);
+        preg_match('~id="c-pass">([A-Za-z0-9]{16})</dd>~', $done['body'], $m);
         $this->assertTrue(isset($m[1]), 'generated password is shown once');
         $this->assertSame(false, is_file(AGECMS_DATA . '/install.key'), 'key file is removed');
         $this->assertSame(404, $this->http('GET', "/admin/install.php?key={$key}")['status'], 'closed for good');

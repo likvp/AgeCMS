@@ -1,0 +1,1 @@
+Icons: Phosphor Icons (bold), MIT License, https://github.com/phosphor-icons/core

@@ -58,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $root = dirname(__DIR__);
 $warnUrl = !str_starts_with($guess, 'https://') && !preg_match('~^http://(localhost|127\.0\.0\.1)(:\d+)?$~', $guess);
 $h = static fn($v): string => ag_e($v);
+$icon = static fn(string $n): string => '<svg class="i" aria-hidden="true"><use href="/assets/admin/icons.svg#' . $n . '"/></svg>';
 $self = '/admin/install.php';
 ?>
 <!DOCTYPE html>
@@ -67,66 +68,97 @@ $self = '/admin/install.php';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>Установка AgeCMS</title>
-    <link rel="stylesheet" href="/assets/app.css">
-    <link rel="stylesheet" href="/assets/admin.css">
+    <link rel="stylesheet" href="/assets/admin/admin.css">
+    <script src="/assets/admin/theme.js"></script>
 </head>
 <body>
-<main class="container narrow" style="padding-top:32px;padding-bottom:60px">
-    <h1>Установка AgeCMS</h1>
-    <p><small>Шаг <?= $result !== null ? 3 : $step ?> из 3: <?= $result !== null ? 'готово' : ($step === 1 ? 'проверка среды' : 'данные сайта') ?></small></p>
-<?php if ($result !== null): ?>
-    <p class="notice ok">Установлено. Эта страница закрыта, файл ключа удалён.</p>
-    <table>
-        <tr><th>Логин</th><td><strong><?= $h($result['admin_user']) ?></strong></td></tr>
-        <tr><th>Пароль</th><td><?php if ($result['generated']): ?><strong><?= $h($result['admin_password']) ?></strong><br><small>Показан один раз, запишите его сейчас.</small><?php else: ?>тот, что вы ввели<?php endif; ?></td></tr>
-        <tr><th>Сайт</th><td><?= $h($result['site_url']) ?></td></tr>
-    </table>
-    <h2>Что сделать дальше</h2>
-    <p>Добавьте задание cron раз в минуту (очередь записи, пересборка кэша, IndexNow):</p>
-    <p><code>* * * * * php <?= $h($root) ?>/bin/queue-worker.php</code></p>
-    <p>Если у хостинга нет cron, сайт всё равно работает: очередь разбирается при каждой записи, не будет только отложенных пересборок и пингов.</p>
-    <p><a class="btn" href="/admin/">В админку</a></p>
-<?php elseif ($step === 1): ?>
-    <h2>Проверка среды</h2>
-    <table>
-        <tr><th>Что</th><th>Статус</th><th></th></tr>
-        <?php foreach ($checks as $c): ?>
-            <tr>
-                <td><?= $h($c['label']) ?></td>
-                <td><?= $c['ok'] ? 'есть' : ($c['required'] ? '<strong>нет, обязательно</strong>' : 'нет, не обязательно') ?></td>
-                <td><small><?= $h($c['note']) ?></small></td>
-            </tr>
+<?php $now = $result !== null ? 3 : $step; ?>
+<main class="wizard enter">
+    <a class="brand" href="/"><span class="mark">A</span><span>AgeCMS</span><small>установка</small></a>
+    <ol class="steps" aria-label="Шаги установки">
+        <?php foreach ([1 => 'Проверка среды', 2 => 'Данные сайта', 3 => 'Готово'] as $n => $label): ?>
+            <li class="<?= $n < $now || $result !== null ? 'done' : ($n === $now ? 'on' : '') ?>"<?= $n === $now ? ' aria-current="step"' : '' ?>><?= $h($label) ?></li>
         <?php endforeach; ?>
-    </table>
+    </ol>
+
+<?php if ($result !== null): ?>
+    <h1>AgeCMS установлена</h1>
+    <p class="muted">Страница установки закрыта, файл ключа удалён. Сохраните данные для входа.</p>
+    <section class="panel">
+        <dl class="cred">
+            <dt>Логин</dt><dd id="c-user"><?= $h($result['admin_user']) ?></dd><button class="ib" type="button" data-copy="#c-user" title="Копировать" aria-label="Копировать логин"><?= $icon('copy') ?></button>
+            <dt>Пароль</dt>
+            <?php if ($result['generated']): ?>
+                <dd id="c-pass"><?= $h($result['admin_password']) ?></dd><button class="ib" type="button" data-copy="#c-pass" title="Копировать" aria-label="Копировать пароль"><?= $icon('copy') ?></button>
+            <?php else: ?>
+                <dd>тот, что вы ввели</dd><span></span>
+            <?php endif; ?>
+            <dt>Сайт</dt><dd><?= $h($result['site_url']) ?></dd><span></span>
+        </dl>
+    </section>
+    <?php if ($result['generated']): ?><div class="notice warn"><?= $icon('warning-circle') ?><div>Пароль показан один раз. Запишите его сейчас: восстановить его нельзя, только задать новый.</div></div><?php endif; ?>
+    <section class="panel">
+        <div class="panel-h"><h2>Что сделать дальше</h2></div>
+        <div class="panel-b">
+            <p>Добавьте задание cron раз в минуту: оно разбирает очередь записи, пересобирает кэш и отправляет IndexNow.</p>
+            <code class="cmd" id="c-cron">* * * * * php <?= $h($root) ?>/bin/queue-worker.php</code>
+            <button class="btn sm" type="button" data-copy="#c-cron"><?= $icon('copy') ?>Копировать команду</button>
+            <p class="muted gap">Если у хостинга нет cron, сайт всё равно работает: очередь разбирается при каждой записи. Не будет только отложенных пересборок и пингов.</p>
+        </div>
+    </section>
+    <a class="btn primary" href="/admin/">Войти в админку</a>
+
+<?php elseif ($step === 1): ?>
+    <h1>Проверка среды</h1>
+    <p class="muted">Смотрим, что есть на хостинге. Это занимает секунду и ничего не меняет.</p>
+    <section class="panel">
+        <table class="tbl">
+            <tbody>
+            <?php foreach ($checks as $c): ?>
+                <tr>
+                    <td><?= $h($c['label']) ?><span class="cell-sub"><?= $h($c['note']) ?></span></td>
+                    <td class="r"><?php if ($c['ok']): ?><span class="tag ok">есть</span><?php elseif ($c['required']): ?><span class="tag err">нет, обязательно</span><?php else: ?><span class="tag warn">нет, не обязательно</span><?php endif; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </section>
     <?php if ($blockers !== []): ?>
-        <p class="notice error">Установка невозможна: не хватает обязательного. Включите расширения в панели хостинга (раздел PHP) или напишите в поддержку хостера.</p>
+        <div class="notice error"><?= $icon('warning-circle') ?><div>Установка невозможна: не хватает обязательного. Включите расширения в панели хостинга (раздел PHP) или напишите в поддержку хостера, затем обновите страницу.</div></div>
+        <a class="btn" href="<?= $h($self . '?key=' . rawurlencode($given)) ?>">Проверить снова</a>
     <?php else: ?>
-        <p class="notice ok">Всё необходимое есть.</p>
-        <p><a class="btn" href="<?= $h($self . '?key=' . rawurlencode($given) . '&step=2') ?>">Продолжить</a></p>
+        <div class="notice ok"><?= $icon('check-circle') ?><div>Всё необходимое есть.</div></div>
+        <a class="btn primary" href="<?= $h($self . '?key=' . rawurlencode($given) . '&step=2') ?>">Продолжить</a>
     <?php endif; ?>
+
 <?php else: ?>
-    <h2>Данные сайта</h2>
-    <?php if ($error !== ''): ?><p class="notice error"><?= $h($error) ?></p><?php endif; ?>
-    <form method="post" class="stack">
+    <h1>Данные сайта</h1>
+    <p class="muted">Адрес, название и доступ администратора.</p>
+    <?php if ($error !== ''): ?><div class="notice error" role="alert"><?= $icon('warning-circle') ?><div><?= $h($error) ?></div></div><?php endif; ?>
+    <form method="post">
         <input type="hidden" name="key" value="<?= $h($given) ?>">
-        <label>Адрес сайта
-            <input name="site_url" value="<?= $h($_POST['site_url'] ?? $guess) ?>" required pattern="https?://[A-Za-z0-9.\-]+(:[0-9]+)?" placeholder="https://example.com">
-        </label>
-        <p><small>Подставлен адрес, по которому вы открыли эту страницу. От него зависят canonical, sitemap и cookie, поэтому проверьте его.</small></p>
-        <?php if ($warnUrl): ?><p class="notice error">Адрес без HTTPS. Для рабочего сайта подключите сертификат и укажите https://…, иначе cookie администратора пойдёт без защиты.</p><?php endif; ?>
-        <label class="check"><input type="checkbox" name="confirm_url" value="1" required> Да, сайт будет открываться именно по этому адресу</label>
-        <label>Название сайта <input name="site_name" value="<?= $h($_POST['site_name'] ?? '') ?>" required maxlength="100"></label>
-        <label>Логин администратора <input name="admin_user" value="<?= $h($_POST['admin_user'] ?? 'admin') ?>" required pattern="[A-Za-z0-9_.\-]{3,40}"></label>
-        <fieldset class="ag-list">
-            <legend>Пароль администратора</legend>
-            <label class="check"><input type="radio" name="password_mode" value="generate" checked> Создать надёжный пароль и показать его один раз</label>
-            <label class="check"><input type="radio" name="password_mode" value="own"> Задать свой (от 10 символов)</label>
-            <input name="admin_password" type="password" autocomplete="new-password" placeholder="свой пароль">
-        </fieldset>
-        <label class="check"><input type="checkbox" name="demo" value="1" checked> Создать демо-страницы (главная, о нас, контакты)</label>
-        <p><button class="btn" type="submit">Установить</button></p>
+        <section class="panel"><div class="panel-b">
+            <label class="f"><span>Адрес сайта</span>
+                <input class="in" type="text" name="site_url" value="<?= $h($_POST['site_url'] ?? $guess) ?>" required pattern="https?://[A-Za-z0-9.\-]+(:[0-9]+)?" placeholder="https://example.com" autocapitalize="none" spellcheck="false">
+                <small class="hint">Подставлен адрес, по которому открыта эта страница. От него зависят canonical, sitemap и cookie, поэтому проверьте его.</small></label>
+            <?php if ($warnUrl): ?><div class="notice warn"><?= $icon('warning-circle') ?><div>Адрес без HTTPS. Для рабочего сайта подключите сертификат и укажите https://…, иначе cookie администратора пойдёт без защиты.</div></div><?php endif; ?>
+            <label class="chk"><input type="checkbox" name="confirm_url" value="1" required><span>Да, сайт будет открываться именно по этому адресу</span></label>
+            <label class="f"><span>Название сайта</span><input class="in" type="text" name="site_name" value="<?= $h($_POST['site_name'] ?? '') ?>" required maxlength="100"></label>
+        </div></section>
+        <section class="panel"><div class="panel-b">
+            <label class="f"><span>Логин администратора</span><input class="in" type="text" name="admin_user" value="<?= $h($_POST['admin_user'] ?? 'admin') ?>" required pattern="[A-Za-z0-9_.\-]{3,40}" autocapitalize="none" spellcheck="false"></label>
+            <div class="f"><span class="lbl">Пароль</span>
+                <label class="chk"><input type="radio" name="password_mode" value="generate" data-pw-mode<?= ($_POST['password_mode'] ?? 'generate') !== 'own' ? ' checked' : '' ?>><span>Создать надёжный пароль и показать его один раз</span></label>
+                <label class="chk"><input type="radio" name="password_mode" value="own" data-pw-mode<?= ($_POST['password_mode'] ?? '') === 'own' ? ' checked' : '' ?>><span>Задать свой <small>(от 10 символов)</small></span></label>
+            </div>
+            <div id="pw-own"><label class="f"><span>Свой пароль</span><input class="in" name="admin_password" type="password" autocomplete="new-password" minlength="10"></label></div>
+        </div></section>
+        <label class="chk"><input type="checkbox" name="demo" value="1" checked><span>Создать демо-страницы <small>(главная, о нас, контакты)</small></span></label>
+        <button class="btn primary" type="submit">Установить</button>
     </form>
 <?php endif; ?>
 </main>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<script src="/assets/admin/admin.js" defer></script>
 </body>
 </html>

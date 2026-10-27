@@ -6,22 +6,36 @@ use AgeCMS\Revisions;
 
 $slug = (string)($_GET['slug'] ?? '');
 $rows = $slug !== '' ? Revisions::history($slug, 100) : Revisions::recent(100);
+$kinds = ['human' => ['человек', 'info'], 'agent' => ['агент', 'warn'], 'system' => ['система', 'plain'], 'cli' => ['консоль', 'plain']];
 ?>
-<h1>История изменений<?= $slug !== '' ? ': /' . h($slug) : '' ?></h1>
-<?php if ($slug !== ''): ?><p><a href="<?= h(admin_url('history')) ?>">Показать все страницы</a></p><?php endif; ?>
-<table>
-    <tr><th>#</th><th>Когда</th><th>Страница</th><th>Кто</th><th>Что</th><th></th></tr>
-    <?php foreach ($rows as $r): ?>
-        <tr>
-            <td><?= (int)$r['id'] ?></td>
-            <td><?= h($r['created_at']) ?></td>
-            <td><?= h($r['page_slug']) ?></td>
-            <td><?= h($r['actor_type']) ?>: <?= h($r['actor_name']) ?></td>
-            <td><?= h($r['action_desc']) ?></td>
-            <td><?php if ($r['page_slug'][0] !== '@'): ?>
-                <form method="post" class="inline" onsubmit="return confirm('Вернуть страницу к состоянию после этой ревизии?')"><input type="hidden" name="csrf" value="<?= h($csrf) ?>"><input type="hidden" name="action" value="rollback"><input type="hidden" name="slug" value="<?= h($r['page_slug']) ?>"><input type="hidden" name="revision" value="<?= (int)$r['id'] ?>"><button class="link" type="submit">откатить</button></form>
-            <?php endif; ?></td>
-        </tr>
-    <?php endforeach; ?>
-</table>
-<?php if ($rows === []): ?><p>Пока нет записей.</p><?php endif; ?>
+<div class="pagehead">
+    <div class="grow"><h1>История изменений<?= $slug !== '' ? ': /' . h($slug) : '' ?></h1>
+        <p>Каждая правка записана навсегда. Любую страницу можно вернуть к состоянию после выбранной ревизии.</p></div>
+    <?php if ($slug !== ''): ?><a class="btn" href="<?= h(admin_url('history')) ?>">Все страницы</a><?php endif; ?>
+</div>
+<section class="panel">
+<?php if ($rows === []): ?>
+    <div class="empty"><?= icon('clock-counter-clockwise') ?><b>Пока нет записей</b><span>Здесь появятся все правки страниц, меню и настроек.</span></div>
+<?php else: ?>
+    <div class="tbl-scroll"><table class="tbl">
+        <thead><tr><th>#</th><th>Когда</th><th>Страница</th><th>Кто</th><th>Что</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($rows as $r): [$kl, $kc] = $kinds[$r['actor_type']] ?? [$r['actor_type'], 'plain']; ?>
+            <tr>
+                <td class="num muted"><?= (int)$r['id'] ?></td>
+                <td class="num muted"><?= admin_date($r['created_at']) ?></td>
+                <td><a href="<?= h(admin_url('history', ['slug' => $r['page_slug']])) ?>" class="mono"><?= $r['page_slug'][0] === '@' ? h($r['page_slug']) : '/' . h($r['page_slug']) ?></a></td>
+                <td><span class="tag <?= h($kc) ?>"><?= h($kl) ?></span> <?= h($r['actor_name']) ?></td>
+                <td><?= h($r['action_desc']) ?></td>
+                <td class="r"><?php if ($r['page_slug'][0] !== '@'): ?>
+                    <form method="post" class="inline" data-confirm="Вернуть страницу к ревизии #<?= (int)$r['id'] ?>?" data-confirm-text="Текущее состояние сохранится в истории, откат можно будет отменить." data-confirm-ok="Откатить">
+                        <?= admin_post_fields($csrf, 'rollback') ?><input type="hidden" name="slug" value="<?= h($r['page_slug']) ?>"><input type="hidden" name="revision" value="<?= (int)$r['id'] ?>">
+                        <button class="btn sm ghost" type="submit"><?= icon('clock-counter-clockwise') ?>Откатить</button>
+                    </form>
+                <?php endif; ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table></div>
+<?php endif; ?>
+</section>

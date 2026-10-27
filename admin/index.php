@@ -23,7 +23,7 @@ $flash = '';
 $error = '';
 $newToken = '';
 $user = Auth::user();
-$section = in_array($_GET['s'] ?? '', ['pages', 'edit', 'menus', 'settings', 'history', 'leads', 'system'], true) ? (string)$_GET['s'] : 'pages';
+$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'menus', 'settings', 'history', 'leads', 'system'], true) ? (string)$_GET['s'] : 'overview';
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -115,6 +115,24 @@ function admin_view(string $name, array $vars = []): void
     require __DIR__ . '/../core/views/admin/' . $name . '.php';
 }
 
+/** Inline SVG icon from the sprite. */
+function icon(string $name): string
+{
+    return '<svg class="i" aria-hidden="true"><use href="/assets/admin/icons.svg#' . $name . '"/></svg>';
+}
+
+/** Compact timestamp: 2026-10-27 06:15. */
+function admin_date(?string $v): string
+{
+    return $v === null ? '' : h(str_replace('T', ' ', substr($v, 0, 16)));
+}
+
+/** Hidden CSRF + action fields for a POST form. */
+function admin_post_fields(string $csrf, string $action): string
+{
+    return '<input type="hidden" name="csrf" value="' . h($csrf) . '"><input type="hidden" name="action" value="' . h($action) . '">';
+}
+
 /** URL of an admin section. @param array<string,string> $params */
 function admin_url(string $section, array $params = []): string
 {
@@ -128,9 +146,10 @@ function admin_url(string $section, array $params = []): string
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <title>Админка AgeCMS</title>
-    <link rel="stylesheet" href="/assets/app.css">
-    <link rel="stylesheet" href="/assets/admin.css">
+    <title>AgeCMS</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23cf4a17'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='monospace' font-size='18' font-weight='700' fill='white'%3EA%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="/assets/admin/admin.css">
+    <script src="/assets/admin/theme.js"></script>
 </head>
 <body>
 <?php
@@ -143,5 +162,7 @@ if ($user === null) {
     admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken'));
 }
 ?>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<script src="/assets/admin/admin.js" defer></script>
 </body>
 </html>
