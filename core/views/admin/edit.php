@@ -49,7 +49,7 @@ $url = '/' . ($slug === 'index' ? '' : $slug);
 <?php if (isset($_GET['new'])): ?><div class="notice ok"><?= icon('check-circle') ?><div>Страница создана и пока скрыта. Добавьте блоки и включите «опубликована».</div></div><?php endif; ?>
 <?php if ($slug !== 'index'): ?>
 <template id="ag-delete-form">
-    <form method="post" data-confirm="Удалить страницу «<?= h($doc['title']) ?>»?" data-confirm-text="Она пропадёт с сайта. В истории останется, и её можно будет вернуть." data-confirm-ok="Удалить" data-danger>
+    <form method="post" data-confirm="Удалить страницу «<?= h($doc['title']) ?>»?" data-confirm-text="Она пропадёт с сайта и попадёт в корзину, откуда её можно вернуть." data-confirm-ok="Удалить" data-danger>
         <?= admin_post_fields($csrf, 'page_delete') ?><input type="hidden" name="slug" value="<?= h($slug) ?>">
         <button class="btn danger" type="submit"><?= icon('trash') ?>Удалить страницу</button>
     </form>

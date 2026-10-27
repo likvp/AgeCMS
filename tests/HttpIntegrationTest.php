@@ -383,6 +383,62 @@ final class HttpIntegrationTest extends TestCase
         $this->assertSame(200, $this->http('GET', '/')['status']);
     }
 
+    public function testPasswordRecoveryByEmailOverHttp(): void
+    {
+        $this->boot();
+        \AgeCMS\Config::set('mail', ['transport' => 'log', 'from' => 'noreply@example.test', 'from_name' => '', 'smtp' => ['host' => '', 'port' => 465, 'secure' => 'ssl', 'user' => '', 'pass' => '']]);
+        $csrf = $this->adminLogin();
+        $this->assertTrue($csrf !== '');
+        $adminId = (int)\AgeCMS\Database::value("SELECT id FROM users WHERE username = 'admin'");
+
+        // two roles for people, the address is set through the admin
+        $users = $this->http('GET', '/admin/?s=users', null, [], true)['body'];
+        $this->assertNotContains('value="viewer"', $users, 'people choose between an administrator and an editor');
+        $this->assertContains('Почта для восстановления', $users);
+        $this->assertContains('Почта сохранена', $this->form(['action' => 'user_email', 'id' => (string)$adminId, 'email' => 'boss@example.test'], $csrf)['body']);
+        $this->assertContains('Настройки почты сохранены', $this->form(['action' => 'mail_save', 'mail_transport' => 'mail', 'mail_from' => 'noreply@example.test', 'smtp_host' => '', 'smtp_port' => '465', 'smtp_secure' => 'ssl'], $csrf)['body']);
+        \AgeCMS\Config::set('mail.transport', 'log');
+        $this->assertContains('Тестовое письмо отправлено', $this->form(['action' => 'mail_test'], $csrf)['body']);
+        foreach (glob(AGECMS_DATA . '/outbox/*.eml') ?: [] as $f) {
+            unlink($f);
+        }
+
+        // the login page offers recovery and the request answers the same for everyone
+        $this->assertContains('Забыли пароль?', $this->http('GET', '/admin/')['body']);
+        $this->assertContains('Восстановление пароля', $this->http('GET', '/admin/?s=forgot')['body']);
+        $ghost = $this->http('POST', '/admin/index.php', http_build_query(['action' => 'forgot', 'identifier' => 'ghost']), ['Content-Type' => 'application/x-www-form-urlencoded']);
+        $this->assertContains('Если такой пользователь есть', $ghost['body']);
+        $this->assertSame([], glob(AGECMS_DATA . '/outbox/*.eml') ?: [], 'an unknown login gets nothing');
+        $real = $this->http('POST', '/admin/index.php', http_build_query(['action' => 'forgot', 'identifier' => 'admin']), ['Content-Type' => 'application/x-www-form-urlencoded']);
+        $this->assertContains('Если такой пользователь есть', $real['body'], 'the answer does not reveal whether the account exists');
+        $files = glob(AGECMS_DATA . '/outbox/*.eml') ?: [];
+        $this->assertSame(1, count($files));
+        $raw = (string)file_get_contents($files[0]);
+        $text = (string)base64_decode(str_replace("\r\n", '', explode("\r\n\r\n", $raw, 2)[1]));
+        preg_match('~/admin/\?s=reset&token=([A-Za-z0-9_-]+)~', $text, $m);
+        $this->assertTrue(isset($m[1]), 'the mail carries the link');
+
+        $page = $this->http('GET', '/admin/?s=reset&token=' . $m[1]);
+        $this->assertSame('no-referrer', $page['headers']['referrer-policy'], 'the secret link is not leaked through Referer');
+        $this->assertContains('name="new_password"', $page['body']);
+        $this->assertContains('Ссылка не работает', $this->http('GET', '/admin/?s=reset&token=wrong')['body']);
+        $form = static fn(array $d): string => http_build_query(['action' => 'reset_password', 'token' => $d['token']] + $d);
+        $mismatch = $this->http('POST', '/admin/index.php', $form(['token' => $m[1], 'new_password' => 'brand-new-secret', 'new_password2' => 'other-new-secret']), ['Content-Type' => 'application/x-www-form-urlencoded']);
+        $this->assertContains('Пароли не совпадают', $mismatch['body']);
+        $this->assertContains('name="new_password"', $mismatch['body'], 'the form stays open after a typo');
+        $done = $this->http('POST', '/admin/index.php', $form(['token' => $m[1], 'new_password' => 'brand-new-secret', 'new_password2' => 'brand-new-secret']), ['Content-Type' => 'application/x-www-form-urlencoded']);
+        $this->assertSame(302, $done['status']);
+        $this->assertContains('Пароль изменён. Войдите', $this->http('GET', '/admin/?reset=ok')['body']);
+        $this->assertContains('Ссылка не работает', $this->http('GET', '/admin/?s=reset&token=' . $m[1])['body'], 'a link works once');
+
+        // the session opened before the reset is ended, the new password works
+        $this->assertContains('Вход в админку', $this->http('GET', '/admin/', null, [], true)['body'], 'old sessions are signed out');
+        $old = $this->http('POST', '/admin/index.php', http_build_query(['action' => 'login', 'username' => 'admin', 'password' => 'Passw0rd-test-1']), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+        $this->assertSame(200, $old['status'], 'the old password no longer works');
+        $new = $this->http('POST', '/admin/index.php', http_build_query(['action' => 'login', 'username' => 'admin', 'password' => 'brand-new-secret']), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+        $this->assertSame(302, $new['status']);
+    }
+
     public function testAdminDeletePagesMediaAndUsers(): void
     {
         $this->boot();
@@ -392,10 +448,11 @@ final class HttpIntegrationTest extends TestCase
         // delete and restore a page from the admin
         $this->form(['action' => 'page_create', 'slug' => 'temp-page', 'title' => 'Temp', 'schema_type' => 'WebPage'], $csrf);
         $del = $this->form(['action' => 'page_delete', 'slug' => 'temp-page'], $csrf);
-        $this->assertContains('удалена', $del['body']);
-        $list = $this->http('GET', '/admin/?s=pages', null, [], true)['body'];
-        $this->assertContains('Удалённые', $list);
-        $this->assertContains('Восстановить', $list);
+        $this->assertContains('в корзину', $del['body']);
+        $trash = $this->http('GET', '/admin/?s=trash', null, [], true)['body'];
+        $this->assertContains('/temp-page', $trash);
+        $this->assertContains('Восстановить', $trash);
+        $this->assertContains('Удалить навсегда', $trash, 'an administrator can purge');
         $restored = $this->form(['action' => 'page_restore', 'slug' => 'temp-page'], $csrf);
         $this->assertSame(302, $restored['status']);
         $this->assertContains('restored=1', $restored['headers']['location']);
@@ -442,8 +499,17 @@ final class HttpIntegrationTest extends TestCase
             $this->assertContains('/temp-page', $blocked['body'], 'a used image cannot be deleted');
             $this->assertSame(200, $this->http('GET', $path)['status']);
             $this->http('POST', '/admin/api.php', json_encode(['action' => 'update_page', 'slug' => 'temp-page', 'fields' => ['blocks' => []]]), ['Content-Type' => 'application/json', 'X-CSRF-Token' => $csrf], true);
-            $this->assertContains('Картинка удалена', $this->form(['action' => 'media_delete', 'name' => basename($path)], $csrf)['body']);
+            $this->assertContains('в корзину', $this->form(['action' => 'media_delete', 'name' => basename($path)], $csrf)['body']);
             $this->assertSame(404, $this->http('GET', $path)['status']);
+            $preview = $this->http('GET', '/admin/upload.php?trash=' . basename($path), null, [], true);
+            $this->assertSame(200, $preview['status'], 'the trash preview is served to the signed-in admin');
+            $this->assertSame('image/webp', $preview['headers']['content-type']);
+            $this->assertSame(401, $this->http('GET', '/admin/upload.php?trash=' . basename($path))['status'], 'and to nobody else');
+            $this->assertContains('Картинка возвращена', $this->form(['action' => 'media_restore', 'name' => basename($path)], $csrf)['body']);
+            $this->assertSame(200, $this->http('GET', $path)['status']);
+            $this->form(['action' => 'media_delete', 'name' => basename($path)], $csrf);
+            $this->assertContains('удалена навсегда', $this->form(['action' => 'media_purge', 'name' => basename($path)], $csrf)['body']);
+            $this->assertSame(404, $this->http('GET', '/admin/upload.php?trash=' . basename($path), null, [], true)['status']);
         }
 
         // users

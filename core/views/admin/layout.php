@@ -12,13 +12,14 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{CircuitBreaker, Database, Pages};
+use AgeCMS\{CircuitBreaker, Database, Media, Pages};
 
 $frozen = CircuitBreaker::frozenInfo();
 $nav = [
     ['overview', 'Обзор', 'squares-four', null],
     ['pages', 'Страницы', 'file-text', Pages::count()],
     ['media', 'Медиа', 'image', null],
+    ['trash', 'Корзина', 'trash', $canWrite ? count(Pages::deleted()) + count(Media::trashed()) : 0],
     ['menus', 'Меню', 'list', null],
     ['history', 'История', 'clock-counter-clockwise', null],
     ['leads', 'Заявки', 'chat-circle-text', (int)(Database::row('SELECT COUNT(*) AS n FROM leads')['n'] ?? 0)],

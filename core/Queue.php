@@ -21,6 +21,7 @@ final class Queue
         'rollback' => ['rollback', 'content.write'],
         'delete_page' => ['deletePage', 'content.write'],
         'restore_page' => ['restorePage', 'content.write'],
+        'purge_page' => ['purgePage', 'system.manage'],
         'set_menu' => ['setMenu', 'content.write'],
         'set_settings' => ['setSettings', 'system.manage'],
     ];
@@ -167,6 +168,7 @@ final class Queue
             'update_page' => Content::updatePage($actor, (string)$a['slug'], (array)($a['fields'] ?? [])),
             'delete_page' => Content::deletePage($actor, (string)$a['slug']),
             'restore_page' => Content::restorePage($actor, (string)$a['slug']),
+            'purge_page' => Content::purgePage($actor, (string)$a['slug']),
             'rollback' => Content::rollback($actor, (string)$a['slug'], (int)$a['revision_id']),
             'set_menu' => Content::setMenu($actor, (string)$a['name'], (array)($a['items'] ?? [])),
             'set_settings' => Content::setSettings($actor, (array)($a['values'] ?? [])),

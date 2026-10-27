@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, Auth, Backup, Cache, CircuitBreaker, Database, Installer, Media, Pages, Queue, Security};
+use AgeCMS\{AgeCMSException, Auth, Backup, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -23,8 +23,9 @@ $flash = '';
 $error = '';
 $newToken = '';
 $newPassword = null;
+$notice = '';
 $user = Auth::user();
-$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'menus', 'settings', 'history', 'leads', 'users', 'system'], true) ? (string)$_GET['s'] : 'overview';
+$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'trash', 'menus', 'settings', 'history', 'leads', 'users', 'system', 'forgot', 'reset'], true) ? (string)$_GET['s'] : 'overview';
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -36,6 +37,26 @@ try {
                 header('Location: /admin/');
                 exit;
             }
+        } elseif ($action === 'forgot') {
+            // Same answer whether or not the account exists. The link goes only to the address stored for it.
+            Auth::requestReset((string)($_POST['identifier'] ?? ''));
+            $notice = 'Если такой пользователь есть и для него указана почта, мы отправили письмо со ссылкой. Она действует один час.';
+            $section = 'forgot';
+        } elseif ($action === 'reset_password') {
+            if ((string)($_POST['new_password'] ?? '') !== (string)($_POST['new_password2'] ?? '')) {
+                $section = 'reset';
+                $_GET['token'] = (string)($_POST['token'] ?? '');
+                throw new AgeCMSException('Пароли не совпадают');
+            }
+            try {
+                Auth::completeReset((string)($_POST['token'] ?? ''), (string)($_POST['new_password'] ?? ''));
+            } catch (AgeCMSException $e) {
+                $section = 'reset';
+                $_GET['token'] = (string)($_POST['token'] ?? '');
+                throw $e;
+            }
+            header('Location: /admin/?reset=ok');
+            exit;
         } elseif ($user !== null) {
             if (!Auth::checkCsrf($_POST['csrf'] ?? null)) {
                 throw new AgeCMSException('Сессия устарела, обновите страницу');
@@ -66,7 +87,7 @@ try {
                 case 'page_delete':
                     $slug = (string)($_POST['slug'] ?? '');
                     Queue::submit($actor, 'delete_page', ['slug' => $slug]);
-                    $flash = 'Страница /' . $slug . ' удалена. Вернуть её можно в разделе «Страницы», блок «Удалённые».';
+                    $flash = 'Страница /' . $slug . ' перенесена в корзину. Вернуть её можно в разделе «Корзина».';
                     $section = 'pages';
                     break;
                 case 'page_restore':
@@ -95,20 +116,84 @@ try {
                     break;
                 case 'media_delete':
                     Security::requirePermission($actor, 'content.write');
-                    Media::delete((string)($_POST['name'] ?? ''));
-                    $flash = 'Картинка удалена';
+                    Media::trash((string)($_POST['name'] ?? ''));
+                    $flash = 'Картинка перенесена в корзину. Вернуть её можно в разделе «Корзина».';
                     $section = 'media';
+                    break;
+                case 'media_restore':
+                    Security::requirePermission($actor, 'content.write');
+                    Media::restore((string)($_POST['name'] ?? ''));
+                    $flash = 'Картинка возвращена в медиатеку';
+                    $section = 'trash';
+                    break;
+                case 'media_purge':
+                    Security::requirePermission($actor, 'system.manage');
+                    Media::purge((string)($_POST['name'] ?? ''));
+                    $flash = 'Картинка удалена навсегда';
+                    $section = 'trash';
+                    break;
+                case 'page_purge':
+                    $slug = (string)($_POST['slug'] ?? '');
+                    Queue::submit($actor, 'purge_page', ['slug' => $slug]);
+                    $flash = 'Страница /' . $slug . ' удалена навсегда';
+                    $section = 'trash';
                     break;
                 case 'user_create':
                     Security::requirePermission($actor, 'system.manage');
                     $own = ($_POST['password_mode'] ?? 'generate') === 'own';
                     $password = $own ? (string)($_POST['password'] ?? '') : Auth::generatePassword();
-                    Auth::createUser((string)($_POST['username'] ?? ''), $password, (string)($_POST['role'] ?? 'editor'));
+                    Auth::createUser((string)($_POST['username'] ?? ''), $password, (string)($_POST['role'] ?? 'editor'), (string)($_POST['email'] ?? ''));
                     if (!$own) {
                         $newPassword = ['user' => (string)$_POST['username'], 'value' => $password];
                     }
                     $flash = 'Пользователь ' . (string)$_POST['username'] . ' создан';
                     $section = 'users';
+                    break;
+                case 'user_email':
+                    Security::requirePermission($actor, 'system.manage');
+                    Auth::setEmail((int)($_POST['id'] ?? 0), (string)($_POST['email'] ?? ''));
+                    $flash = 'Почта сохранена';
+                    $section = 'users';
+                    break;
+                case 'email_change':
+                    Auth::changeOwnEmail((int)$user['id'], (string)($_POST['current_password'] ?? ''), (string)($_POST['email'] ?? ''));
+                    $flash = 'Почта сохранена';
+                    $section = 'users';
+                    break;
+                case 'mail_save':
+                    Security::requirePermission($actor, 'system.manage');
+                    $from = trim((string)($_POST['mail_from'] ?? ''));
+                    if ($from !== '' && filter_var($from, FILTER_VALIDATE_EMAIL) === false) {
+                        throw new AgeCMSException('Адрес отправителя записан неверно');
+                    }
+                    $transport = (string)($_POST['mail_transport'] ?? 'mail');
+                    $secure = (string)($_POST['smtp_secure'] ?? 'ssl');
+                    $old = (array)Config::get('mail.smtp', []);
+                    $pass = (string)($_POST['smtp_pass'] ?? '');
+                    Config::set('mail', [
+                        'transport' => in_array($transport, ['mail', 'smtp'], true) ? $transport : 'mail',
+                        'from' => $from,
+                        'from_name' => mb_substr(trim((string)($_POST['mail_from_name'] ?? '')), 0, 80),
+                        'smtp' => [
+                            'host' => trim((string)($_POST['smtp_host'] ?? '')),
+                            'port' => max(1, min(65535, (int)($_POST['smtp_port'] ?? 465))),
+                            'secure' => in_array($secure, ['ssl', 'tls', ''], true) ? $secure : 'ssl',
+                            'user' => trim((string)($_POST['smtp_user'] ?? '')),
+                            'pass' => $pass !== '' ? $pass : (string)($old['pass'] ?? ''),
+                        ],
+                    ]);
+                    $flash = 'Настройки почты сохранены';
+                    $section = 'settings';
+                    break;
+                case 'mail_test':
+                    Security::requirePermission($actor, 'system.manage');
+                    $to = (string)($user['email'] ?? '');
+                    if ($to === '') {
+                        throw new AgeCMSException('Сначала укажите свою почту в разделе «Пользователи»');
+                    }
+                    Mailer::send($to, 'Проверка почты AgeCMS', "Это тестовое письмо. Если вы его читаете, сброс пароля по почте будет работать.\n");
+                    $flash = 'Тестовое письмо отправлено на ' . Mailer::mask($to);
+                    $section = 'settings';
                     break;
                 case 'user_role':
                     Security::requirePermission($actor, 'system.manage');
@@ -177,10 +262,16 @@ try {
             }
         }
     }
+} catch (ForbiddenException $e) {
+    $error = $section === 'forgot' || ($_POST['action'] ?? '') === 'forgot' ? 'Слишком много запросов. Попробуйте через час.' : $e->getMessage();
+    $section = ($_POST['action'] ?? '') === 'forgot' ? 'forgot' : $section;
 } catch (AgeCMSException $e) {
     $error = $e->getMessage();
 }
 $user = Auth::user();
+if ($user !== null && in_array($section, ['forgot', 'reset'], true)) {
+    $section = 'overview';
+}
 
 /** @param mixed $v */
 function h($v): string
@@ -234,7 +325,10 @@ function admin_url(string $section, array $params = []): string
 <body>
 <?php
 if ($user === null) {
-    admin_view('login', ['error' => $error]);
+    if ($section === 'reset') {
+        header('Referrer-Policy: no-referrer'); // the link carries the secret
+    }
+    admin_view(in_array($section, ['forgot', 'reset'], true) ? $section : 'login', ['error' => $error, 'notice' => $notice, 'resetDone' => ($_GET['reset'] ?? '') === 'ok']);
 } else {
     $csrf = Auth::csrf();
     $isAdmin = Security::can($user['role'], 'system.manage');

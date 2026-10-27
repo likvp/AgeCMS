@@ -48,7 +48,12 @@ final class Auth
         if (!is_int($uid)) {
             return null;
         }
-        return Database::row('SELECT id, username, role FROM users WHERE id = ?', [$uid]);
+        $user = Database::row('SELECT id, username, role, email, pwd_epoch FROM users WHERE id = ?', [$uid]);
+        // A password change or reset ends every other session of that person.
+        if ($user === null || (int)($_SESSION['epoch'] ?? 0) !== (int)$user['pwd_epoch']) {
+            return null;
+        }
+        return $user;
     }
 
     public static function actor(): ?Actor
@@ -93,6 +98,7 @@ final class Auth
         self::startSession();
         session_regenerate_id(true);
         $_SESSION['uid'] = (int)$user['id'];
+        $_SESSION['epoch'] = (int)$user['pwd_epoch'];
         $_SESSION['csrf'] = Security::token(24);
         setcookie(self::MARKER_COOKIE, '1', ['path' => '/', 'secure' => self::https(), 'httponly' => true, 'samesite' => 'Lax']);
         if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
@@ -136,7 +142,7 @@ final class Auth
         return new Actor('agent', (string)$row['name'], (string)$row['role'], 'tok-' . $row['id'] . '-' . gmdate('YmdH'));
     }
 
-    public static function createUser(string $username, string $password, string $role = 'admin'): int
+    public static function createUser(string $username, string $password, string $role = 'admin', string $email = ''): int
     {
         if (preg_match('/^[A-Za-z0-9_.@-]{3,40}$/', $username) !== 1) {
             throw new ValidationException(['Username must be 3-40 characters: letters, digits, _ . @ -']);
@@ -147,17 +153,156 @@ final class Auth
         if (!in_array($role, Security::roles(), true)) {
             throw new ValidationException(["Unknown role '{$role}'"]);
         }
-        return (int)Database::write(static function (PDO $pdo) use ($username, $password, $role): string {
-            $pdo->prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)')
-                ->execute([$username, password_hash($password, PASSWORD_DEFAULT), $role, ag_now()]);
+        $email = self::normalizeEmail($email);
+        return (int)Database::write(static function (PDO $pdo) use ($username, $password, $role, $email): string {
+            self::assertEmailFree($pdo, $email, 0);
+            $pdo->prepare('INSERT INTO users (username, password_hash, role, email, created_at) VALUES (?, ?, ?, ?, ?)')
+                ->execute([$username, password_hash($password, PASSWORD_DEFAULT), $role, $email, ag_now()]);
             return $pdo->lastInsertId();
         });
+    }
+
+    /** Empty string for "no address"; anything else must be a valid, lower-cased address. */
+    public static function normalizeEmail(string $email): string
+    {
+        $email = mb_strtolower(trim($email));
+        if ($email === '') {
+            return '';
+        }
+        if (strlen($email) > 120 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw new ValidationException(['Email address is not valid']);
+        }
+        return $email;
+    }
+
+    private static function assertEmailFree(PDO $pdo, string $email, int $exceptUserId): void
+    {
+        if ($email === '') {
+            return;
+        }
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = ? AND id <> ?');
+        $stmt->execute([$email, $exceptUserId]);
+        if ((int)$stmt->fetchColumn() > 0) {
+            throw new ValidationException(['This email address already belongs to another user']);
+        }
+    }
+
+    /** Administrator sets or clears the recovery address of any account. */
+    public static function setEmail(int $userId, string $email): void
+    {
+        $email = self::normalizeEmail($email);
+        Database::write(static function (PDO $pdo) use ($userId, $email): void {
+            $user = self::lockedUser($pdo, $userId);
+            self::assertEmailFree($pdo, $email, $userId);
+            $pdo->prepare('UPDATE users SET email = ? WHERE id = ?')->execute([$email, $userId]);
+            Logger::log('info', 'user.email_changed', ['user' => $user['username']]);
+        });
+    }
+
+    /** Own address change: the current password is required, so a stolen session cannot redirect recovery mail. */
+    public static function changeOwnEmail(int $userId, string $current, string $email): void
+    {
+        $user = Database::row('SELECT password_hash FROM users WHERE id = ?', [$userId]);
+        if ($user === null || !password_verify($current, $user['password_hash'])) {
+            throw new ValidationException(['Current password is wrong']);
+        }
+        self::setEmail($userId, $email);
+    }
+
+    /**
+     * Sends a single-use link that sets a new password. The answer never says whether the account exists.
+     * Limits: 5 requests per address per hour, 3 links per account per hour.
+     *
+     * @throws ForbiddenException when the address asks too often
+     */
+    public static function requestReset(string $identifier): void
+    {
+        $identifier = mb_strtolower(trim($identifier));
+        $ipBucket = 'reset-ip:' . Http::clientIp();
+        if (AntiSpam::count($ipBucket, 3600) >= 5) {
+            throw new ForbiddenException('Too many requests. Try again in an hour.');
+        }
+        AntiSpam::hit($ipBucket);
+        if ($identifier === '' || strlen($identifier) > 120) {
+            return;
+        }
+        $user = Database::row('SELECT id, username, email FROM users WHERE username = ? COLLATE NOCASE OR email = ?', [$identifier, $identifier]);
+        if ($user === null || $user['email'] === '') {
+            Logger::log('info', 'user.reset_skipped', ['reason' => $user === null ? 'unknown' : 'no_email']);
+            return;
+        }
+        $userBucket = 'reset-user:' . $user['id'];
+        if (AntiSpam::count($userBucket, 3600) >= 3) {
+            return;
+        }
+        AntiSpam::hit($userBucket);
+
+        $siteUrl = rtrim((string)Config::get('site_url', ''), '/');
+        if ($siteUrl === '') {
+            Logger::log('error', 'user.reset_failed', ['reason' => 'site_url is empty']);
+            return;
+        }
+        $token = Security::token(32);
+        Database::write(static function (PDO $pdo) use ($user, $token): void {
+            $pdo->prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL')->execute([$user['id']]);
+            $pdo->prepare('INSERT INTO password_resets (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)')
+                ->execute([$user['id'], Security::hashToken($token), time() + 3600, ag_now()]);
+        });
+        $site = (string)Config::get('site_name', parse_url($siteUrl, PHP_URL_HOST) ?: 'AgeCMS');
+        $body = "Здравствуйте, {$user['username']}!\n\n"
+            . "Для входа в админку {$site} запрошена смена пароля. Чтобы задать новый пароль, откройте ссылку (она действует один час и сработает один раз):\n\n"
+            . $siteUrl . '/admin/?s=reset&token=' . $token . "\n\n"
+            . "Если вы ничего не запрашивали, просто удалите это письмо: пароль останется прежним.\n";
+        try {
+            Mailer::send((string)$user['email'], 'Смена пароля: ' . $site, $body);
+        } catch (AgeCMSException $e) {
+            Logger::log('error', 'user.reset_failed', ['reason' => $e->getMessage()]);
+        }
+    }
+
+    /** True while the link is unused and not expired. */
+    public static function resetTokenValid(string $token): bool
+    {
+        return $token !== '' && Database::row('SELECT id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ?', [Security::hashToken($token), time()]) !== null;
+    }
+
+    /**
+     * Sets the new password through a reset link. Every other link of that person dies, and so do their sessions.
+     *
+     * @throws ForbiddenException after too many wrong links from one address
+     * @throws ValidationException when the link is unknown, used or expired, or the password is weak
+     */
+    public static function completeReset(string $token, string $new): string
+    {
+        $bucket = 'reset-bad:' . Http::clientIp();
+        if (AntiSpam::count($bucket, 3600) >= 10) {
+            throw new ForbiddenException('Too many attempts. Try again later.');
+        }
+        if (!self::resetTokenValid($token)) {
+            AntiSpam::hit($bucket);
+            throw new ValidationException(['The link is not valid or has expired. Request a new one.']);
+        }
+        self::checkPasswordStrength($new);
+        $username = Database::write(static function (PDO $pdo) use ($token, $new): string {
+            $stmt = $pdo->prepare('SELECT r.id, r.user_id, u.username FROM password_resets r JOIN users u ON u.id = r.user_id WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at >= ?');
+            $stmt->execute([Security::hashToken($token), time()]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row === false) {
+                throw new ValidationException(['The link is not valid or has expired. Request a new one.']);
+            }
+            $pdo->prepare('UPDATE users SET password_hash = ?, pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $row['user_id']]);
+            $pdo->prepare('DELETE FROM password_resets WHERE user_id = ?')->execute([$row['user_id']]);
+            Logger::log('info', 'user.password_changed', ['user' => $row['username'], 'by' => 'email_link']);
+            return (string)$row['username'];
+        });
+        AntiSpam::clear('login-user:' . strtolower($username));
+        return $username;
     }
 
     /** @return list<array<string,mixed>> */
     public static function listUsers(): array
     {
-        return Database::rows('SELECT id, username, role, created_at FROM users ORDER BY id');
+        return Database::rows('SELECT id, username, email, role, created_at FROM users ORDER BY id');
     }
 
     public static function changeRole(int $userId, string $role, int $actingUserId): void
@@ -201,7 +346,10 @@ final class Auth
             throw new ValidationException(['Current password is wrong']);
         }
         self::checkPasswordStrength($new);
-        self::setPassword($userId, $new);
+        $epoch = self::storePassword($userId, $new);
+        if (isset($_SESSION) && ($_SESSION['uid'] ?? null) === $userId) {
+            $_SESSION['epoch'] = $epoch; // this device stays signed in, the others are ended
+        }
         Logger::log('info', 'user.password_changed', ['id' => $userId, 'by' => 'self']);
     }
 
@@ -211,7 +359,7 @@ final class Auth
         self::checkPasswordStrength($new);
         Database::write(static function (PDO $pdo) use ($userId, $new): void {
             $user = self::lockedUser($pdo, $userId);
-            $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $userId]);
+            $pdo->prepare('UPDATE users SET password_hash = ?, pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $userId]);
             Logger::log('info', 'user.password_changed', ['user' => $user['username'], 'by' => 'admin']);
         });
     }
@@ -251,6 +399,18 @@ final class Auth
         return (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
     }
 
+    /** Stores a new password and ends the person's other sessions. Returns the new session epoch. */
+    private static function storePassword(int $userId, string $password): int
+    {
+        return (int)Database::write(static function (PDO $pdo) use ($userId, $password): int {
+            $pdo->prepare('UPDATE users SET password_hash = ?, pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([password_hash($password, PASSWORD_DEFAULT), $userId]);
+            $stmt = $pdo->prepare('SELECT pwd_epoch FROM users WHERE id = ?');
+            $stmt->execute([$userId]);
+            return (int)$stmt->fetchColumn();
+        });
+    }
+
+    /** Re-hash only (cost upgrade at login): the person stays signed in everywhere. */
     public static function setPassword(int $userId, string $password): void
     {
         Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([password_hash($password, PASSWORD_DEFAULT), $userId]));

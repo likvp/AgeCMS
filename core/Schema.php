@@ -167,6 +167,24 @@ SQL);
                     $pdo->exec("INSERT INTO settings (key, value) VALUES ('fts', '0')");
                 }
             },
+            // Recovery by e-mail: an address per user, a counter that ends old sessions when the password changes,
+            // and single-use reset links stored only as hashes.
+            2 => static function (PDO $pdo): void {
+                $pdo->exec(<<<'SQL'
+ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN pwd_epoch INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX users_email ON users (email) WHERE email <> '';
+CREATE TABLE password_resets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX password_resets_user ON password_resets (user_id);
+SQL);
+            },
         ];
     }
 }

@@ -8,8 +8,10 @@ defined('AGECMS_BOOTED') || exit;
 
 use AgeCMS\Auth;
 
-$roles = ['admin' => 'Администратор', 'editor' => 'Редактор', 'viewer' => 'Наблюдатель'];
-$hints = ['admin' => 'всё, включая пользователей и настройки', 'editor' => 'правит страницы, меню и медиа', 'viewer' => 'только смотрит'];
+// Two roles for people: an administrator and everyone else. The read-only role stays for agent tokens and old accounts.
+$roles = ['admin' => 'Администратор', 'editor' => 'Редактор'];
+$hints = ['admin' => 'всё, включая пользователей, настройки и окончательное удаление', 'editor' => 'правит страницы, меню и картинки, может убрать в корзину'];
+$rolesFor = static fn(string $current): array => $current === 'viewer' ? $roles + ['viewer' => 'Наблюдатель'] : $roles;
 ?>
 <div class="pagehead"><div class="grow">
     <h1><?= $isAdmin ? 'Пользователи' : 'Профиль' ?></h1>
@@ -19,16 +21,22 @@ $hints = ['admin' => 'всё, включая пользователей и на�
 <?php if ($isAdmin): $users = Auth::listUsers(); ?>
 <section class="panel">
     <div class="tbl-scroll"><table class="tbl">
-        <thead><tr><th>Логин</th><th>Роль</th><th>Создан</th><th></th></tr></thead>
+        <thead><tr><th>Логин</th><th>Почта</th><th>Роль</th><th>Создан</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($users as $u): $self = (int)$u['id'] === (int)$user['id']; ?>
             <tr>
                 <td><b class="cell-title"><?= h($u['username']) ?></b><?= $self ? ' <span class="tag plain">это вы</span>' : '' ?></td>
                 <td>
+                    <form method="post" class="role-form mail-form"><?= admin_post_fields($csrf, 'user_email') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                        <input class="in sm" type="email" name="email" value="<?= h($u['email']) ?>" placeholder="нет почты" maxlength="120" autocomplete="off" aria-label="Почта <?= h($u['username']) ?>">
+                        <button class="ib" type="submit" title="Сохранить почту" aria-label="Сохранить почту"><?= icon('check-circle') ?></button>
+                    </form>
+                </td>
+                <td>
                     <?php if ($self): ?><span class="tag info"><?= h($roles[$u['role']] ?? $u['role']) ?></span>
                     <?php else: ?>
                     <form method="post" class="role-form"><?= admin_post_fields($csrf, 'user_role') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-                        <select class="in sm" name="role" aria-label="Роль <?= h($u['username']) ?>" data-autosubmit><?php foreach ($roles as $k => $label): ?><option value="<?= h($k) ?>"<?= $u['role'] === $k ? ' selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select>
+                        <select class="in sm" name="role" aria-label="Роль <?= h($u['username']) ?>" data-autosubmit><?php foreach ($rolesFor((string)$u['role']) as $k => $label): ?><option value="<?= h($k) ?>"<?= $u['role'] === $k ? ' selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select>
                         <noscript><button class="btn sm" type="submit">Сохранить</button></noscript>
                     </form>
                     <?php endif; ?>
@@ -52,6 +60,9 @@ $hints = ['admin' => 'всё, включая пользователей и на�
         <?= admin_post_fields($csrf, 'user_create') ?>
         <div class="row">
             <label class="f"><span>Логин</span><input class="in" type="text" name="username" required pattern="[A-Za-z0-9_.@\-]{3,40}" autocapitalize="none" spellcheck="false" autocomplete="off"></label>
+            <label class="f"><span>Почта <small>(для восстановления пароля)</small></span><input class="in" type="email" name="email" maxlength="120" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+        </div>
+        <div class="row">
             <label class="f"><span>Роль</span><select class="in" name="role"><?php foreach ($roles as $k => $label): ?><option value="<?= h($k) ?>"<?= $k === 'editor' ? ' selected' : '' ?>><?= h($label) ?>: <?= h($hints[$k]) ?></option><?php endforeach; ?></select></label>
         </div>
         <div class="f"><span class="lbl">Пароль</span>
@@ -73,7 +84,20 @@ $hints = ['admin' => 'всё, включая пользователей и на�
             <label class="f"><span>Новый пароль</span><input class="in" type="password" name="new_password" required minlength="10" autocomplete="new-password"></label>
             <label class="f"><span>Ещё раз</span><input class="in" type="password" name="new_password2" required minlength="10" autocomplete="new-password"></label>
         </div>
-        <p class="muted">От 10 символов. Другие устройства, где вы уже вошли, останутся в системе до выхода.</p>
+        <p class="muted">От 10 символов. После смены вы останетесь в системе на этом устройстве, а на остальных придётся войти заново.</p>
         <button class="btn primary" type="submit">Сменить пароль</button>
+    </form>
+</section>
+
+<section class="panel">
+    <div class="panel-h"><h2>Моя почта</h2><span class="muted"><?= $user['email'] !== '' ? h($user['email']) : 'не указана' ?></span></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'email_change') ?>
+        <div class="row">
+            <label class="f"><span>Почта для восстановления пароля</span><input class="in" type="email" name="email" value="<?= h($user['email']) ?>" maxlength="120" autocomplete="email"></label>
+            <label class="f"><span>Текущий пароль</span><input class="in" type="password" name="current_password" required autocomplete="current-password"></label>
+        </div>
+        <p class="muted">На этот адрес придёт ссылка, если вы забудете пароль. Пустое поле убирает адрес.</p>
+        <button class="btn primary" type="submit">Сохранить почту</button>
     </form>
 </section>

@@ -366,3 +366,9 @@ dialog.picker[open] { display: flex; }
 .dragging * { cursor: grabbing !important; }
 .del-zone { margin-top: 2px; }
 .del-zone .btn { width: 100%; }
+.auth-alt { margin: 16px 0 0; text-align: center; }
+.auth-note { margin: 18px 0 0; font-size: 0.82rem; }
+.trash-note { margin: 0 0 16px; }
+.shot.gone .thumb { opacity: 0.85; }
+.role-form.mail-form { display: flex; align-items: center; gap: 6px; min-width: 280px; }
+.role-form.mail-form .in { flex: 1; min-width: 0; }

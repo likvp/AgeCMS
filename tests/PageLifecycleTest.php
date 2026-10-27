@@ -145,12 +145,47 @@ final class PageLifecycleTest extends TestCase
 
         $this->createPage('withimg', ['blocks' => [['id' => 'image_1', 'type' => 'image', 'data' => ['src' => $url, 'alt' => 'pic']]]]);
         $this->assertSame(['withimg'], array_column(Media::usage($name), 'slug'));
-        $this->assertThrows(ValidationException::class, fn() => Media::delete($name), 'used on');
-        $this->assertThrows(ValidationException::class, fn() => Media::delete('../../etc/passwd'), 'Bad image name');
+        $this->assertThrows(ValidationException::class, fn() => Media::trash($name), 'used on');
+        $this->assertThrows(ValidationException::class, fn() => Media::trash('../../etc/passwd'), 'Bad image name');
 
         Queue::submit($this->admin(), 'update_page', ['slug' => 'withimg', 'fields' => ['blocks' => []]]);
-        Media::delete($name);
+        Media::trash($name);
         $this->assertSame([], Media::items());
-        $this->assertThrows(NotFoundException::class, fn() => Media::delete($name));
+        $this->assertSame([$name], array_column(Media::trashed(), 'name'), 'a removed image waits in the trash');
+        $this->assertTrue(!is_file(Media::dir() . '/' . $name), 'it is no longer reachable by address');
+        $this->assertThrows(NotFoundException::class, fn() => Media::trash($name));
+
+        Media::restore($name);
+        $this->assertSame([$url], array_column(Media::items(), 'url'));
+        $this->assertSame([], Media::trashed());
+        $this->assertThrows(NotFoundException::class, fn() => Media::restore($name), 'not in the trash');
+
+        Media::trash($name);
+        Media::purge($name);
+        $this->assertSame([], Media::trashed());
+        $this->assertSame([], Media::items());
+        $this->assertThrows(NotFoundException::class, fn() => Media::purge($name), 'not in the trash');
+    }
+
+    public function testPurgeRemovesAPageFromTheTrashButKeepsTheLedger(): void
+    {
+        $this->freshSite();
+        $this->createPage('doomed');
+        Queue::submit($this->admin(), 'delete_page', ['slug' => 'doomed']);
+        $this->assertThrows(ForbiddenException::class, fn() => Queue::submit(Actor::agent('ed', 'editor', 'ed1'), 'purge_page', ['slug' => 'doomed']));
+        $this->assertSame(['doomed'], array_column(Pages::deleted(), 'slug'), 'editors cannot purge');
+        $this->createPage('alive');
+        $this->assertThrows(ValidationException::class, fn() => Queue::submit($this->admin(), 'purge_page', ['slug' => 'alive']), 'not in the trash');
+        $this->assertThrows(NotFoundException::class, fn() => Queue::submit($this->admin(), 'purge_page', ['slug' => 'never-existed']), 'not in the trash');
+
+        $purged = Queue::submit($this->admin(), 'purge_page', ['slug' => 'doomed']);
+        $this->assertSame(true, $purged['changed']);
+        $this->assertSame([], Pages::deleted());
+        $this->assertSame(true, Revisions::verifyChain()['ok'], 'the hash chain still verifies after a purge');
+        $this->assertSame([], Revisions::stateAt('doomed', $purged['revision_id']));
+        $this->assertThrows(NotFoundException::class, fn() => Queue::submit($this->admin(), 'restore_page', ['slug' => 'doomed']), 'was not deleted');
+        $first = (int)Database::value("SELECT MIN(id) FROM revisions WHERE page_slug = 'doomed'");
+        $this->assertThrows(ValidationException::class, fn() => Queue::submit($this->admin(), 'rollback', ['slug' => 'doomed', 'revision_id' => $first]), 'for good');
+        $this->assertSame(null, Pages::row('doomed'));
     }
 }

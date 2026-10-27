@@ -28,6 +28,21 @@ final class Revisions
         if ($patch === []) {
             return null;
         }
+        return self::insert($pdo, $slug, $actor, $description, $patch, $after);
+    }
+
+    /** A revision that changes nothing in the document, such as the final removal of a deleted page. Same chain, same rules. */
+    public static function mark(PDO $pdo, string $slug, Actor $actor, string $description): int
+    {
+        return self::insert($pdo, $slug, $actor, $description, [], []);
+    }
+
+    /**
+     * @param list<array<string,mixed>> $patch
+     * @param array<string,mixed> $after
+     */
+    private static function insert(PDO $pdo, string $slug, Actor $actor, string $description, array $patch, array $after): int
+    {
         $patchJson = json_encode($patch, self::JSON);
 
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM revisions WHERE page_slug = ?');

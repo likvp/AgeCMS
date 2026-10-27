@@ -8,6 +8,22 @@ require __DIR__ . '/../core/bootstrap.php';
 use AgeCMS\{AgeCMSException, AntiSpam, Api, Auth, Config, Http, Logger, Media, NotInstalledException, Security};
 
 try {
+    // Preview of an image in the trash for the signed-in admin: the files live outside the web root.
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && isset($_GET['trash'])) {
+        $actor = Auth::actor();
+        if ($actor === null || !$actor->can('content.write')) {
+            Http::json(['ok' => false, 'error' => 'Authentication required'], 401);
+        }
+        $file = Media::trashedFile((string)$_GET['trash']);
+        if ($file === null) {
+            Http::json(['ok' => false, 'error' => 'Not found'], 404);
+        }
+        header('Content-Type: image/webp');
+        header('Cache-Control: private, no-store');
+        header('Content-Length: ' . filesize($file));
+        readfile($file);
+        exit;
+    }
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         Http::json(['ok' => false, 'error' => 'POST only'], 405);
     }

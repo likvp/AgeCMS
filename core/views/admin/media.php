@@ -48,9 +48,9 @@ $fmt = static fn(int $b): string => $b >= 1048576 ? number_format($b / 1048576, 
                     <span class="actions-row">
                         <button class="btn sm" type="button" data-copy="#u-<?= h(substr($m['name'], 0, 8)) ?>"><?= icon('copy') ?>Адрес</button>
                         <?php if ($canWrite): ?>
-                        <form method="post" class="inline" data-confirm="Удалить картинку?" data-confirm-text="Файл удалится с сайта. Если она встречалась в старых ревизиях, при откате там будет пустое место." data-confirm-ok="Удалить" data-danger>
+                        <form method="post" class="inline" data-confirm="Убрать картинку в корзину?" data-confirm-text="С сайта она пропадёт, но в корзине её можно вернуть." data-confirm-ok="В корзину" data-danger>
                             <?= admin_post_fields($csrf, 'media_delete') ?><input type="hidden" name="name" value="<?= h($m['name']) ?>">
-                            <button class="ib danger" type="submit" title="<?= $used === [] ? 'Удалить' : 'Используется, сначала уберите со страниц' ?>" aria-label="Удалить"<?= $used === [] ? '' : ' disabled' ?>><?= icon('trash') ?></button>
+                            <button class="ib danger" type="submit" title="<?= $used === [] ? 'В корзину' : 'Используется, сначала уберите со страниц' ?>" aria-label="В корзину"<?= $used === [] ? '' : ' disabled' ?>><?= icon('trash') ?></button>
                         </form>
                         <?php endif; ?>
                     </span>

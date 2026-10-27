@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'site_url' => (string)($_POST['site_url'] ?? ''),
             'site_name' => (string)($_POST['site_name'] ?? 'AgeCMS'),
             'admin_user' => (string)($_POST['admin_user'] ?? 'admin'),
+            'admin_email' => (string)($_POST['admin_email'] ?? ''),
             'admin_password' => $own ? (string)($_POST['admin_password'] ?? '') : null,
             'demo' => isset($_POST['demo']),
         ]);
@@ -147,6 +148,7 @@ $self = '/admin/install.php';
         </div></section>
         <section class="panel"><div class="panel-b">
             <label class="f"><span>Логин администратора</span><input class="in" type="text" name="admin_user" value="<?= $h($_POST['admin_user'] ?? 'admin') ?>" required pattern="[A-Za-z0-9_.\-]{3,40}" autocapitalize="none" spellcheck="false"></label>
+            <label class="f"><span>Почта администратора <small>(для восстановления пароля, можно позже)</small></span><input class="in" type="email" name="admin_email" value="<?= $h($_POST['admin_email'] ?? '') ?>" maxlength="120" autocapitalize="none" spellcheck="false" autocomplete="email"></label>
             <div class="f"><span class="lbl">Пароль</span>
                 <label class="chk"><input type="radio" name="password_mode" value="generate" data-pw-mode<?= ($_POST['password_mode'] ?? 'generate') !== 'own' ? ' checked' : '' ?>><span>Создать надёжный пароль и показать его один раз</span></label>
                 <label class="chk"><input type="radio" name="password_mode" value="own" data-pw-mode<?= ($_POST['password_mode'] ?? '') === 'own' ? ' checked' : '' ?>><span>Задать свой <small>(от 10 символов)</small></span></label>

@@ -14,6 +14,7 @@ use PDO;
 final class Content
 {
     public const DELETE_DESC = 'Удаление страницы';
+    public const PURGE_DESC = 'Удаление навсегда';
 
     /**
      * Sets one field of one block. $path is dotted: "h1" or "items.2.title".
@@ -101,6 +102,9 @@ final class Content
     {
         return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $revisionId): array {
             $before = Pages::doc($slug) ?? [];
+            if ($before === [] && Database::value('SELECT action_desc FROM revisions WHERE page_slug = ? ORDER BY id DESC LIMIT 1', [$slug]) === self::PURGE_DESC) {
+                throw new ValidationException(["Page '{$slug}' was deleted for good and cannot be brought back"]);
+            }
             $target = Revisions::stateAt($slug, $revisionId);
             if ($target === []) {
                 throw new ValidationException(["Revision {$revisionId} is the deletion of the page, pick an earlier one or use restore_page"]);
@@ -166,6 +170,28 @@ final class Content
                 throw new ValidationException(["The deleted page no longer fits the current theme schema: " . $e->getMessage()]);
             }
             return self::commit($pdo, $actor, $slug, 'Восстановление страницы', [], $target, true);
+        });
+    }
+
+    /**
+     * Removes a deleted page from the trash for good. The revisions stay: the ledger is append-only and
+     * its hash chain must keep verifying, but the page can no longer be restored from the trash.
+     *
+     * @return array<string,mixed>
+     */
+    public static function purgePage(Actor $actor, string $slug): array
+    {
+        Security::requirePermission($actor, 'system.manage');
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug): array {
+            if (Pages::row($slug) !== null) {
+                throw new ValidationException(["Page '{$slug}' is not in the trash"]);
+            }
+            $last = Database::value('SELECT MAX(id) FROM revisions WHERE page_slug = ?', [$slug]);
+            if ($last === null || Database::value('SELECT action_desc FROM revisions WHERE id = ?', [$last]) !== self::DELETE_DESC) {
+                throw new NotFoundException("Page '{$slug}' is not in the trash");
+            }
+            $revisionId = Revisions::mark($pdo, $slug, $actor, self::PURGE_DESC);
+            return ['slug' => $slug, 'revision_id' => $revisionId, 'changed' => true, 'tags' => [], 'ping' => false];
         });
     }
 

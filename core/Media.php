@@ -89,21 +89,116 @@ final class Media
         return Database::rows('SELECT slug, title FROM pages WHERE blocks_json LIKE ? OR og_image LIKE ? OR canonical_url LIKE ? ORDER BY slug', [$like, $like, $like]);
     }
 
-    /** Deletes an unused image together with its AVIF copy. */
-    public static function delete(string $name): void
+    /** Folder of removed images. It lives in data/, outside the web root, so a removed picture is no longer reachable by address. */
+    public static function trashDir(): string
+    {
+        return AGECMS_DATA . '/media-trash';
+    }
+
+    /** Moves an unused image and its AVIF copy to the trash. Nothing is erased: restore() or purge() decide later. */
+    public static function trash(string $name): void
     {
         self::assertName($name);
         $used = self::usage($name);
         if ($used !== []) {
             throw new ValidationException(['The image is used on: ' . implode(', ', array_map(static fn(array $p): string => '/' . $p['slug'], $used)) . '. Remove it there first.']);
         }
-        $base = self::dir() . '/' . substr($name, 0, -5);
-        if (!is_file($base . '.webp')) {
+        $base = substr($name, 0, -5);
+        if (!is_file(self::dir() . '/' . $base . '.webp')) {
             throw new NotFoundException('Image not found');
         }
-        @unlink($base . '.webp');
-        @unlink($base . '.avif');
-        Logger::log('info', 'media.deleted', ['name' => $name]);
+        self::ensureTrashDir();
+        foreach (['webp', 'avif'] as $ext) {
+            self::move(self::dir() . "/{$base}.{$ext}", self::trashDir() . "/{$base}.{$ext}");
+        }
+        Logger::log('info', 'media.trashed', ['name' => $name]);
+    }
+
+    /**
+     * Images in the trash, most recently removed first.
+     *
+     * @return list<array{name:string,size:int,time:int}>
+     */
+    public static function trashed(): array
+    {
+        $items = [];
+        foreach (glob(self::trashDir() . '/*.webp') ?: [] as $file) {
+            $name = basename($file);
+            if (preg_match('/^[a-f0-9]{20}\.webp$/', $name) !== 1) {
+                continue;
+            }
+            $avif = substr($file, 0, -5) . '.avif';
+            $items[] = ['name' => $name, 'size' => (int)filesize($file) + (is_file($avif) ? (int)filesize($avif) : 0), 'time' => (int)filemtime($file)];
+        }
+        usort($items, static fn(array $a, array $b): int => $b['time'] <=> $a['time'] ?: strcmp($a['name'], $b['name']));
+        return $items;
+    }
+
+    /** Path of a trashed WebP for the admin preview, or null. */
+    public static function trashedFile(string $name): ?string
+    {
+        self::assertName($name);
+        $path = self::trashDir() . '/' . $name;
+        return is_file($path) ? $path : null;
+    }
+
+    /** Puts an image back where it was. The same address works again on every page that used it. */
+    public static function restore(string $name): void
+    {
+        self::assertName($name);
+        $base = substr($name, 0, -5);
+        if (!is_file(self::trashDir() . "/{$base}.webp")) {
+            throw new NotFoundException('Image is not in the trash');
+        }
+        if (!is_dir(self::dir()) && !@mkdir(self::dir(), 0755, true) && !is_dir(self::dir())) {
+            throw new AgeCMSException('Cannot create ' . self::dir());
+        }
+        foreach (['webp', 'avif'] as $ext) {
+            $from = self::trashDir() . "/{$base}.{$ext}";
+            $to = self::dir() . "/{$base}.{$ext}";
+            if (!is_file($from)) {
+                continue;
+            }
+            // The same picture may have been uploaded again meanwhile: the name is the content hash, so the copy is identical.
+            is_file($to) ? @unlink($from) : self::move($from, $to);
+            @chmod($to, 0644);
+        }
+        Logger::log('info', 'media.restored', ['name' => $name]);
+    }
+
+    /** Erases an image from the trash for good. */
+    public static function purge(string $name): void
+    {
+        self::assertName($name);
+        $base = substr($name, 0, -5);
+        if (!is_file(self::trashDir() . "/{$base}.webp")) {
+            throw new NotFoundException('Image is not in the trash');
+        }
+        @unlink(self::trashDir() . "/{$base}.webp");
+        @unlink(self::trashDir() . "/{$base}.avif");
+        Logger::log('info', 'media.purged', ['name' => $name]);
+    }
+
+    private static function ensureTrashDir(): void
+    {
+        $dir = self::trashDir();
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            throw new AgeCMSException("Cannot create {$dir}");
+        }
+    }
+
+    private static function move(string $from, string $to): void
+    {
+        if (!is_file($from)) {
+            return;
+        }
+        if (!@rename($from, $to)) {
+            if (!@copy($from, $to)) {
+                throw new AgeCMSException("Cannot move {$from}");
+            }
+            @unlink($from);
+        }
+        @touch($to);
     }
 
     private static function assertName(string $name): void
