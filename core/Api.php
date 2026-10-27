@@ -84,9 +84,9 @@ final class Api
             'update_block_data' => Queue::submit($actor, 'update_block_data', [
                 'slug' => self::string($args, 'slug'), 'block_id' => self::string($args, 'block_id'), 'payload' => self::object($args, 'payload'),
             ]),
-            'create_page' => Queue::submit($actor, 'create_page', ['slug' => self::string($args, 'slug'), 'fields' => self::object($args, 'fields')]),
+            'create_page' => Queue::submit($actor, 'create_page', self::pageArgs($args)),
             'batch_create_pages' => self::batchCreate($actor, $args),
-            'update_page' => Queue::submit($actor, 'update_page', ['slug' => self::string($args, 'slug'), 'fields' => self::object($args, 'fields')]),
+            'update_page' => Queue::submit($actor, 'update_page', self::pageArgs($args)),
             'rename_page' => Queue::submit($actor, 'rename_page', ['slug' => self::string($args, 'slug'), 'new_slug' => self::string($args, 'new_slug')]),
             'delete_page' => Queue::submit($actor, 'delete_page', ['slug' => self::string($args, 'slug')]),
             'restore_page' => Queue::submit($actor, 'restore_page', ['slug' => self::string($args, 'slug')]),
@@ -160,6 +160,21 @@ final class Api
     }
 
     /** @param array<string,mixed> $args */
+    /**
+     * slug plus fields for create_page and update_page. A page field given next to the slug instead of inside
+     * `fields` (is_published, title, blocks...) is refused: silently dropping it once published a page meant to stay hidden.
+     *
+     * @return array{slug:string,fields:array<string,mixed>}
+     */
+    private static function pageArgs(array $args): array
+    {
+        $misplaced = array_values(array_intersect(array_keys($args), ['title', 'parent_slug', 'meta_title', 'meta_description', 'canonical_url', 'og_image', 'is_noindex', 'is_published', 'sort_order', 'schema_type', 'theme', 'blocks']));
+        if ($misplaced !== []) {
+            throw new ValidationException(["Put " . implode(', ', $misplaced) . " inside 'fields', next to the slug is not read: {\"slug\": \"...\", \"fields\": {\"" . $misplaced[0] . "\": ...}}"]);
+        }
+        return ['slug' => self::string($args, 'slug'), 'fields' => self::object($args, 'fields')];
+    }
+
     private static function string(array $args, string $key): string
     {
         $value = $args[$key] ?? null;

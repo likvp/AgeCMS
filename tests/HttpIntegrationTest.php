@@ -622,6 +622,15 @@ final class HttpIntegrationTest extends TestCase
         $this->rpc($token, ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'create_page', 'params' => ['slug' => 'copy-test-2', 'fields' => ['title' => 'Копия 2']]]);
         clearstatcache();
         $this->assertSame($before + 1, count(glob(AGECMS_DATA . '/backups/agecms-auto-*') ?: []), 'one copy per session, not per edit');
+        // a page field next to the slug is refused, not silently dropped (it once published a page meant to stay hidden)
+        $bad = $this->http('POST', '/admin/api.php', json_encode(['action' => 'create_page', 'slug' => 'misplaced', 'is_published' => false, 'fields' => ['title' => 'X']]), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
+        $this->assertSame(422, $bad['status']);
+        $this->assertContains("inside 'fields'", $bad['body']);
+        $this->assertSame(null, Database::row("SELECT slug FROM pages WHERE slug = 'misplaced'"), 'nothing was created');
+        $ok = $this->http('POST', '/admin/api.php', json_encode(['action' => 'create_page', 'slug' => 'hidden-one', 'fields' => ['title' => 'Скрытая', 'is_published' => false, 'blocks' => [['id' => 'intro', 'type' => 'text', 'data' => ['heading' => 'Скрытая', 'body' => 'Текст.']]]]]), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
+        $this->assertSame(200, $ok['status'], $ok['body']);
+        $this->assertSame(0, (int)Database::value("SELECT is_published FROM pages WHERE slug = 'hidden-one'"));
+        $this->assertSame(404, $this->http('GET', '/hidden-one')['status'], 'a hidden page is not public');
         $page = $this->http('GET', '/admin/?s=system', null, [], true)['body'];
         $this->assertContains('перед правкой агента', $page);
 
