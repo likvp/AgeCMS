@@ -19,6 +19,7 @@ AddDefaultCharset UTF-8
     RewriteRule ^modules/ - [R=404,L]
     RewriteRule (^|/)\.(?!well-known/) - [R=404,L]
     RewriteRule ^(composer\.(json|lock)|phpunit\.xml.*)$ - [R=404,L]
+    RewriteRule ^(LICENSE|README\.md|CONTRIBUTING\.md|ROADMAP\.md|HOSTER_INTEGRATION_WHITEPAPER\.md|nginx\.vhost\.example)$ - [R=404,L]
 
     # Direct requests for cache files are refused, the public URL is the page URL (THE_REQUEST is the client's own line).
     RewriteCond %{THE_REQUEST} \s/assets/cache/

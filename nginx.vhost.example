@@ -29,6 +29,7 @@ server {
 
     # Internals are never served.
     location ~ ^/(data|core|bin|tests|bench|docs|modules)(/|$) { return 404; }
+    location ~ ^/(LICENSE|README\.md|CONTRIBUTING\.md|ROADMAP\.md|HOSTER_INTEGRATION_WHITEPAPER\.md|nginx\.vhost\.example)$ { return 404; }
     location ~ /\.(?!well-known/) { return 404; }
 
     # Cache files are reachable only through the internal try_files redirect below.
@@ -59,8 +60,18 @@ server {
     }
 
     location = /index { rewrite ^ /index.php last; }
-    location = / { try_files $agecms_cache_dir/index.html @agecms; }
-    location / { try_files $agecms_cache_dir$uri.html $uri @agecms; }
+    # Shadow cache hit: an internal redirect into the location above, so the file is sent with its headers.
+    # (try_files serves a file in the current location, which would drop Cache-Control and X-AgeCMS-Cache.)
+    location = / {
+        set $agecms_file $agecms_cache_dir/index.html;
+        if (-f $document_root$agecms_file) { rewrite ^ $agecms_file last; }
+        try_files /agecms-no-such-file @agecms;
+    }
+    location / {
+        set $agecms_file $agecms_cache_dir$uri.html;
+        if (-f $document_root$agecms_file) { rewrite ^ $agecms_file last; }
+        try_files $uri @agecms;
+    }
 
     location @agecms {
         include fastcgi_params;
