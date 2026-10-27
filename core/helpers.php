@@ -23,8 +23,14 @@ function ag_edit(string $field, bool $multiline = false): string
     return ' data-ag-slug="' . ag_e($ctx['slug']) . '" data-ag-block="' . ag_e($ctx['block']) . '" data-ag-field="' . ag_e($field) . '"' . ($multiline ? ' data-ag-multi' : '');
 }
 
+/** CSRF field of the admin for a form on an admin page of a module (see ModuleAdmin). Put it inside the <form>. */
+function ag_admin_csrf_field(): string
+{
+    return '<input type="hidden" name="csrf" value="' . ag_e(\AgeCMS\Auth::csrf()) . '">';
+}
+
 /**
- * Hidden form fields for a form that a module posts to its own route: the signed fill-time token the core checks
+ * Hidden form fields for a form that a module posts to its own route (see ModuleRoutes): the signed fill-time token the core checks
  * on every POST to a module address. Put it inside the <form>; the page of the module is never cached.
  */
 function ag_module_form_fields(): string

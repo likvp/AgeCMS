@@ -10,14 +10,15 @@ final class ModuleFixture
      * @param list<array<string,mixed>> $routes routes for the manifest
      * @param array<string,string> $migrations file name (migrations/001_x.sql) => SQL
      * @param array<string,mixed> $extra more manifest keys
+     * @param list<array<string,mixed>>|null $admin admin pages for the manifest (makes it an AdminModuleInterface)
      * @param list<array<string,string>>|null $sitemap addresses the module offers for sitemap.xml (makes it a SitemapModuleInterface)
      */
-    public static function make(string $name, array $routes = [], array $migrations = [], array $extra = [], bool $routed = true, ?array $sitemap = null): string
+    public static function make(string $name, array $routes = [], array $migrations = [], array $extra = [], bool $routed = true, ?array $sitemap = null, ?array $admin = null): string
     {
         $dir = AGECMS_MODULES . '/' . $name;
         mkdir($dir . '/migrations', 0700, true);
         mkdir($dir . '/skills', 0700, true);
-        $interface = $sitemap !== null ? 'SitemapModuleInterface' : ($routed ? 'RoutedModuleInterface' : 'ModuleInterface');
+        $interface = $admin !== null ? 'AdminModuleInterface' : ($sitemap !== null ? 'SitemapModuleInterface' : ($routed ? 'RoutedModuleInterface' : 'ModuleInterface'));
         $code = <<<'PHP'
 <?php
 declare(strict_types=1);
@@ -65,13 +66,37 @@ PHP;
         if ($sitemap !== null) {
             $handle .= "\n\n    public function sitemapUrls(): iterable\n    {\n        return " . var_export($sitemap, true) . ";\n    }\n";
         }
-        $code = str_replace('__HANDLE__', $routed ? $handle : '', $code);
+        if ($admin !== null) {
+            $handle = <<<'PHP'
+
+    public function handleAdmin(ModuleRequest $request, Actor $actor): ModuleResponse
+    {
+        $name = '__NAME__';
+        $base = "/admin/m/{$name}";
+        return match ($request->path) {
+            "{$base}/" => ModuleResponse::html('Страница <модуля>', '<form method="post" action="' . $base . '/save">' . ag_admin_csrf_field() . '<input name="v"></form><p class="mod-admin">who ' . htmlspecialchars($actor->name) . ' ' . htmlspecialchars($actor->role) . '</p>'),
+            "{$base}/save" => ModuleResponse::json(['ok' => true, 'fields' => array_keys($request->body), 'v' => $request->body['v'] ?? null, 'actor' => $actor->name, 'cookies' => $request->cookies, 'module' => $request->module]),
+            "{$base}/item/{$request->param('id')}" => ModuleResponse::html('Позиция', '<p class="mod-aitem">item ' . htmlspecialchars($request->param('id')) . '</p>'),
+            "{$base}/go" => ModuleResponse::redirect("{$base}/"),
+            "{$base}/evil" => ModuleResponse::redirect('/admin/?s=users'),
+            "{$base}/evil2" => ModuleResponse::redirect('https://evil.example/'),
+            "{$base}/cookie" => ModuleResponse::html('Печенье', '<p>x</p>')->withCookie('sid', 'abc', 60),
+            "{$base}/boom" => throw new \RuntimeException('secret trace detail'),
+            default => ModuleResponse::html('Пусто', '<p>empty</p>', 404),
+        };
+    }
+PHP;
+        }
+        $code = str_replace('__HANDLE__', ($routed || $admin !== null) ? $handle : '', $code);
         file_put_contents($dir . '/Module.php', str_replace(['__NAME__', '__IFACE__'], [$name, $interface], $code));
         file_put_contents($dir . '/skills/ping.json', json_encode(['name' => 'ping', 'description' => 'Ping', 'permission' => 'skills.run']));
 
         $manifest = ['name' => $name, 'version' => '1.0.0', 'title' => $name, 'entry' => 'Module.php', 'class' => "AgeCMS\\Modules\\{$name}\\Module"] + $extra;
         if ($routes !== []) {
             $manifest['routes'] = $routes;
+        }
+        if ($admin !== null) {
+            $manifest['admin'] = $admin;
         }
         file_put_contents($dir . '/manifest.json', json_encode($manifest, JSON_UNESCAPED_SLASHES));
         foreach ($migrations as $file => $sql) {

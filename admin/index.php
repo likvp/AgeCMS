@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug};
+use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -29,10 +29,13 @@ $newPassword = null;
 $newAgent = null;
 $notice = '';
 $user = Auth::user();
+// Set by the router for /admin/m/<module>/...: a page that a module declared in its manifest (ModuleAdmin).
+$adminModule = $GLOBALS['AGECMS_ADMIN_MODULE'] ?? null;
+$moduleReply = null;
 $section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'trash', 'menus', 'settings', 'history', 'leads', 'users', 'system', 'forgot', 'reset'], true) ? (string)$_GET['s'] : 'overview';
 
 try {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminModule === null) {
         $action = (string)($_POST['action'] ?? '');
         if ($action === 'login') {
             if (Auth::login((string)($_POST['username'] ?? ''), (string)($_POST['password'] ?? '')) === null) {
@@ -333,6 +336,42 @@ $user = Auth::user();
 if ($user !== null && in_array($section, ['forgot', 'reset'], true)) {
     $section = 'overview';
 }
+if ($adminModule !== null) {
+    $section = 'module';
+    if ($user === null) {
+        // Not signed in: no page of any module is shown, a person is sent to the sign-in, anything else is refused.
+        if (in_array($_SERVER['REQUEST_METHOD'], ['GET', 'HEAD'], true)) {
+            header('Location: /admin/');
+        } else {
+            http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo "Sign in first\n";
+        }
+        exit;
+    }
+    $method = $_SERVER['REQUEST_METHOD'];
+    if (!AntiSpam::rateLimit('admmod:' . (int)$user['id'], 300, 60)) {
+        $moduleReply = \AgeCMS\ModuleResponse::html('Слишком много запросов', '<div class="notice error">Подождите минуту и повторите.</div>', 429);
+    } elseif ($method === 'POST' && !Auth::checkCsrf($_POST['csrf'] ?? null)) {
+        $moduleReply = \AgeCMS\ModuleResponse::html('Сессия устарела', '<div class="notice error">Сессия устарела, обновите страницу и повторите.</div>', 403);
+    } else {
+        $input = $_POST;
+        unset($input['csrf']);
+        $moduleReply = \AgeCMS\ModuleAdmin::run($adminModule, $method, (string)$adminModule['path'], $_GET, $input, Auth::actor());
+    }
+    if ($moduleReply->kind === 'redirect') {
+        http_response_code($moduleReply->status);
+        header('Location: ' . $moduleReply->body);
+        exit;
+    }
+    if ($moduleReply->kind === 'json') {
+        http_response_code($moduleReply->status);
+        header('Content-Type: application/json; charset=utf-8');
+        echo $moduleReply->body;
+        exit;
+    }
+    http_response_code($moduleReply->status);
+}
 
 /** @param mixed $v */
 function h($v): string
@@ -408,7 +447,7 @@ if ($user === null) {
     $csrf = Auth::csrf();
     $isAdmin = Security::can($user['role'], 'system.manage');
     $canWrite = Security::can($user['role'], 'content.write');
-    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword', 'newAgent'));
+    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword', 'newAgent', 'adminModule', 'moduleReply'));
 }
 ?>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>

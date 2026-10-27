@@ -35,6 +35,10 @@ final class Router
             self::send(400, 'text/plain; charset=utf-8', "Bad request\n");
         }
 
+        if (str_starts_with($path, ModuleAdmin::PREFIX)) {
+            ModuleAdmin::serve($method, $path);
+        }
+
         if ($method === 'POST') {
             match ($path) {
                 '/_/lead' => self::lead(),

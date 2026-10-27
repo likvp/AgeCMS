@@ -11,7 +11,7 @@ use Throwable;
  * when a listed file changed, or when an executable file exists that the manifest does not list.
  * Signatures: hmac-sha256 with the site's own key (modules signed on this server by bin/sign-module.php),
  * or ed25519 with a publisher key listed in config trusted_publishers (modules from outside).
- * A verified module may also declare "routes" (ModuleRoutes) and "migrations" (ModuleMigrator) in its manifest.
+ * A verified module may also declare "routes" (ModuleRoutes), "admin" pages (ModuleAdmin) and "migrations" (ModuleMigrator) in its manifest.
  */
 final class SkillRegistry
 {
@@ -52,6 +52,7 @@ final class SkillRegistry
             }
         }
         ModuleRoutes::validateAll(self::$modules);
+        ModuleAdmin::validateAll(self::$modules);
         return self::$modules;
     }
 
@@ -71,6 +72,9 @@ final class SkillRegistry
                 $instance = self::instance($name);
                 if (($info['manifest']['routes'] ?? []) !== [] && !$instance instanceof RoutedModuleInterface) {
                     throw new AgeCMSException("Module {$name} declares routes but does not implement RoutedModuleInterface");
+                }
+                if (($info['manifest']['admin'] ?? []) !== [] && !$instance instanceof AdminModuleInterface) {
+                    throw new AgeCMSException("Module {$name} declares admin pages but does not implement AdminModuleInterface");
                 }
                 $instance->register();
             } catch (Throwable $e) {
@@ -135,6 +139,20 @@ final class SkillRegistry
         $instance = self::instance($name);
         if (!$instance instanceof RoutedModuleInterface) {
             throw new AgeCMSException("Module {$name} does not implement RoutedModuleInterface");
+        }
+        return $instance;
+    }
+
+    /** The module that answers its admin pages. Only a verified, migrated module is returned. */
+    public static function admin(string $name): AdminModuleInterface
+    {
+        self::boot();
+        if ((self::modules()[$name]['status'] ?? '') !== 'ok') {
+            throw new NotFoundException("Module {$name} is not available");
+        }
+        $instance = self::instance($name);
+        if (!$instance instanceof AdminModuleInterface) {
+            throw new AgeCMSException("Module {$name} does not implement AdminModuleInterface");
         }
         return $instance;
     }

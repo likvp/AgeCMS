@@ -10,6 +10,8 @@
  * @var string $newToken
  * @var array<string,string>|null $newPassword
  * @var array<string,mixed>|null $newAgent
+ * @var array<string,mixed>|null $adminModule
+ * @var \AgeCMS\ModuleResponse|null $moduleReply
  */
 defined('AGECMS_BOOTED') || exit;
 
@@ -32,6 +34,7 @@ if ($isAdmin) {
     $nav[] = ['settings', 'Настройки', 'gear-six', null];
 }
 $nav[] = ['system', 'Система', 'terminal-window', null];
+$moduleNav = \AgeCMS\ModuleAdmin::menu((string)$user['role']);
 $active = $section === 'edit' ? 'pages' : $section;
 $roleNames = ['admin' => 'Администратор', 'editor' => 'Редактор', 'viewer' => 'Наблюдатель'];
 ?>
@@ -43,6 +46,12 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
             <?php foreach ($nav as [$key, $label, $ico, $count]): ?>
                 <a href="<?= h(admin_url($key)) ?>"<?= $active === $key ? ' aria-current="page"' : '' ?>><?= icon($ico) ?><span><?= h($label) ?></span><?php if ($count): ?><span class="count"><?= (int)$count ?></span><?php endif; ?></a>
             <?php endforeach; ?>
+            <?php if ($moduleNav !== []): ?>
+                <div class="nav-sep"></div>
+                <?php foreach ($moduleNav as [$label, $href, $id]): ?>
+                    <a href="<?= h($href) ?>"<?= $adminModule !== null && $id === $adminModule['page']['module'] . '|' . $adminModule['page']['path'] ? ' aria-current="page"' : '' ?>><?= icon('squares-four') ?><span><?= h($label) ?></span></a>
+                <?php endforeach; ?>
+            <?php endif; ?>
             <div class="nav-sep"></div>
             <a href="/" target="_blank" rel="noopener"><?= icon('arrow-up-right') ?><span>Открыть сайт</span></a>
         </nav>
@@ -55,7 +64,7 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
             <div class="who">
                 <a class="who-link" href="<?= h(admin_url('users')) ?>" title="Профиль и пароль"><span class="avatar" aria-hidden="true"><?= h(mb_strtoupper(mb_substr((string)$user['username'], 0, 1))) ?></span>
                 <span class="nm"><b><?= h($user['username']) ?></b><small><?= h($roleNames[$user['role']] ?? $user['role']) ?></small></span></a>
-                <form method="post" class="inline"><?= admin_post_fields($csrf, 'logout') ?><button class="ib" type="submit" title="Выйти" aria-label="Выйти"><?= icon('sign-out') ?></button></form>
+                <form method="post" action="/admin/" class="inline"><?= admin_post_fields($csrf, 'logout') ?><button class="ib" type="submit" title="Выйти" aria-label="Выйти"><?= icon('sign-out') ?></button></form>
             </div>
         </div>
     </aside>
@@ -94,14 +103,16 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
                 <div class="notice error" role="alert"><?= icon('snowflake') ?><div>
                     <p><b>Запись заморожена предохранителем</b> с <?= h($frozen['since']) ?>: <?= h($frozen['reason']) ?></p>
                     <?php if ($isAdmin): ?>
-                        <form method="post"><?= admin_post_fields($csrf, 'unfreeze') ?><button class="btn sm" type="submit">Разморозить запись</button></form>
+                        <form method="post" action="/admin/"><?= admin_post_fields($csrf, 'unfreeze') ?><button class="btn sm" type="submit">Разморозить запись</button></form>
                     <?php else: ?><p>Разморозить может администратор.</p><?php endif; ?>
                 </div></div>
             <?php endif; ?>
             <div class="enter">
             <?php
             $vars = compact('user', 'csrf', 'isAdmin', 'canWrite');
-            if ($section === 'settings' && !$isAdmin) {
+            if ($section === 'module') {
+                admin_view('module', $vars + ['reply' => $moduleReply, 'moduleName' => (string)$adminModule['page']['module']]);
+            } elseif ($section === 'settings' && !$isAdmin) {
                 echo '<div class="notice error">' . icon('lock-key') . '<div>Нужна роль администратора.</div></div>';
             } else {
                 admin_view($section, $vars);
