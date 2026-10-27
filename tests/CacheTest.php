@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use AgeCMS\{Cache, Content, Database, Renderer};
+use AgeCMS\{Cache, Content, Database, Renderer, Theme};
 
 final class CacheTest extends TestCase
 {
@@ -106,6 +106,39 @@ final class CacheTest extends TestCase
         $this->assertSame('a/b', Cache::slugForPath('/a/b/'));
         foreach (['/../etc/passwd', '/a//b', '/A', '/a b', '/.htaccess', '/a/../b'] as $path) {
             $this->assertSame(null, Cache::slugForPath($path), $path);
+        }
+    }
+
+    public function testThemeCachePagesDropEveryPageWhenTheSharedPageChanges(): void
+    {
+        $this->freshSite();
+        $name = 'zz_cache_test';
+        $dir = AGECMS_ROOT . '/themes/' . $name;
+        TestEnv::remove($dir);
+        mkdir($dir, 0755, true);
+        copy(AGECMS_ROOT . '/themes/default/layout.php', $dir . '/layout.php');
+        $manifest = json_decode((string)file_get_contents(AGECMS_ROOT . '/themes/default/theme.json'), true, 512, JSON_THROW_ON_ERROR);
+        $manifest['name'] = $name;
+        $manifest['cache_pages'] = ['contacts', 'contacts', 'Bad Slug', 'admin/x', 7];
+        file_put_contents($dir . '/theme.json', json_encode($manifest, JSON_THROW_ON_ERROR));
+        mkdir($dir . '/blocks');
+        copy(AGECMS_ROOT . '/themes/default/blocks/hero.php', $dir . '/blocks/hero.php');
+        try {
+            $this->assertSame(['contacts'], Theme::cachePages($name), 'only valid unique slugs');
+            $this->assertSame([], Theme::cachePages('default'), 'the field is optional');
+
+            $this->createPage('contacts');
+            $this->createPage('a', ['theme' => $name]);
+            $this->createPage('plain');
+            $this->warm('a');
+            $this->warm('plain');
+            $this->assertTrue(in_array('page:contacts', array_column(Database::rows('SELECT tag FROM cache_tags WHERE slug = ?', ['a']), 'tag'), true));
+
+            Content::updateBlockField($this->admin(), 'contacts', 'hero_1', 'h1', 'New phone');
+            $this->assertSame(false, is_file(Cache::fileFor('a')), 'the page of the theme is rebuilt after the shared page changed');
+            $this->assertTrue(is_file(Cache::fileFor('plain')), 'pages of other themes stay cached');
+        } finally {
+            TestEnv::remove($dir);
         }
     }
 }

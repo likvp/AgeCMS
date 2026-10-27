@@ -48,6 +48,10 @@ final class Renderer
         foreach (Pages::ancestors($slug) as $ancestor) {
             $tags[] = 'page:' . $ancestor;
         }
+        foreach (Theme::cachePages($theme) as $shared) {
+            $tags[] = 'page:' . $shared;
+        }
+        $tags = array_values(array_unique($tags));
 
         $settings = Seo::settings();
         $html = self::layout($theme, [

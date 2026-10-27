@@ -45,6 +45,27 @@ final class Theme
         return self::manifest($name)['blocks'] ?? [];
     }
 
+    /**
+     * Pages whose content the layout shows on every page (a phone number or an address in the header, for example).
+     * Listed in theme.json as "cache_pages"; invalid entries are skipped. Editing such a page drops every cached page.
+     *
+     * @return list<string>
+     */
+    public static function cachePages(string $name): array
+    {
+        $list = self::manifest($name)['cache_pages'] ?? [];
+        if (!is_array($list)) {
+            return [];
+        }
+        $slugs = [];
+        foreach ($list as $slug) {
+            if (is_string($slug) && Pages::slugValid($slug)) {
+                $slugs[$slug] = true;
+            }
+        }
+        return array_keys($slugs);
+    }
+
     /** @return list<string> */
     public static function all(): array
     {
