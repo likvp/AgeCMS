@@ -82,7 +82,7 @@ curl -s https://example.com/admin/api.php -H "Content-Type: application/json" \
 ## Тесты и замеры
 
 ```bash
-php tests/run.php          # 129 тестов, около 35 секунд, песочница во временной папке
+php tests/run.php          # 130 тестов, около 35 секунд, песочница во временной папке
 php bench/shadow_cache_bench.php
 ```
 

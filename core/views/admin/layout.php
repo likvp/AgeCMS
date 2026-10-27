@@ -16,6 +16,8 @@ defined('AGECMS_BOOTED') || exit;
 use AgeCMS\{CircuitBreaker, Database, Media, Pages};
 
 $frozen = CircuitBreaker::frozenInfo();
+// Agent tokens that run out within a week (or already did while still in use): the owner hears about it here, not only the agent.
+$expiring = $isAdmin ? Database::rows("SELECT name, expires_at FROM api_tokens WHERE revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at < ? AND last_used_at IS NOT NULL AND last_used_at >= ? ORDER BY expires_at", [gmdate('Y-m-d\\TH:i:s\\Z', time() + 7 * 86400), gmdate('Y-m-d\\TH:i:s\\Z', time() - 30 * 86400)]) : [];
 $nav = [
     ['overview', 'Обзор', 'squares-four', null],
     ['pages', 'Страницы', 'file-text', Pages::count()],
@@ -79,6 +81,13 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
                     <?= $newAgent['kind'] === 'invite' ? 'Код сработает один раз и действует ' . (int)$newAgent['hours'] . ' ч.' : 'Пароль нигде не сохраняется открытым.' ?></p>
                     <pre class="agent-text" id="new-agent"><?= h($newAgent['text']) ?></pre>
                     <p><button class="btn sm" type="button" data-copy="#new-agent"><?= icon('copy') ?>Копировать текст</button></p>
+                </div></div>
+            <?php endif; ?>
+            <?php if ($expiring !== []): ?>
+                <div class="notice warn" role="status"><?= icon('clock-counter-clockwise') ?><div>
+                    <p><b>Скоро заканчивается токен агента:</b>
+                    <?php foreach ($expiring as $i => $t): $left = (int)ceil((strtotime($t['expires_at']) - time()) / 86400); ?><?= $i > 0 ? ', ' : ' ' ?><?= h($t['name']) ?> (<?= $left > 0 ? 'ещё ' . $left . ' дн.' : 'уже закончился' ?>)<?php endforeach; ?>.
+                    Чтобы агент не потерял доступ, получите новый текст для него в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>».</p>
                 </div></div>
             <?php endif; ?>
             <?php if ($frozen !== null): ?>

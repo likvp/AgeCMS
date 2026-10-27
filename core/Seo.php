@@ -48,6 +48,8 @@ final class Seo
             '<meta name="description" content="' . ag_e($description) . '">',
             '<link rel="canonical" href="' . ag_e($canonical) . '">',
             '<meta name="robots" content="' . ((int)$doc['is_noindex'] === 1 ? 'noindex, nofollow' : 'index, follow') . '">',
+            '<meta name="generator" content="AgeCMS">',
+            '<link rel="help" type="text/markdown" href="' . ag_e(self::siteUrl()) . '/AGENT.md" title="Instructions for AI agents that edit this site">',
             '<meta property="og:type" content="website">',
             '<meta property="og:site_name" content="' . ag_e($site) . '">',
             '<meta property="og:title" content="' . ag_e($title) . '">',
@@ -158,7 +160,7 @@ final class Seo
 
     public static function robots(): string
     {
-        return "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /search\nSitemap: " . self::siteUrl() . "/sitemap.xml\n";
+        return "# AI agents that edit this site: read " . self::siteUrl() . "/AGENT.md\nUser-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /search\nSitemap: " . self::siteUrl() . "/sitemap.xml\n";
     }
 
     /** Markdown summary for language models, see https://llmstxt.org */

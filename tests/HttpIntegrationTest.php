@@ -604,6 +604,25 @@ final class HttpIntegrationTest extends TestCase
         $this->assertSame('viewer', Database::value("SELECT role FROM users WHERE username = 'agent-claude-seo-2'"));
     }
 
+    public function testAgentsFindTheInstructionsFromAnyPageAndTheOwnerSeesExpiringTokens(): void
+    {
+        $this->boot();
+        $base = "http://127.0.0.1:{$this->port}";
+        $home = $this->http('GET', '/')['body'];
+        $this->assertContains('<meta name="generator" content="AgeCMS">', $home);
+        $this->assertContains('<link rel="help" type="text/markdown" href="' . $base . '/AGENT.md"', $home, 'a public page points to the instructions');
+        $this->assertContains($base . '/AGENT.md', $this->http('GET', '/robots.txt')['body']);
+
+        $token = Auth::createToken('soon-agent', 'editor', 3);
+        $this->rpc($token, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'get_site_structure', 'params' => []]);
+        Auth::createToken('far-agent', 'editor', 60);
+        $this->adminLogin();
+        $page = $this->http('GET', '/admin/?s=overview', null, [], true)['body'];
+        $this->assertContains('Скоро заканчивается токен агента', $page);
+        $this->assertContains('soon-agent', $page);
+        $this->assertNotContains('far-agent (', $page, 'a token with plenty of time left is not mentioned');
+    }
+
     public function testBlockingAUserStopsTheLoginAndTheTokensOfThatUser(): void
     {
         $this->boot();
