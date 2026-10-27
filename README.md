@@ -70,7 +70,7 @@ curl -s https://example.com/admin/api.php -H "Content-Type: application/json" \
   -d '{"action":"redeem_invite","code":"agi_...","name":"claude-seo"}'
 ```
 
-Токен живёт ограниченный срок (`agent_access.token_days`, по умолчанию 90 дней, предупреждение за неделю в заголовке `X-AgeCMS-Token-Warning` и в `get_site_structure`). Пользователя можно заблокировать: его вход и токены перестают работать. Перед первой правкой агента за сеанс делается копия базы (`backup.before_agent`, последние `backup.keep_auto`). Запасной путь: владелец даёт агенту логин и пароль (в «Пользователях» есть кнопка для отдельного пользователя агента), агент читает `https://example.com/AGENT.md` (адрес указан и в `/llms.txt`, и в ответах 401) и обменивает пару на свой токен:
+Токен живёт ограниченный срок (`agent_access.token_days`, по умолчанию 90 дней, предупреждение за неделю в заголовке `X-AgeCMS-Token-Warning` и в `get_site_structure`). Пользователя можно заблокировать: его вход и токены перестают работать. Перед первой правкой агента за сеанс делается копия базы (`backup.before_agent`, последние `backup.keep_auto`). Запасной путь: владелец даёт агенту логин и пароль, сайт сам заводит агенту отдельного пользователя `agent-<имя>` и выдаёт токен на него (`"own_user": false` отключает) (в «Пользователях» есть кнопка для отдельного пользователя агента), агент читает `https://example.com/AGENT.md` (адрес указан и в `/llms.txt`, и в ответах 401) и обменивает пару на свой токен:
 
 ```bash
 curl -s https://example.com/admin/api.php -H "Content-Type: application/json" \
@@ -82,7 +82,7 @@ curl -s https://example.com/admin/api.php -H "Content-Type: application/json" \
 ## Тесты и замеры
 
 ```bash
-php tests/run.php          # 128 тестов, около 35 секунд, песочница во временной папке
+php tests/run.php          # 129 тестов, около 35 секунд, песочница во временной папке
 php bench/shadow_cache_bench.php
 ```
 

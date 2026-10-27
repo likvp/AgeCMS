@@ -577,6 +577,33 @@ final class HttpIntegrationTest extends TestCase
         $this->assertSame(403, $this->issue(['action' => 'redeem_invite', 'code' => $fresh, 'name' => 'after-guess'])['status'], 'the address is locked after ten misses');
     }
 
+    public function testAnAgentWithTheOwnersLoginGetsAUserOfItsOwn(): void
+    {
+        $this->boot();
+        $res = $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'claude-seo']);
+        $this->assertSame(200, $res['status']);
+        $this->assertSame('agent-claude-seo', $res['json']['result']['user'], 'a separate user named after the agent');
+        $token = $res['json']['result']['token'];
+        $row = Database::row("SELECT id, role FROM users WHERE username = 'agent-claude-seo'");
+        $this->assertSame('editor', $row['role']);
+        $this->assertSame((int)$row['id'], (int)Database::value("SELECT user_id FROM api_tokens WHERE name = 'claude-seo'"), 'the token belongs to the agent user, not to the owner');
+        $this->assertSame(null, Auth::checkCredentials('agent-claude-seo', 'guess-guess-guess'), 'nobody knows the agent user password');
+
+        // the owner stays out of it: blocking the agent user stops the token, the owner still signs in
+        $csrf = $this->adminLogin();
+        $this->assertTrue($csrf !== '', 'the owner is not affected');
+        $call = fn() => $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
+        $this->assertSame(200, $call()['status']);
+        $this->form(['action' => 'user_block', 'id' => (string)$row['id'], 'blocked' => '1'], $csrf);
+        $this->assertSame(401, $call()['status']);
+        $this->assertContains('agent-claude-seo', $this->http('GET', '/admin/?s=users', null, [], true)['body'], 'it is visible in the users list');
+
+        // a second agent with the same stem gets a numbered login
+        $second = $this->issue(['action' => 'issue_token', 'username' => 'admin', 'password' => 'Passw0rd-test-1', 'name' => 'claude-seo-2', 'role' => 'viewer']);
+        $this->assertSame('agent-claude-seo-2', $second['json']['result']['user']);
+        $this->assertSame('viewer', Database::value("SELECT role FROM users WHERE username = 'agent-claude-seo-2'"));
+    }
+
     public function testBlockingAUserStopsTheLoginAndTheTokensOfThatUser(): void
     {
         $this->boot();
@@ -586,7 +613,7 @@ final class HttpIntegrationTest extends TestCase
         preg_match('/Логин: (agent-[a-z0-9]+)/', $made, $l);
         preg_match('/Пароль: (\S+)/', $made, $p);
         $login = $l[1];
-        $got = $this->issue(['action' => 'issue_token', 'username' => $login, 'password' => html_entity_decode($p[1]), 'name' => 'user-agent']);
+        $got = $this->issue(['action' => 'issue_token', 'username' => $login, 'password' => html_entity_decode($p[1]), 'name' => 'user-agent', 'own_user' => false]);
         $this->assertSame(200, $got['status']);
         $token = $got['json']['result']['token'];
         $call = fn() => $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);

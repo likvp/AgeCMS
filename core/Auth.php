@@ -536,11 +536,11 @@ final class Auth
      * An agent exchanges the owner's login and password for its own token, as the instructions at /AGENT.md describe.
      * The role cannot be higher than the user's. The plain token is returned once.
      *
-     * @return array{token:string,role:string,name:string,expires_at:?string}
+     * @return array{token:string,role:string,name:string,user:?string,expires_at:?string}
      * @throws ForbiddenException when the owner switched self-service off, or too many attempts
      * @throws ValidationException on bad name or role, wrong login or password
      */
-    public static function issueTokenForCredentials(string $username, string $password, string $name, string $role = '', ?int $days = null): array
+    public static function issueTokenForCredentials(string $username, string $password, string $name, string $role = '', ?int $days = null, bool $ownUser = true): array
     {
         if (Config::get('agent_access.self_issue', true) !== true) {
             throw new ForbiddenException('self_issue_disabled: the owner switched off self-service tokens. Ask the owner for a token (Admin, System).');
@@ -568,9 +568,30 @@ final class Auth
             throw new ValidationException(["The token name '{$name}' is taken, pick another"]);
         }
         $lifetime = self::tokenDays($days);
-        $token = self::createToken($name, $role, $lifetime, (int)$user['id']);
-        Logger::log('info', 'token.self_issued', ['user' => $user['username'], 'name' => $name, 'role' => $role, 'days' => $lifetime]);
-        return ['token' => $token, 'role' => $role, 'name' => $name, 'expires_at' => $lifetime > 0 ? gmdate('Y-m-d\TH:i:s\Z', time() + $lifetime * 86400) : null];
+        // The agent gets a user of its own (named after it, a random password nobody knows), so the owner's account stays
+        // out of it: blocking or deleting the agent's user stops the agent, the owner's login is untouched.
+        $agentUser = null;
+        $tokenUserId = (int)$user['id'];
+        if ($ownUser) {
+            $agentUser = self::freeAgentLogin($name);
+            $tokenUserId = self::createUser($agentUser, self::generatePassword(), $role);
+        }
+        $token = self::createToken($name, $role, $lifetime, $tokenUserId);
+        Logger::log('info', 'token.self_issued', ['user' => $user['username'], 'agent_user' => $agentUser, 'name' => $name, 'role' => $role, 'days' => $lifetime]);
+        return ['token' => $token, 'role' => $role, 'name' => $name, 'user' => $agentUser, 'expires_at' => $lifetime > 0 ? gmdate('Y-m-d\TH:i:s\Z', time() + $lifetime * 86400) : null];
+    }
+
+    /** Login for an agent's own user: agent-<token name>, numbered when taken. */
+    private static function freeAgentLogin(string $name): string
+    {
+        $base = substr('agent-' . $name, 0, 36);
+        for ($i = 1; $i < 100; $i++) {
+            $login = $i === 1 ? $base : $base . '-' . $i;
+            if (Database::row('SELECT id FROM users WHERE username = ?', [$login]) === null) {
+                return $login;
+            }
+        }
+        return $base . '-' . bin2hex(random_bytes(2));
     }
 
     /**

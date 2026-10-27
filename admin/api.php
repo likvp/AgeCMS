@@ -22,7 +22,7 @@ try {
     if (is_array($body) && in_array($body['action'] ?? null, ['issue_token', 'redeem_invite'], true)) {
         $issued = $body['action'] === 'redeem_invite'
             ? Auth::redeemInvite((string)($body['code'] ?? ''), (string)($body['name'] ?? ''))
-            : Auth::issueTokenForCredentials((string)($body['username'] ?? ''), (string)($body['password'] ?? ''), (string)($body['name'] ?? ''), (string)($body['role'] ?? ''), isset($body['days']) ? (int)$body['days'] : null);
+            : Auth::issueTokenForCredentials((string)($body['username'] ?? ''), (string)($body['password'] ?? ''), (string)($body['name'] ?? ''), (string)($body['role'] ?? ''), isset($body['days']) ? (int)$body['days'] : null, ($body['own_user'] ?? true) !== false);
         $base = Seo::siteUrl();
         Http::json(['ok' => true, 'result' => $issued + [
             'note' => 'The token is shown once. Keep it. Never write it, the password or the code into site content. Check the expiry in expires_at.',
