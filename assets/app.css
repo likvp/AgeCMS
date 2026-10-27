@@ -1,0 +1,84 @@
+:root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --text: #17181c;
+    --muted: #5d6068;
+    --line: #e3e1da;
+    --accent: #e8590c;
+    --accent-text: #ffffff;
+    --radius: 18px;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0f1013;
+        --surface: #181a1f;
+        --text: #f1f1f3;
+        --muted: #9a9ca5;
+        --line: #272a31;
+        --accent: #ff7a2e;
+        --accent-text: #15110d;
+    }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: inherit; }
+h1, h2, h3 { line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 0.5em; }
+h1 { font-size: clamp(2.2rem, 6vw, 4rem); }
+h2 { font-size: clamp(1.6rem, 3.5vw, 2.3rem); }
+h3 { font-size: 1.2rem; }
+.container { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+.narrow { max-width: 760px; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+.site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.site-header .bar { min-height: 64px; }
+.brand { font-weight: 800; text-decoration: none; letter-spacing: -0.02em; }
+.nav { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav a { color: var(--muted); text-decoration: none; font-size: 0.95rem; }
+.nav a:hover { color: var(--text); }
+.site-footer { margin-top: 80px; border-top: 1px solid var(--line); padding: 28px 0; color: var(--muted); font-size: 0.9rem; }
+
+.hero { padding: clamp(56px, 12vw, 140px) 0 clamp(40px, 8vw, 90px); }
+.lead { color: var(--muted); font-size: 1.2rem; max-width: 640px; white-space: pre-line; }
+.btn { display: inline-block; border: 0; cursor: pointer; background: var(--accent); color: var(--accent-text); padding: 14px 28px; border-radius: 999px; font: inherit; font-weight: 700; text-decoration: none; }
+.btn:hover { filter: brightness(1.08); }
+.section { padding: clamp(32px, 6vw, 64px) 0; }
+.prose { white-space: pre-line; }
+
+.bento { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; }
+.tile p { margin: 0; color: var(--muted); white-space: pre-line; }
+.tile-wide { grid-column: span 2; }
+@media (max-width: 620px) { .tile-wide { grid-column: auto; } }
+
+.faq-item { border-bottom: 1px solid var(--line); padding: 14px 0; }
+.faq-item summary { cursor: pointer; font-weight: 700; }
+.faq-item .prose { color: var(--muted); margin-top: 8px; }
+
+.lead-form { display: grid; gap: 12px; margin-top: 20px; }
+.lead-form input, .lead-form textarea { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; }
+.lead-form input:focus, .lead-form textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lead-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.lead-form .btn { justify-self: start; }
+.form-status { min-height: 1.4em; margin: 0; color: var(--muted); }
+.form-status.error { color: #d63031; }
+
+.search-form { display: flex; gap: 10px; margin-bottom: 24px; }
+.search-form input { flex: 1; font: inherit; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: inherit; }
+.results { list-style: none; padding: 0; margin: 0; }
+.results li { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.results p { margin: 4px 0 0; color: var(--muted); }
+
+.ag-bar { position: sticky; top: 0; z-index: 50; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 8px 16px; background: #111; color: #fff; font-size: 0.85rem; }
+.ag-bar a { color: #ffb37a; }
+.ag-bar #ag-status { margin-left: auto; }
+.is-editing [data-ag-field] { outline: 1px dashed rgba(232, 89, 12, 0.5); outline-offset: 3px; cursor: text; min-height: 1em; }
+.is-editing [data-ag-field]:hover, .is-editing [data-ag-field]:focus { outline: 2px solid var(--accent); }
+.is-editing [data-ag-field].ag-saving { outline-color: #f1c40f; }
+.is-editing [data-ag-field].ag-error { outline-color: #d63031; }

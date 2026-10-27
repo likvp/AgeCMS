@@ -1,0 +1,48 @@
+# AgeCMS routing for Apache (mod_rewrite, mod_headers). Install in the document root.
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+AddDefaultCharset UTF-8
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. Internals are never served.
+    RewriteRule ^(data|core|bin|tests|bench|docs)(/|$) - [R=404,L]
+    RewriteRule ^modules/ - [R=404,L]
+    RewriteRule (^|/)\.(?!well-known/) - [R=404,L]
+    RewriteRule ^(composer\.(json|lock)|phpunit\.xml.*)$ - [R=404,L]
+
+    # Direct requests for cache files are refused, the public URL is the page URL (THE_REQUEST is the client's own line).
+    RewriteCond %{THE_REQUEST} \s/assets/cache/
+    RewriteRule ^ - [R=404,L]
+
+    # 2. /index is a duplicate of / and is redirected by PHP.
+    RewriteRule ^index$ index.php [L]
+
+    # 3. Shadow cache hit: a rendered copy exists, PHP is never started.
+    #    Only plain GETs without a query string and without the admin marker cookie.
+    RewriteCond %{REQUEST_METHOD} =GET
+    RewriteCond %{QUERY_STRING} ^$
+    RewriteCond %{HTTP_COOKIE} !(^|;\s*)agecms_admin=
+    RewriteCond %{DOCUMENT_ROOT}/assets/cache/$1.html -f
+    RewriteRule ^([a-z0-9][a-z0-9_/-]*)$ assets/cache/$1.html [L]
+
+    RewriteCond %{REQUEST_METHOD} =GET
+    RewriteCond %{QUERY_STRING} ^$
+    RewriteCond %{HTTP_COOKIE} !(^|;\s*)agecms_admin=
+    RewriteCond %{DOCUMENT_ROOT}/assets/cache/index.html -f
+    RewriteRule ^$ assets/cache/index.html [L]
+
+    # 4. Everything that is not a real file goes to the front controller.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>

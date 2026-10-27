@@ -1,0 +1,10 @@
+# Rendered pages are served through the rewrite in the root .htaccess.
+# Direct requests for /assets/cache/... are refused: the public URL is the page URL.
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=0, must-revalidate"
+    Header set X-AgeCMS-Cache "hit"
+</IfModule>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+RemoveHandler .php .phtml .php5

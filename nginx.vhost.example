@@ -1,0 +1,85 @@
+# AgeCMS on nginx + PHP-FPM. Copy to /etc/nginx/sites-available/, adjust server_name, root and the FPM socket.
+# Shadow cache: for a plain GET (no query string, no admin cookie) nginx looks for assets/cache/<slug>.html
+# first and answers from disk in about a millisecond. PHP only runs on a cache miss, for forms, admin and API.
+
+map $http_cookie $agecms_admin {
+    default 0;
+    "~*(^|;\s*)agecms_admin=" 1;
+}
+# $is_args is "?" when there is a query string, so the key below means: GET, no query, not admin.
+map "$request_method:$is_args:$agecms_admin" $agecms_cache_dir {
+    default      /assets/cache-off;
+    "GET::0"     /assets/cache;
+    "HEAD::0"    /assets/cache;
+}
+
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/agecms;
+    index index.php;
+    charset utf-8;
+    client_max_body_size 12m;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
+
+    # Internals are never served.
+    location ~ ^/(data|core|bin|tests|bench|docs|modules)(/|$) { return 404; }
+    location ~ /\.(?!well-known/) { return 404; }
+
+    # Cache files are reachable only through the internal try_files redirect below.
+    location ^~ /assets/cache/ {
+        internal;
+        default_type text/html;
+        add_header Cache-Control "public, max-age=0, must-revalidate" always;
+        add_header X-AgeCMS-Cache "hit" always;
+        # add_header in a location replaces the inherited ones, so repeat the security headers here.
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
+    }
+
+    location ^~ /assets/uploads/ {
+        location ~ \.php$ { return 404; }
+        expires 30d;
+        add_header Cache-Control "public, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+    location ^~ /assets/ {
+        expires 7d;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    location = /index { rewrite ^ /index.php last; }
+    location = / { try_files $agecms_cache_dir/index.html @agecms; }
+    location / { try_files $agecms_cache_dir$uri.html $uri @agecms; }
+
+    location @agecms {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_param SCRIPT_NAME /index.php;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+    }
+    location = /index.php {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+    }
+    location ~ ^/admin/(index|api|mcp|install)\.php$ {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_read_timeout 30s;
+    }
+    location = /admin/ { rewrite ^ /admin/index.php last; }
+    # No other PHP file is ever executed.
+    location ~ \.php$ { return 404; }
+}

@@ -1,0 +1,10 @@
+# Uploaded and imported media: never executable.
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+RemoveHandler .php .phtml .php5 .phar
+RemoveType .php
+Options -ExecCGI -Indexes
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=2592000, immutable"
+</IfModule>

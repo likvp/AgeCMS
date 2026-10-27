@@ -1,0 +1,61 @@
+{
+    "name": "default",
+    "title": "AgeCMS Default (Bento)",
+    "version": "1.0.0",
+    "blocks": {
+        "hero": {
+            "title": "Hero",
+            "fields": {
+                "h1": {"type": "string", "max": 200, "required": true},
+                "subtitle": {"type": "text", "max": 500},
+                "cta_text": {"type": "string", "max": 60},
+                "cta_url": {"type": "url"}
+            }
+        },
+        "text": {
+            "title": "Text",
+            "fields": {
+                "heading": {"type": "string", "max": 200},
+                "body": {"type": "text", "max": 8000, "required": true}
+            }
+        },
+        "features": {
+            "title": "Bento features",
+            "fields": {
+                "heading": {"type": "string", "max": 200},
+                "items": {
+                    "type": "list",
+                    "max": 12,
+                    "of": {
+                        "title": {"type": "string", "max": 100, "required": true},
+                        "text": {"type": "text", "max": 400},
+                        "size": {"type": "enum", "values": ["normal", "wide"]}
+                    }
+                }
+            }
+        },
+        "faq": {
+            "title": "FAQ",
+            "fields": {
+                "heading": {"type": "string", "max": 200},
+                "items": {
+                    "type": "list",
+                    "max": 30,
+                    "of": {
+                        "q": {"type": "string", "max": 200, "required": true},
+                        "a": {"type": "text", "max": 1500, "required": true}
+                    }
+                }
+            }
+        },
+        "lead_form": {
+            "title": "Lead form",
+            "fields": {
+                "heading": {"type": "string", "max": 200},
+                "subtitle": {"type": "text", "max": 300},
+                "button_text": {"type": "string", "max": 60},
+                "success_text": {"type": "string", "max": 200}
+            }
+        }
+    }
+}
