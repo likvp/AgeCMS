@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace AgeCMS;
 
 /**
- * Plain-text e-mail for system messages (password recovery). Transports: PHP mail(), an SMTP server
+ * E-mail for system messages (password recovery, leads) and module mailings: plain text, or text with an HTML version. Transports: PHP mail(), an SMTP server
  * (SSL on 465, STARTTLS on 587, or none for a local relay) and 'log', which writes .eml files to
  * data/outbox for tests and local work. Settings live in data/config.php under 'mail'.
  */
@@ -35,8 +35,18 @@ final class Mailer
         return self::transport() !== 'smtp' || (string)Config::get('mail.smtp.host', '') !== '';
     }
 
-    /** @throws AgeCMSException when the message could not be handed over */
-    public static function send(string $to, string $subject, string $body): void
+    /** Headers the core writes itself: a caller cannot set or replace them. */
+    private const RESERVED_HEADERS = ['from', 'to', 'cc', 'bcc', 'subject', 'date', 'message-id', 'mime-version', 'return-path', 'sender'];
+
+    /**
+     * @param array{html?:string, headers?:array<string,string>} $options
+     *   html: an HTML version of the body; the message becomes multipart/alternative with $body as the text part.
+     *   headers: extra headers such as List-Unsubscribe, List-Unsubscribe-Post, Reply-To, Precedence. A name that is
+     *   not a plain token, a value with a line break or control character, a core header (From, To, Subject, Date,
+     *   Message-ID, MIME-Version, Content-*, Cc, Bcc) or a malformed List-Unsubscribe or Reply-To is rejected.
+     * @throws AgeCMSException when the message could not be handed over
+     */
+    public static function send(string $to, string $subject, string $body, array $options = []): void
     {
         $to = self::clean($to);
         if (filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
@@ -45,6 +55,8 @@ final class Mailer
         if (!self::configured()) {
             throw new AgeCMSException('Mail is not configured: set the sender address in Settings');
         }
+        $extra = self::extraHeaders((array)($options['headers'] ?? []));
+        $html = isset($options['html']) ? (string)$options['html'] : '';
         $from = self::from();
         $name = self::clean((string)Config::get('mail.from_name', '')) ?: (string)Config::get('site_name', 'AgeCMS');
         $host = (string)(parse_url((string)Config::get('site_url', ''), PHP_URL_HOST) ?: 'localhost');
@@ -54,11 +66,21 @@ final class Mailer
             'To: <' . $to . '>',
             'Subject: ' . self::encodeHeader($subject),
             'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . $host . '>',
+            ...$extra,
             'MIME-Version: 1.0',
-            'Content-Type: text/plain; charset=UTF-8',
-            'Content-Transfer-Encoding: base64',
         ];
-        $encoded = rtrim(chunk_split(base64_encode($body), 76, "\r\n"));
+        if ($html === '') {
+            array_push($headers, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64');
+            $encoded = self::base64($body);
+        } else {
+            $boundary = '=_agecms_' . bin2hex(random_bytes(12));
+            $headers[] = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
+            $encoded = '--' . $boundary . "\r\n"
+                . "Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . self::base64($body) . "\r\n"
+                . '--' . $boundary . "\r\n"
+                . "Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . self::base64($html) . "\r\n"
+                . '--' . $boundary . '--';
+        }
         $message = implode("\r\n", $headers) . "\r\n\r\n" . $encoded . "\r\n";
 
         match (self::transport()) {
@@ -67,6 +89,53 @@ final class Mailer
             default => self::phpMail($to, $subject, $headers, $encoded),
         };
         Logger::log('info', 'mail.sent', ['to' => self::mask($to), 'transport' => self::transport()]);
+    }
+
+    private static function base64(string $text): string
+    {
+        return rtrim(chunk_split(base64_encode($text), 76, "\r\n"));
+    }
+
+    /**
+     * Checks caller headers and returns them as "Name: value" lines. Rejects instead of cleaning: a line break in a
+     * value is an injection attempt, not a typo.
+     *
+     * @param array<string,string> $headers
+     * @return list<string>
+     */
+    private static function extraHeaders(array $headers): array
+    {
+        $lines = [];
+        foreach ($headers as $name => $value) {
+            $name = (string)$name;
+            $value = (string)$value;
+            if (preg_match('/^[A-Za-z][A-Za-z0-9-]{0,63}$/', $name) !== 1) {
+                throw new AgeCMSException('Mail header name is not valid');
+            }
+            $lower = strtolower($name);
+            if (in_array($lower, self::RESERVED_HEADERS, true) || str_starts_with($lower, 'content-')) {
+                throw new AgeCMSException("Mail header {$name} is set by the system");
+            }
+            if (preg_match('/[\x00-\x1f\x7f]/', $value) === 1 || $value === '' || strlen($value) > 900) {
+                throw new AgeCMSException("Mail header {$name} has a line break, a control character or a bad length");
+            }
+            if ($lower === 'list-unsubscribe' && preg_match('/^<(https?:\/\/[^<>\s]+|mailto:[^<>\s]+)>(\s*,\s*<(https?:\/\/[^<>\s]+|mailto:[^<>\s]+)>)*$/', $value) !== 1) {
+                throw new AgeCMSException('List-Unsubscribe must be <https://...> or <mailto:...>');
+            }
+            if ($lower === 'list-unsubscribe-post' && $value !== 'List-Unsubscribe=One-Click') {
+                throw new AgeCMSException('List-Unsubscribe-Post must be List-Unsubscribe=One-Click');
+            }
+            if ($lower === 'reply-to' && filter_var(trim((string)preg_replace('/^.*<([^<>]+)>\s*$/', '$1', $value)), FILTER_VALIDATE_EMAIL) === false) {
+                throw new AgeCMSException('Reply-To is not a valid address');
+            }
+            $lines[] = $name . ': ' . ($lower === 'reply-to' || str_starts_with($lower, 'list-') ? $value : self::encodeValue($value));
+        }
+        return $lines;
+    }
+
+    private static function encodeValue(string $value): string
+    {
+        return preg_match('/^[\x20-\x7e]*$/', $value) === 1 ? $value : '=?UTF-8?B?' . base64_encode($value) . '?=';
     }
 
     /**

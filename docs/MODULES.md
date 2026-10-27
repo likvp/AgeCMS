@@ -62,3 +62,25 @@
 - Разрешены `CREATE TABLE/INDEX/VIEW`, `ALTER TABLE`, `DROP`, `INSERT`, `UPDATE`, `DELETE` и только над объектами с именем `mod_<модуль>_...`. Триггеры, `PRAGMA`, `ATTACH`, управление транзакциями и временные таблицы запрещены. После выполнения ядро сверяет, что его собственные таблицы не изменились.
 - Применённый файл менять нельзя: модуль будет заблокирован («applied migration ... was changed afterwards»). Новое изменение схемы кладётся в новый файл.
 - Сбой отключает модуль, пишется `module.migration_failed`. Повторная попытка только после новой подписи исправленного модуля, поэтому сайт не пробует миграцию на каждом запросе.
+
+## Письма: HTML и заголовки рассылки (Mailer)
+
+`Mailer::send($to, $subject, $body, $options = [])`. Старый вызов с тремя аргументами работает как раньше: письмо из одной текстовой части.
+
+```php
+Mailer::send($email, 'Новые поступления', $text, [
+    'html' => $htmlBody,
+    'headers' => [
+        'List-Unsubscribe' => '<https://site.ru/otpiska/' . $token . '>',
+        'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
+        'Reply-To' => 'office@site.ru',
+        'Precedence' => 'bulk',
+    ],
+]);
+```
+
+- `html`: письмо становится `multipart/alternative`, `$body` остаётся текстовой версией для клиентов без HTML. Обе части в base64 UTF-8.
+- `headers`: любые заголовки, кроме системных (`From`, `To`, `Cc`, `Bcc`, `Subject`, `Date`, `Message-ID`, `MIME-Version`, `Return-Path`, `Sender`, `Content-*`).
+- Защита: имя заголовка только латиница, цифры и дефис; значение без переводов строк и управляющих символов, не пустое, до 900 знаков. Нарушение это `AgeCMSException`, письмо не уходит (исправлять молча не пытаемся: перевод строки в значении признак подделки).
+- Проверяются форматы: `List-Unsubscribe` только `<https://...>` и/или `<mailto:...>` через запятую, `List-Unsubscribe-Post` только `List-Unsubscribe=One-Click`, `Reply-To` должен быть адресом.
+- Заголовки идут одинаково в `mail()`, SMTP и `log`-транспорт (файлы в `data/outbox`).

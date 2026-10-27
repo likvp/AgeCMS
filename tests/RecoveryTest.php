@@ -163,6 +163,101 @@ final class RecoveryTest extends TestCase
         }
     }
 
+    /** @return array{headers:string,body:string} the last .eml, split */
+    private function lastRaw(): array
+    {
+        $files = $this->outbox();
+        sort($files);
+        [$headers, $body] = explode("\r\n\r\n", (string)file_get_contents((string)end($files)), 2);
+        return ['headers' => $headers, 'body' => $body];
+    }
+
+    public function testMailerWritesHtmlAndMailingHeaders(): void
+    {
+        $this->freshSite();
+        $this->useLogMail();
+        Mailer::send('anna@example.test', 'Акция', "Текстовая версия\n", [
+            'html' => '<p>HTML <b>версия</b></p>',
+            'headers' => [
+                'List-Unsubscribe' => '<https://example.test/otpiska/abc>, <mailto:unsub@example.test>',
+                'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
+                'Reply-To' => 'Отдел <office@example.test>',
+                'Precedence' => 'bulk',
+            ],
+        ]);
+        $mail = $this->lastRaw();
+        $this->assertContains('List-Unsubscribe: <https://example.test/otpiska/abc>, <mailto:unsub@example.test>', $mail['headers']);
+        $this->assertContains('List-Unsubscribe-Post: List-Unsubscribe=One-Click', $mail['headers']);
+        $this->assertContains('Reply-To: Отдел <office@example.test>', $mail['headers']);
+        $this->assertContains('Precedence: bulk', $mail['headers']);
+        $this->assertContains('Content-Type: multipart/alternative; boundary="', $mail['headers']);
+        $this->assertContains('Content-Type: text/plain; charset=UTF-8', $mail['body']);
+        $this->assertContains('Content-Type: text/html; charset=UTF-8', $mail['body']);
+        preg_match_all('~\r\n\r\n([A-Za-z0-9+/=\r\n]+?)\r\n--~', $mail['body'], $m);
+        $this->assertSame("Текстовая версия\n", base64_decode(str_replace("\r\n", '', $m[1][0])), 'text part');
+        $this->assertSame('<p>HTML <b>версия</b></p>', base64_decode(str_replace("\r\n", '', $m[1][1])), 'html part');
+    }
+
+    public function testMailerRefusesHeaderInjectionAndCoreHeaders(): void
+    {
+        $this->freshSite();
+        $this->useLogMail();
+        $before = count($this->outbox());
+        $bad = [
+            ['Reply-To' => "a@b.test\r\nBcc: x@y.test"],
+            ['X-Tag' => "one\nBcc: x@y.test"],
+            ["X-Tag\r\nBcc" => 'x'],
+            ['Bcc' => 'x@y.test'],
+            ['From' => 'evil@example.test'],
+            ['Subject' => 'other'],
+            ['Content-Type' => 'text/html'],
+            ['List-Unsubscribe' => 'https://no-brackets.test'],
+            ['List-Unsubscribe' => '<javascript:alert(1)>'],
+            ['List-Unsubscribe-Post' => 'something else'],
+            ['Reply-To' => 'not an address'],
+            ['X-Empty' => ''],
+        ];
+        foreach ($bad as $headers) {
+            $this->assertThrows(AgeCMSException::class, fn() => Mailer::send('anna@example.test', 'S', 'B', ['headers' => $headers]), ' ');
+        }
+        $this->assertSame($before, count($this->outbox()), 'nothing was written for a rejected message');
+    }
+
+    public function testPlainMailIsUnchangedAndSmtpGetsTheHeaders(): void
+    {
+        $this->freshSite();
+        $this->useLogMail();
+        Mailer::send('anna@example.test', 'Заявка', "Привет\n");
+        $plain = $this->lastRaw();
+        $this->assertContains('Content-Type: text/plain; charset=UTF-8', $plain['headers']);
+        $this->assertContains('Content-Transfer-Encoding: base64', $plain['headers']);
+        $this->assertSame(false, str_contains($plain['headers'], 'multipart'), 'no multipart without html');
+        $this->assertSame(false, str_contains($plain['headers'], 'List-Unsubscribe'));
+
+        $sock = stream_socket_server('tcp://127.0.0.1:0');
+        $port = (int)substr(strrchr((string)stream_socket_get_name($sock, false), ':'), 1);
+        fclose($sock);
+        $out = TEST_TMP . '/smtp-bulk.txt';
+        $proc = proc_open([PHP_BINARY, __DIR__ . '/support/smtp-sink.php', (string)$port, $out], [['file', '/dev/null', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']], $pipes);
+        try {
+            for ($i = 0; $i < 50 && !is_file($out . '.ready'); $i++) {
+                usleep(100000);
+            }
+            Config::set('mail', ['transport' => 'smtp', 'from' => 'noreply@example.test', 'from_name' => 'Тест', 'smtp' => ['host' => '127.0.0.1', 'port' => $port, 'secure' => '', 'user' => '', 'pass' => '']]);
+            Mailer::send('anna@example.test', 'Рассылка', 'Текст', ['html' => '<p>x</p>', 'headers' => ['List-Unsubscribe' => '<https://example.test/u/1>', 'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click']]);
+            for ($i = 0; $i < 50 && !is_file($out); $i++) {
+                usleep(100000);
+            }
+            $got = (string)file_get_contents($out);
+            $this->assertContains('List-Unsubscribe: <https://example.test/u/1>', $got);
+            $this->assertContains('List-Unsubscribe-Post: List-Unsubscribe=One-Click', $got);
+            $this->assertContains('multipart/alternative', $got);
+        } finally {
+            proc_terminate($proc);
+            proc_close($proc);
+        }
+    }
+
     public function testAnOlderDatabaseIsUpgradedOnFirstUse(): void
     {
         $this->freshSite();
