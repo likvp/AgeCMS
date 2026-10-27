@@ -71,7 +71,7 @@ curl -s https://example.com/admin/mcp.php \
 ## Тесты и замеры
 
 ```bash
-php tests/run.php          # 93 теста, около 20 секунд, песочница во временной папке
+php tests/run.php          # 103 теста, около 20 секунд, песочница во временной папке
 php bench/shadow_cache_bench.php
 ```
 

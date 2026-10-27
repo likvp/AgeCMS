@@ -1,0 +1,79 @@
+<?php
+/**
+ * @var array<string,mixed> $user
+ * @var string $csrf
+ * @var bool $isAdmin
+ */
+defined('AGECMS_BOOTED') || exit;
+
+use AgeCMS\Auth;
+
+$roles = ['admin' => 'Администратор', 'editor' => 'Редактор', 'viewer' => 'Наблюдатель'];
+$hints = ['admin' => 'всё, включая пользователей и настройки', 'editor' => 'правит страницы, меню и медиа', 'viewer' => 'только смотрит'];
+?>
+<div class="pagehead"><div class="grow">
+    <h1><?= $isAdmin ? 'Пользователи' : 'Профиль' ?></h1>
+    <p><?= $isAdmin ? 'Кто может входить в админку и что ему разрешено.' : 'Здесь меняется ваш пароль.' ?></p>
+</div></div>
+
+<?php if ($isAdmin): $users = Auth::listUsers(); ?>
+<section class="panel">
+    <div class="tbl-scroll"><table class="tbl">
+        <thead><tr><th>Логин</th><th>Роль</th><th>Создан</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($users as $u): $self = (int)$u['id'] === (int)$user['id']; ?>
+            <tr>
+                <td><b class="cell-title"><?= h($u['username']) ?></b><?= $self ? ' <span class="tag plain">это вы</span>' : '' ?></td>
+                <td>
+                    <?php if ($self): ?><span class="tag info"><?= h($roles[$u['role']] ?? $u['role']) ?></span>
+                    <?php else: ?>
+                    <form method="post" class="role-form"><?= admin_post_fields($csrf, 'user_role') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                        <select class="in sm" name="role" aria-label="Роль <?= h($u['username']) ?>" data-autosubmit><?php foreach ($roles as $k => $label): ?><option value="<?= h($k) ?>"<?= $u['role'] === $k ? ' selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select>
+                        <noscript><button class="btn sm" type="submit">Сохранить</button></noscript>
+                    </form>
+                    <?php endif; ?>
+                </td>
+                <td class="num muted"><?= admin_date($u['created_at']) ?></td>
+                <td class="r"><div class="actions">
+                    <?php if (!$self): ?>
+                    <form method="post" class="inline" data-confirm="Создать новый пароль для <?= h($u['username']) ?>?" data-confirm-text="Старый пароль перестанет работать. Новый покажется один раз." data-confirm-ok="Создать"><?= admin_post_fields($csrf, 'user_reset') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><button class="btn sm ghost" type="submit"><?= icon('key') ?>Новый пароль</button></form>
+                    <form method="post" class="inline" data-confirm="Удалить пользователя <?= h($u['username']) ?>?" data-confirm-text="Войти он больше не сможет. Его правки в истории останутся." data-confirm-ok="Удалить" data-danger><?= admin_post_fields($csrf, 'user_delete') ?><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><button class="ib danger" type="submit" title="Удалить" aria-label="Удалить"><?= icon('trash') ?></button></form>
+                    <?php endif; ?>
+                </div></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table></div>
+</section>
+
+<section class="panel">
+    <div class="panel-h"><h2>Новый пользователь</h2></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'user_create') ?>
+        <div class="row">
+            <label class="f"><span>Логин</span><input class="in" type="text" name="username" required pattern="[A-Za-z0-9_.@\-]{3,40}" autocapitalize="none" spellcheck="false" autocomplete="off"></label>
+            <label class="f"><span>Роль</span><select class="in" name="role"><?php foreach ($roles as $k => $label): ?><option value="<?= h($k) ?>"<?= $k === 'editor' ? ' selected' : '' ?>><?= h($label) ?>: <?= h($hints[$k]) ?></option><?php endforeach; ?></select></label>
+        </div>
+        <div class="f"><span class="lbl">Пароль</span>
+            <label class="chk"><input type="radio" name="password_mode" value="generate" data-pw-mode checked><span>Создать надёжный пароль и показать его один раз</span></label>
+            <label class="chk"><input type="radio" name="password_mode" value="own" data-pw-mode><span>Задать свой <small>(от 10 символов)</small></span></label>
+        </div>
+        <div id="pw-own"><label class="f"><span>Пароль</span><input class="in" type="password" name="password" minlength="10" autocomplete="new-password"></label></div>
+        <button class="btn primary" type="submit"><?= icon('user-plus') ?>Создать пользователя</button>
+    </form>
+</section>
+<?php endif; ?>
+
+<section class="panel">
+    <div class="panel-h"><h2>Мой пароль</h2><span class="muted"><?= h($user['username']) ?></span></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'password_change') ?>
+        <label class="f"><span>Текущий пароль</span><input class="in" type="password" name="current_password" required autocomplete="current-password"></label>
+        <div class="row">
+            <label class="f"><span>Новый пароль</span><input class="in" type="password" name="new_password" required minlength="10" autocomplete="new-password"></label>
+            <label class="f"><span>Ещё раз</span><input class="in" type="password" name="new_password2" required minlength="10" autocomplete="new-password"></label>
+        </div>
+        <p class="muted">От 10 символов. Другие устройства, где вы уже вошли, останутся в системе до выхода.</p>
+        <button class="btn primary" type="submit">Сменить пароль</button>
+    </form>
+</section>

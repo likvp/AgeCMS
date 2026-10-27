@@ -154,6 +154,103 @@ final class Auth
         });
     }
 
+    /** @return list<array<string,mixed>> */
+    public static function listUsers(): array
+    {
+        return Database::rows('SELECT id, username, role, created_at FROM users ORDER BY id');
+    }
+
+    public static function changeRole(int $userId, string $role, int $actingUserId): void
+    {
+        if (!in_array($role, Security::roles(), true)) {
+            throw new ValidationException(["Unknown role '{$role}'"]);
+        }
+        if ($userId === $actingUserId) {
+            throw new ValidationException(['You cannot change your own role']);
+        }
+        Database::write(static function (PDO $pdo) use ($userId, $role): void {
+            $user = self::lockedUser($pdo, $userId);
+            if ($user['role'] === 'admin' && $role !== 'admin' && self::adminCount($pdo) <= 1) {
+                throw new ValidationException(['The last administrator cannot be demoted']);
+            }
+            $pdo->prepare('UPDATE users SET role = ? WHERE id = ?')->execute([$role, $userId]);
+            Logger::log('info', 'user.role_changed', ['user' => $user['username'], 'from' => $user['role'], 'to' => $role]);
+        });
+    }
+
+    public static function deleteUser(int $userId, int $actingUserId): void
+    {
+        if ($userId === $actingUserId) {
+            throw new ValidationException(['You cannot delete your own account']);
+        }
+        Database::write(static function (PDO $pdo) use ($userId): void {
+            $user = self::lockedUser($pdo, $userId);
+            if ($user['role'] === 'admin' && self::adminCount($pdo) <= 1) {
+                throw new ValidationException(['The last administrator cannot be deleted']);
+            }
+            $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
+            Logger::log('info', 'user.deleted', ['user' => $user['username']]);
+        });
+    }
+
+    /** Own password change: the current password is required. */
+    public static function changeOwnPassword(int $userId, string $current, string $new): void
+    {
+        $user = Database::row('SELECT password_hash FROM users WHERE id = ?', [$userId]);
+        if ($user === null || !password_verify($current, $user['password_hash'])) {
+            throw new ValidationException(['Current password is wrong']);
+        }
+        self::checkPasswordStrength($new);
+        self::setPassword($userId, $new);
+        Logger::log('info', 'user.password_changed', ['id' => $userId, 'by' => 'self']);
+    }
+
+    /** Administrator sets a new password for another account. */
+    public static function resetPassword(int $userId, string $new): void
+    {
+        self::checkPasswordStrength($new);
+        Database::write(static function (PDO $pdo) use ($userId, $new): void {
+            $user = self::lockedUser($pdo, $userId);
+            $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $userId]);
+            Logger::log('info', 'user.password_changed', ['user' => $user['username'], 'by' => 'admin']);
+        });
+    }
+
+    /** Random password that is easy to read aloud: no look-alike characters. */
+    public static function generatePassword(): string
+    {
+        $alphabet = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $out = '';
+        for ($i = 0; $i < 16; $i++) {
+            $out .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+        return $out;
+    }
+
+    private static function checkPasswordStrength(string $password): void
+    {
+        if (strlen($password) < 10) {
+            throw new ValidationException(['Password must be at least 10 characters']);
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private static function lockedUser(PDO $pdo, int $userId): array
+    {
+        $stmt = $pdo->prepare('SELECT id, username, role FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($user === false) {
+            throw new NotFoundException('User not found');
+        }
+        return $user;
+    }
+
+    private static function adminCount(PDO $pdo): int
+    {
+        return (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
+    }
+
     public static function setPassword(int $userId, string $password): void
     {
         Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([password_hash($password, PASSWORD_DEFAULT), $userId]));

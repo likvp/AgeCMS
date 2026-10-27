@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, Auth, Backup, Cache, CircuitBreaker, Database, Installer, Pages, Queue, Security};
+use AgeCMS\{AgeCMSException, Auth, Backup, Cache, CircuitBreaker, Database, Installer, Media, Pages, Queue, Security};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -22,8 +22,9 @@ if (!Installer::installed() || !Database::exists()) {
 $flash = '';
 $error = '';
 $newToken = '';
+$newPassword = null;
 $user = Auth::user();
-$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'menus', 'settings', 'history', 'leads', 'system'], true) ? (string)$_GET['s'] : 'overview';
+$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'menus', 'settings', 'history', 'leads', 'users', 'system'], true) ? (string)$_GET['s'] : 'overview';
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -61,6 +62,85 @@ try {
                     ]]);
                     $flash = $result['changed'] ? 'Настройки сохранены, ревизия #' . $result['revision_id'] : 'Без изменений';
                     $section = 'settings';
+                    break;
+                case 'page_delete':
+                    $slug = (string)($_POST['slug'] ?? '');
+                    Queue::submit($actor, 'delete_page', ['slug' => $slug]);
+                    $flash = 'Страница /' . $slug . ' удалена. Вернуть её можно в разделе «Страницы», блок «Удалённые».';
+                    $section = 'pages';
+                    break;
+                case 'page_restore':
+                    $slug = (string)($_POST['slug'] ?? '');
+                    Queue::submit($actor, 'restore_page', ['slug' => $slug]);
+                    header('Location: /admin/?s=edit&slug=' . rawurlencode($slug) . '&restored=1');
+                    exit;
+                case 'media_upload':
+                    Security::requirePermission($actor, 'content.write');
+                    $files = $_FILES['files'] ?? null;
+                    $done = 0;
+                    if (is_array($files) && is_array($files['name'] ?? null)) {
+                        foreach (array_keys($files['name']) as $i) {
+                            if ((int)$files['error'][$i] === UPLOAD_ERR_NO_FILE) {
+                                continue;
+                            }
+                            Media::saveUpload(['name' => $files['name'][$i], 'tmp_name' => $files['tmp_name'][$i], 'error' => $files['error'][$i], 'size' => $files['size'][$i]]);
+                            $done++;
+                        }
+                    }
+                    if ($done === 0) {
+                        throw new AgeCMSException('Выберите картинку');
+                    }
+                    $flash = 'Загружено: ' . $done;
+                    $section = 'media';
+                    break;
+                case 'media_delete':
+                    Security::requirePermission($actor, 'content.write');
+                    Media::delete((string)($_POST['name'] ?? ''));
+                    $flash = 'Картинка удалена';
+                    $section = 'media';
+                    break;
+                case 'user_create':
+                    Security::requirePermission($actor, 'system.manage');
+                    $own = ($_POST['password_mode'] ?? 'generate') === 'own';
+                    $password = $own ? (string)($_POST['password'] ?? '') : Auth::generatePassword();
+                    Auth::createUser((string)($_POST['username'] ?? ''), $password, (string)($_POST['role'] ?? 'editor'));
+                    if (!$own) {
+                        $newPassword = ['user' => (string)$_POST['username'], 'value' => $password];
+                    }
+                    $flash = 'Пользователь ' . (string)$_POST['username'] . ' создан';
+                    $section = 'users';
+                    break;
+                case 'user_role':
+                    Security::requirePermission($actor, 'system.manage');
+                    Auth::changeRole((int)($_POST['id'] ?? 0), (string)($_POST['role'] ?? ''), (int)$user['id']);
+                    $flash = 'Роль изменена';
+                    $section = 'users';
+                    break;
+                case 'user_delete':
+                    Security::requirePermission($actor, 'system.manage');
+                    Auth::deleteUser((int)($_POST['id'] ?? 0), (int)$user['id']);
+                    $flash = 'Пользователь удалён';
+                    $section = 'users';
+                    break;
+                case 'user_reset':
+                    Security::requirePermission($actor, 'system.manage');
+                    $target = Database::row('SELECT id, username FROM users WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
+                    if ($target === null) {
+                        throw new AgeCMSException('Пользователь не найден');
+                    }
+                    $password = Auth::generatePassword();
+                    Auth::resetPassword((int)$target['id'], $password);
+                    $newPassword = ['user' => $target['username'], 'value' => $password];
+                    $flash = 'Новый пароль для ' . $target['username'] . ' создан';
+                    $section = 'users';
+                    break;
+                case 'password_change':
+                    if ((string)($_POST['new_password'] ?? '') !== (string)($_POST['new_password2'] ?? '')) {
+                        throw new AgeCMSException('Новые пароли не совпадают');
+                    }
+                    Auth::changeOwnPassword((int)$user['id'], (string)($_POST['current_password'] ?? ''), (string)($_POST['new_password'] ?? ''));
+                    $flash = 'Пароль изменён';
+                    $section = 'users';
                     break;
                 case 'rollback':
                     $result = Queue::submit($actor, 'rollback', ['slug' => (string)$_POST['slug'], 'revision_id' => (int)$_POST['revision']]);
@@ -159,7 +239,7 @@ if ($user === null) {
     $csrf = Auth::csrf();
     $isAdmin = Security::can($user['role'], 'system.manage');
     $canWrite = Security::can($user['role'], 'content.write');
-    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken'));
+    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword'));
 }
 ?>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>

@@ -8,6 +8,7 @@ defined('AGECMS_BOOTED') || exit;
 use AgeCMS\{Pages, SchemaValidator};
 
 $pages = Pages::listing();
+$deleted = $canWrite ? Pages::deleted() : [];
 ?>
 <div class="pagehead">
     <div class="grow">
@@ -40,6 +41,12 @@ $pages = Pages::listing();
                     <a class="ib" href="<?= h(admin_url('edit', ['slug' => $p['slug']])) ?>" title="Править" aria-label="Править"><?= icon('file-text') ?></a>
                     <a class="ib" href="<?= h($url) ?>" target="_blank" rel="noopener" title="Открыть на сайте" aria-label="Открыть на сайте"><?= icon('eye') ?></a>
                     <a class="ib" href="<?= h(admin_url('history', ['slug' => $p['slug']])) ?>" title="История" aria-label="История"><?= icon('clock-counter-clockwise') ?></a>
+                    <?php if ($canWrite && $p['slug'] !== 'index'): ?>
+                    <form method="post" class="inline" data-confirm="Удалить страницу «<?= h($p['title']) ?>»?" data-confirm-text="Она пропадёт с сайта. В истории останется, и её можно будет вернуть." data-confirm-ok="Удалить" data-danger>
+                        <?= admin_post_fields($csrf, 'page_delete') ?><input type="hidden" name="slug" value="<?= h($p['slug']) ?>">
+                        <button class="ib danger" type="submit" title="Удалить" aria-label="Удалить"><?= icon('trash') ?></button>
+                    </form>
+                    <?php endif; ?>
                 </div></td>
             </tr>
         <?php endforeach; ?>
@@ -49,6 +56,20 @@ $pages = Pages::listing();
     <div class="empty" id="filter-none" hidden><?= icon('magnifying-glass') ?><b>Ничего не найдено</b><span>Попробуйте другой запрос.</span></div>
     <?php if ($pages === []): ?><div class="empty"><?= icon('file-text') ?><b>Страниц пока нет</b><span>Создайте первую ниже.</span></div><?php endif; ?>
 </section>
+
+<?php if ($deleted !== []): ?>
+<section class="panel">
+    <div class="panel-h"><h2>Удалённые</h2><span class="muted"><?= count($deleted) ?> шт.</span></div>
+    <table class="tbl"><tbody>
+        <?php foreach ($deleted as $d): ?>
+            <tr>
+                <td><span class="mono">/<?= h($d['slug']) ?></span><span class="cell-sub">удалил <?= h($d['actor_name']) ?>, <?= admin_date($d['created_at']) ?></span></td>
+                <td class="r"><form method="post" class="inline"><?= admin_post_fields($csrf, 'page_restore') ?><input type="hidden" name="slug" value="<?= h($d['slug']) ?>"><button class="btn sm" type="submit"><?= icon('arrow-counter-clockwise') ?>Восстановить</button></form></td>
+            </tr>
+        <?php endforeach; ?>
+    </tbody></table>
+</section>
+<?php endif; ?>
 
 <?php if ($canWrite): ?>
 <section class="panel" id="new">

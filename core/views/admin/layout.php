@@ -8,6 +8,7 @@
  * @var string $flash
  * @var string $error
  * @var string $newToken
+ * @var array<string,string>|null $newPassword
  */
 defined('AGECMS_BOOTED') || exit;
 
@@ -17,11 +18,13 @@ $frozen = CircuitBreaker::frozenInfo();
 $nav = [
     ['overview', 'Обзор', 'squares-four', null],
     ['pages', 'Страницы', 'file-text', Pages::count()],
+    ['media', 'Медиа', 'image', null],
     ['menus', 'Меню', 'list', null],
     ['history', 'История', 'clock-counter-clockwise', null],
     ['leads', 'Заявки', 'chat-circle-text', (int)(Database::row('SELECT COUNT(*) AS n FROM leads')['n'] ?? 0)],
 ];
 if ($isAdmin) {
+    $nav[] = ['users', 'Пользователи', 'users', null];
     $nav[] = ['settings', 'Настройки', 'gear-six', null];
 }
 $nav[] = ['system', 'Система', 'terminal-window', null];
@@ -46,20 +49,26 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
                 <button type="button" data-theme-set="dark" aria-pressed="false">Тёмная</button>
             </div>
             <div class="who">
-                <span class="avatar" aria-hidden="true"><?= h(mb_strtoupper(mb_substr((string)$user['username'], 0, 1))) ?></span>
-                <span class="nm"><b><?= h($user['username']) ?></b><small><?= h($roleNames[$user['role']] ?? $user['role']) ?></small></span>
+                <a class="who-link" href="<?= h(admin_url('users')) ?>" title="Профиль и пароль"><span class="avatar" aria-hidden="true"><?= h(mb_strtoupper(mb_substr((string)$user['username'], 0, 1))) ?></span>
+                <span class="nm"><b><?= h($user['username']) ?></b><small><?= h($roleNames[$user['role']] ?? $user['role']) ?></small></span></a>
                 <form method="post" class="inline"><?= admin_post_fields($csrf, 'logout') ?><button class="ib" type="submit" title="Выйти" aria-label="Выйти"><?= icon('sign-out') ?></button></form>
             </div>
         </div>
     </aside>
     <main class="main" id="main">
-        <div class="wrap<?= $section === 'edit' ? ' wide' : '' ?>">
+        <div class="wrap<?= $section === 'edit' ? ' wide' : '' ?>"<?= $canWrite ? ' data-csrf="' . h($csrf) . '"' : '' ?>>
             <?php if ($flash !== ''): ?><div class="notice ok" role="status"><?= icon('check-circle') ?><div><?= h($flash) ?></div></div><?php endif; ?>
             <?php if ($error !== ''): ?><div class="notice error" role="alert"><?= icon('warning-circle') ?><div><?= h($error) ?></div></div><?php endif; ?>
             <?php if ($newToken !== ''): ?>
                 <div class="notice warn" role="status"><?= icon('key') ?><div>
                     <p><b>Скопируйте токен сейчас.</b> Потом он не показывается.</p>
                     <p class="row center"><code id="new-token"><?= h($newToken) ?></code> <button class="btn sm" type="button" data-copy="#new-token"><?= icon('copy') ?>Копировать</button></p>
+                </div></div>
+            <?php endif; ?>
+            <?php if (!empty($newPassword)): ?>
+                <div class="notice warn" role="status"><?= icon('key') ?><div>
+                    <p><b>Пароль для <?= h($newPassword['user']) ?>. Передайте его человеку сейчас.</b> Потом он не показывается.</p>
+                    <p class="row center"><code id="new-password"><?= h($newPassword['value']) ?></code> <button class="btn sm" type="button" data-copy="#new-password"><?= icon('copy') ?>Копировать</button></p>
                 </div></div>
             <?php endif; ?>
             <?php if ($frozen !== null): ?>

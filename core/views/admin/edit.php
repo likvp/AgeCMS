@@ -5,7 +5,7 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{Pages, SchemaValidator, Theme};
+use AgeCMS\{Media, Pages, SchemaValidator, Theme};
 
 $slug = (string)($_GET['slug'] ?? '');
 $doc = Pages::slugValid($slug) ? Pages::doc($slug) : null;
@@ -31,6 +31,8 @@ $data = [
     'blockTypes' => Theme::blocks($theme),
     'schemaTypes' => SchemaValidator::SCHEMA_TYPES,
     'pages' => $others,
+    'media' => array_column(Media::items(), 'url'),
+    'canUpload' => Media::available(),
 ];
 $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 $url = '/' . ($slug === 'index' ? '' : $slug);
@@ -43,7 +45,16 @@ $url = '/' . ($slug === 'index' ? '' : $slug);
         <a class="btn" href="<?= h($url) ?>" target="_blank" rel="noopener"><?= icon('eye') ?>На сайте</a>
     </div>
 </div>
+<?php if (isset($_GET['restored'])): ?><div class="notice ok"><?= icon('check-circle') ?><div>Страница восстановлена в том виде, в каком её удалили.</div></div><?php endif; ?>
 <?php if (isset($_GET['new'])): ?><div class="notice ok"><?= icon('check-circle') ?><div>Страница создана и пока скрыта. Добавьте блоки и включите «опубликована».</div></div><?php endif; ?>
+<?php if ($slug !== 'index'): ?>
+<template id="ag-delete-form">
+    <form method="post" data-confirm="Удалить страницу «<?= h($doc['title']) ?>»?" data-confirm-text="Она пропадёт с сайта. В истории останется, и её можно будет вернуть." data-confirm-ok="Удалить" data-danger>
+        <?= admin_post_fields($csrf, 'page_delete') ?><input type="hidden" name="slug" value="<?= h($slug) ?>">
+        <button class="btn danger" type="submit"><?= icon('trash') ?>Удалить страницу</button>
+    </form>
+</template>
+<?php endif; ?>
 <div id="ag-editor"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
 <noscript><div class="notice error"><?= icon('warning-circle') ?><div>Редактору нужен JavaScript.</div></div></noscript>
 <script type="application/json" id="ag-editor-data"><?= $json ?></script>

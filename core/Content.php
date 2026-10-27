@@ -13,6 +13,8 @@ use PDO;
  */
 final class Content
 {
+    public const DELETE_DESC = 'Удаление страницы';
+
     /**
      * Sets one field of one block. $path is dotted: "h1" or "items.2.title".
      *
@@ -98,15 +100,87 @@ final class Content
     public static function rollback(Actor $actor, string $slug, int $revisionId): array
     {
         return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $revisionId): array {
-            $before = self::requireDoc($slug);
+            $before = Pages::doc($slug) ?? [];
             $target = Revisions::stateAt($slug, $revisionId);
+            if ($target === []) {
+                throw new ValidationException(["Revision {$revisionId} is the deletion of the page, pick an earlier one or use restore_page"]);
+            }
             try {
-                $target = SchemaValidator::document($target);
+                $target = SchemaValidator::document(self::withoutMissingParent($target));
             } catch (ValidationException $e) {
                 throw new ValidationException(["Revision {$revisionId} no longer fits the current theme schema: " . $e->getMessage()]);
             }
-            return self::commit($pdo, $actor, $slug, "Откат к ревизии #{$revisionId}", $before, $target, false);
+            $isNew = $before === [];
+            return self::commit($pdo, $actor, $slug, $isNew ? "Восстановление страницы из ревизии #{$revisionId}" : "Откат к ревизии #{$revisionId}", $before, $target, $isNew);
         });
+    }
+
+    /**
+     * Deletes a page. The ledger keeps every revision, so restorePage() can bring it back.
+     * The home page and pages that still have children cannot be deleted.
+     *
+     * @return array<string,mixed>
+     */
+    public static function deletePage(Actor $actor, string $slug): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug): array {
+            if ($slug === 'index') {
+                throw new ValidationException(['The home page cannot be deleted']);
+            }
+            $before = self::requireDoc($slug);
+            $stmt = $pdo->prepare('SELECT slug FROM pages WHERE parent_slug = ? ORDER BY slug LIMIT 3');
+            $stmt->execute([$slug]);
+            $children = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            if ($children !== []) {
+                throw new ValidationException(["Page '{$slug}' has child pages (" . implode(', ', $children) . '): delete or move them first']);
+            }
+            $session = CircuitBreaker::ensureSession($pdo, $actor);
+            CircuitBreaker::guardModify($pdo, $session, $slug);
+
+            $revisionId = Revisions::record($pdo, $slug, $actor, self::DELETE_DESC, $before, []);
+            Pages::delete($pdo, $slug);
+            return ['slug' => $slug, 'revision_id' => $revisionId, 'changed' => true, 'tags' => ['page:' . $slug], 'ping' => false];
+        });
+    }
+
+    /**
+     * Brings a deleted page back in the state it had before the deletion.
+     *
+     * @return array<string,mixed>
+     */
+    public static function restorePage(Actor $actor, string $slug): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug): array {
+            if (Pages::row($slug) !== null) {
+                throw new ValidationException(["Page '{$slug}' exists, nothing to restore"]);
+            }
+            $last = Database::value('SELECT MAX(id) FROM revisions WHERE page_slug = ?', [$slug]);
+            if ($last === null || Database::value('SELECT action_desc FROM revisions WHERE id = ?', [$last]) !== self::DELETE_DESC) {
+                throw new NotFoundException("Page '{$slug}' was not deleted");
+            }
+            $previous = Database::value('SELECT MAX(id) FROM revisions WHERE page_slug = ? AND id < ?', [$slug, $last]);
+            $target = Revisions::stateAt($slug, (int)$previous);
+            try {
+                $target = SchemaValidator::document(self::withoutMissingParent($target));
+            } catch (ValidationException $e) {
+                throw new ValidationException(["The deleted page no longer fits the current theme schema: " . $e->getMessage()]);
+            }
+            return self::commit($pdo, $actor, $slug, 'Восстановление страницы', [], $target, true);
+        });
+    }
+
+    /**
+     * A restored page must not point at a parent that has been deleted meanwhile.
+     *
+     * @param array<string,mixed> $doc
+     * @return array<string,mixed>
+     */
+    private static function withoutMissingParent(array $doc): array
+    {
+        if (($doc['parent_slug'] ?? '') !== '' && Pages::row((string)$doc['parent_slug']) === null) {
+            $doc['parent_slug'] = '';
+        }
+        return $doc;
     }
 
     /**

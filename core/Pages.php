@@ -91,6 +91,31 @@ final class Pages
         self::index($pdo, $slug, $doc);
     }
 
+    /** Removes the page row and its search entry. Must run inside Database::write(). */
+    public static function delete(PDO $pdo, string $slug): void
+    {
+        $pdo->prepare('DELETE FROM pages WHERE slug = ?')->execute([$slug]);
+        $fts = $pdo->query("SELECT value FROM settings WHERE key = 'fts'")->fetchColumn();
+        if ($fts !== '0') {
+            $pdo->prepare('DELETE FROM pages_fts WHERE slug = ?')->execute([$slug]);
+        }
+    }
+
+    /**
+     * Pages whose last revision is a deletion, newest first. They can be restored from the ledger.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function deleted(): array
+    {
+        return Database::rows(
+            "SELECT r.page_slug AS slug, r.id AS revision_id, r.created_at, r.actor_name FROM revisions r
+             JOIN (SELECT page_slug, MAX(id) AS last_id FROM revisions WHERE page_slug NOT LIKE '@%' GROUP BY page_slug) m ON m.last_id = r.id
+             WHERE r.action_desc = ? AND r.page_slug NOT IN (SELECT slug FROM pages) ORDER BY r.id DESC",
+            [Content::DELETE_DESC],
+        );
+    }
+
     /** @param array<string,mixed> $doc */
     private static function index(PDO $pdo, string $slug, array $doc): void
     {

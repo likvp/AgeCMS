@@ -37,6 +37,82 @@ final class Media
         }
     }
 
+    /**
+     * Accepts one entry of $_FILES, checks it and stores an optimised copy.
+     *
+     * @param array<string,mixed> $file
+     */
+    public static function saveUpload(array $file, int $quality = 82): string
+    {
+        $error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
+            throw new ValidationException(['The file is larger than the server allows (upload_max_filesize is ' . ini_get('upload_max_filesize') . ', AgeCMS accepts up to 10 MB)']);
+        }
+        if ($error !== UPLOAD_ERR_OK || !is_string($file['tmp_name'] ?? null) || !is_uploaded_file($file['tmp_name'])) {
+            throw new ValidationException(['The file was not uploaded']);
+        }
+        if ((int)($file['size'] ?? 0) > self::MAX_BYTES) {
+            throw new ValidationException(['The file is larger than 10 MB']);
+        }
+        return self::optimize($file['tmp_name'], $quality);
+    }
+
+    /**
+     * Uploaded images, newest first.
+     *
+     * @return list<array{name:string,url:string,size:int,time:int}>
+     */
+    public static function items(): array
+    {
+        $items = [];
+        foreach (glob(self::dir() . '/*.webp') ?: [] as $file) {
+            $name = basename($file);
+            if (preg_match('/^[a-f0-9]{20}\.webp$/', $name) !== 1) {
+                continue;
+            }
+            $avif = substr($file, 0, -5) . '.avif';
+            $items[] = ['name' => $name, 'url' => '/assets/uploads/' . $name, 'size' => (int)filesize($file) + (is_file($avif) ? (int)filesize($avif) : 0), 'time' => (int)filemtime($file)];
+        }
+        usort($items, static fn(array $a, array $b): int => $b['time'] <=> $a['time'] ?: strcmp($a['name'], $b['name']));
+        return $items;
+    }
+
+    /**
+     * Pages that use the image.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function usage(string $name): array
+    {
+        self::assertName($name);
+        $like = '%' . $name . '%';
+        return Database::rows('SELECT slug, title FROM pages WHERE blocks_json LIKE ? OR og_image LIKE ? OR canonical_url LIKE ? ORDER BY slug', [$like, $like, $like]);
+    }
+
+    /** Deletes an unused image together with its AVIF copy. */
+    public static function delete(string $name): void
+    {
+        self::assertName($name);
+        $used = self::usage($name);
+        if ($used !== []) {
+            throw new ValidationException(['The image is used on: ' . implode(', ', array_map(static fn(array $p): string => '/' . $p['slug'], $used)) . '. Remove it there first.']);
+        }
+        $base = self::dir() . '/' . substr($name, 0, -5);
+        if (!is_file($base . '.webp')) {
+            throw new NotFoundException('Image not found');
+        }
+        @unlink($base . '.webp');
+        @unlink($base . '.avif');
+        Logger::log('info', 'media.deleted', ['name' => $name]);
+    }
+
+    private static function assertName(string $name): void
+    {
+        if (preg_match('/^[a-f0-9]{20}\.webp$/', $name) !== 1) {
+            throw new ValidationException(['Bad image name']);
+        }
+    }
+
     /** @return string site-relative URL such as /assets/uploads/ab12cd.webp */
     public static function optimize(string $path, int $quality = 82): string
     {

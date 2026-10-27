@@ -2,7 +2,7 @@
 /** @var string $csrf */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\Revisions;
+use AgeCMS\{Content, Revisions};
 
 $slug = (string)($_GET['slug'] ?? '');
 $rows = $slug !== '' ? Revisions::history($slug, 100) : Revisions::recent(100);
@@ -27,7 +27,7 @@ $kinds = ['human' => ['человек', 'info'], 'agent' => ['агент', 'warn
                 <td><a href="<?= h(admin_url('history', ['slug' => $r['page_slug']])) ?>" class="mono"><?= $r['page_slug'][0] === '@' ? h($r['page_slug']) : '/' . h($r['page_slug']) ?></a></td>
                 <td><span class="tag <?= h($kc) ?>"><?= h($kl) ?></span> <?= h($r['actor_name']) ?></td>
                 <td><?= h($r['action_desc']) ?></td>
-                <td class="r"><?php if ($r['page_slug'][0] !== '@'): ?>
+                <td class="r"><?php if ($r['page_slug'][0] !== '@' && $r['action_desc'] !== Content::DELETE_DESC): ?>
                     <form method="post" class="inline" data-confirm="Вернуть страницу к ревизии #<?= (int)$r['id'] ?>?" data-confirm-text="Текущее состояние сохранится в истории, откат можно будет отменить." data-confirm-ok="Откатить">
                         <?= admin_post_fields($csrf, 'rollback') ?><input type="hidden" name="slug" value="<?= h($r['page_slug']) ?>"><input type="hidden" name="revision" value="<?= (int)$r['id'] ?>">
                         <button class="btn sm ghost" type="submit"><?= icon('clock-counter-clockwise') ?>Откатить</button>

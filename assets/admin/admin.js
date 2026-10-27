@@ -101,4 +101,50 @@
         radio.addEventListener('change', sync);
         sync();
     });
+
+    // ---- auto-submit selects (role switch) -------------------------------------------------
+    document.querySelectorAll('[data-autosubmit]').forEach(function (sel) {
+        sel.addEventListener('change', function () { if (sel.form.requestSubmit) { sel.form.requestSubmit(); } else { sel.form.submit(); } });
+    });
+
+    // ---- media page: drag and drop upload --------------------------------------------------
+    var drop = document.querySelector('[data-upload]');
+    var wrap = document.querySelector('[data-csrf]');
+    if (drop && wrap && window.fetch && window.FormData) {
+        drop.classList.remove('nojs');
+        var input = drop.querySelector('input[type=file]');
+        var busy = false;
+        var sendAll = function (files) {
+            files = Array.prototype.filter.call(files, function (f) { return /^image\//.test(f.type); });
+            if (!files.length || busy) { if (!files.length) { window.agToast('Нужны картинки: JPEG, PNG, GIF или WebP', 'error'); } return; }
+            busy = true;
+            var ok = 0, failed = 0, i = 0;
+            var bar = document.createElement('progress');
+            bar.max = files.length; bar.value = 0;
+            drop.appendChild(bar);
+            var next = function () {
+                if (i >= files.length) {
+                    busy = false;
+                    bar.remove();
+                    if (ok > 0) { setTimeout(function () { location.href = '/admin/?s=media&up=' + ok; }, failed ? 2500 : 200); }
+                    return;
+                }
+                var fd = new FormData();
+                fd.append('file', files[i]);
+                fetch('/admin/upload.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': wrap.getAttribute('data-csrf') }, body: fd })
+                    .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Сервер вернул не JSON, код ' + r.status }; }); })
+                    .then(function (d) {
+                        if (d.ok) { ok++; } else { failed++; window.agToast(files[i].name + ': ' + (d.error || 'не загружено'), 'error'); }
+                    })
+                    .catch(function () { failed++; window.agToast('Нет связи с сервером', 'error'); })
+                    .then(function () { i++; bar.value = i; next(); });
+            };
+            next();
+        };
+        input.addEventListener('change', function () { sendAll(input.files); input.value = ''; });
+        ['dragenter', 'dragover'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+        ['dragleave', 'drop'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+        drop.addEventListener('drop', function (e) { sendAll(e.dataTransfer.files); });
+        drop.addEventListener('submit', function (e) { e.preventDefault(); });
+    }
 }());

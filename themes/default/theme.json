@@ -34,6 +34,15 @@
                 }
             }
         },
+        "image": {
+            "title": "Image",
+            "fields": {
+                "src": {"type": "url", "media": true, "required": true},
+                "alt": {"type": "string", "max": 200, "required": true},
+                "caption": {"type": "string", "max": 300},
+                "wide": {"type": "bool"}
+            }
+        },
         "faq": {
             "title": "FAQ",
             "fields": {

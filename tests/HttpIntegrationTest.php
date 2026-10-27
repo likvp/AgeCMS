@@ -382,4 +382,86 @@ final class HttpIntegrationTest extends TestCase
         $this->assertSame(302, $login['status'], 'the shown password works');
         $this->assertSame(200, $this->http('GET', '/')['status']);
     }
+
+    public function testAdminDeletePagesMediaAndUsers(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $this->assertTrue($csrf !== '');
+
+        // delete and restore a page from the admin
+        $this->form(['action' => 'page_create', 'slug' => 'temp-page', 'title' => 'Temp', 'schema_type' => 'WebPage'], $csrf);
+        $del = $this->form(['action' => 'page_delete', 'slug' => 'temp-page'], $csrf);
+        $this->assertContains('удалена', $del['body']);
+        $list = $this->http('GET', '/admin/?s=pages', null, [], true)['body'];
+        $this->assertContains('Удалённые', $list);
+        $this->assertContains('Восстановить', $list);
+        $restored = $this->form(['action' => 'page_restore', 'slug' => 'temp-page'], $csrf);
+        $this->assertSame(302, $restored['status']);
+        $this->assertContains('restored=1', $restored['headers']['location']);
+        $this->assertContains('Страница восстановлена', $this->http('GET', '/admin/?s=edit&slug=temp-page&restored=1', null, [], true)['body']);
+        $this->assertContains('Удалить страницу', $this->http('GET', '/admin/?s=edit&slug=temp-page', null, [], true)['body']);
+        $this->assertNotContains('ag-delete-form', $this->http('GET', '/admin/?s=edit&slug=index', null, [], true)['body'], 'the home page has no delete button');
+        $this->assertContains('home page cannot be deleted', $this->form(['action' => 'page_delete', 'slug' => 'index'], $csrf)['body'], 'home page deletion is refused');
+
+        // image upload, media page, use in a block, delete protection
+        if (\AgeCMS\Media::available()) {
+            $png = TEST_TMP . '/up.png';
+            $im = imagecreatetruecolor(64, 48);
+            imagepng($im, $png);
+            $upload = static function (string $url, ?string $csrf, string $file): array {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_COOKIEFILE => TEST_TMP . '/cookies.txt', CURLOPT_COOKIEJAR => TEST_TMP . '/cookies.txt',
+                    CURLOPT_HTTPHEADER => $csrf !== null ? ['X-CSRF-Token: ' . $csrf] : [], CURLOPT_POSTFIELDS => ['file' => new CURLFile($file, 'image/png', 'up.png')]]);
+                $body = (string)curl_exec($ch);
+                return ['status' => (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'json' => json_decode($body, true)];
+            };
+            $base = "http://127.0.0.1:{$this->port}/admin/upload.php";
+            $this->assertSame(403, $upload($base, 'wrong-token', $png)['status'], 'upload needs the CSRF token');
+            $ok = $upload($base, $csrf, $png);
+            $this->assertSame(200, $ok['status']);
+            $path = $ok['json']['result']['path'];
+            $this->assertSame(1, preg_match('~^/assets/uploads/[a-f0-9]{20}\\.webp$~', $path));
+            $this->assertSame(200, $this->http('GET', $path)['status'], 'the image is served');
+            $notImage = TEST_TMP . '/fake.png';
+            file_put_contents($notImage, '<?php echo 1;');
+            $this->assertSame(422, $upload($base, $csrf, $notImage)['status'], 'only real images are accepted');
+
+            $media = $this->http('GET', '/admin/?s=media', null, [], true)['body'];
+            $this->assertContains($path, $media);
+            $this->assertContains('data-upload', $media);
+
+            $set = $this->http('POST', '/admin/api.php', json_encode(['action' => 'update_page', 'slug' => 'temp-page', 'fields' => ['blocks' => [['id' => 'image_1', 'type' => 'image', 'data' => ['src' => $path, 'alt' => 'Картинка', 'caption' => 'Подпись']]]]]), ['Content-Type' => 'application/json', 'X-CSRF-Token' => $csrf], true);
+            $this->assertSame(200, $set['status']);
+            $this->http('POST', '/admin/api.php', json_encode(['action' => 'update_page', 'slug' => 'temp-page', 'fields' => ['is_published' => 1]]), ['Content-Type' => 'application/json', 'X-CSRF-Token' => $csrf], true);
+            $public = $this->http('GET', '/temp-page')['body'];
+            $this->assertContains('<img src="' . $path . '" alt="Картинка"', $public);
+            $this->assertContains('Подпись', $public);
+
+            $blocked = $this->form(['action' => 'media_delete', 'name' => basename($path)], $csrf);
+            $this->assertContains('/temp-page', $blocked['body'], 'a used image cannot be deleted');
+            $this->assertSame(200, $this->http('GET', $path)['status']);
+            $this->http('POST', '/admin/api.php', json_encode(['action' => 'update_page', 'slug' => 'temp-page', 'fields' => ['blocks' => []]]), ['Content-Type' => 'application/json', 'X-CSRF-Token' => $csrf], true);
+            $this->assertContains('Картинка удалена', $this->form(['action' => 'media_delete', 'name' => basename($path)], $csrf)['body']);
+            $this->assertSame(404, $this->http('GET', $path)['status']);
+        }
+
+        // users
+        $users = $this->http('GET', '/admin/?s=users', null, [], true)['body'];
+        $this->assertContains('Новый пользователь', $users);
+        $created = $this->form(['action' => 'user_create', 'username' => 'anna', 'role' => 'editor', 'password_mode' => 'generate'], $csrf);
+        $this->assertContains('Пользователь anna создан', $created['body']);
+        preg_match('~id="new-password">([A-Za-z0-9]{16})<~', $created['body'], $pm);
+        $this->assertTrue(isset($pm[1]), 'a generated password is shown once');
+        $this->assertNotContains($pm[1], $this->http('GET', '/admin/?s=users', null, [], true)['body']);
+        $this->assertContains('at least 10', $this->form(['action' => 'user_create', 'username' => 'bob', 'role' => 'editor', 'password_mode' => 'own', 'password' => 'short'], $csrf)['body']);
+        $annaId = (int)\AgeCMS\Database::value("SELECT id FROM users WHERE username = 'anna'");
+        $this->assertContains('Роль изменена', $this->form(['action' => 'user_role', 'id' => (string)$annaId, 'role' => 'viewer'], $csrf)['body']);
+        $this->assertContains('Новый пароль для anna', $this->form(['action' => 'user_reset', 'id' => (string)$annaId], $csrf)['body']);
+        $adminId = (int)\AgeCMS\Database::value("SELECT id FROM users WHERE username = 'admin'");
+        $this->assertContains('own account', $this->form(['action' => 'user_delete', 'id' => (string)$adminId], $csrf)['body']);
+        $this->assertContains('не совпадают', $this->form(['action' => 'password_change', 'current_password' => 'Passw0rd-test-1', 'new_password' => 'another-long-pw', 'new_password2' => 'different-long-pw'], $csrf)['body']);
+        $this->assertContains('Пароль изменён', $this->form(['action' => 'password_change', 'current_password' => 'Passw0rd-test-1', 'new_password' => 'another-long-pw', 'new_password2' => 'another-long-pw'], $csrf)['body']);
+        $this->assertContains('Пользователь удалён', $this->form(['action' => 'user_delete', 'id' => (string)$annaId], $csrf)['body']);
+    }
 }
