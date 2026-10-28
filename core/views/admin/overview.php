@@ -24,6 +24,13 @@ $all = Pages::listing();
 $published = count(array_filter($all, static fn(array $p): bool => (int)$p['is_published'] === 1));
 $recent = Revisions::recent(8);
 $week = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+$viewsWord = static function (int $n): string {
+    $d = $n % 100;
+    if ($d >= 11 && $d <= 14) {
+        return 'просмотров';
+    }
+    return [1 => 'просмотр', 2 => 'просмотра', 3 => 'просмотра', 4 => 'просмотра'][$n % 10] ?? 'просмотров';
+};
 ?>
 <div class="pagehead">
     <div class="grow">
@@ -61,9 +68,11 @@ $week = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
     </section>
     <section class="panel">
         <div class="panel-h"><h2>Просмотры по дням</h2></div>
-        <svg class="spark-svg" viewBox="0 0 280 100" preserveAspectRatio="none" role="img" aria-label="Просмотры за 7 дней">
-            <?php $n = 0; foreach ($days as $date => $d): $n++; $hgt = max(3, (int)round(((int)$d['views'] / $max) * 96)); ?><rect<?= $n === count($days) ? ' class="now"' : '' ?> x="<?= ($n - 1) * 40 + 4 ?>" y="<?= 100 - $hgt ?>" width="32" height="<?= $hgt ?>"><title><?= h($date) ?>: <?= (int)$d['views'] ?></title></rect><?php endforeach; ?>
-        </svg>
+        <ul class="spark-c" aria-label="Просмотры за 7 дней">
+            <?php $n = 0; foreach ($days as $date => $d): $n++; $v = (int)$d['views']; $hgt = max(3, (int)round(($v / $max) * 96)); ?>
+                <li class="spark-col<?= $n === count($days) ? ' now' : '' ?>" tabindex="0"><svg viewBox="0 0 32 100" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="<?= 100 - $hgt ?>" width="32" height="<?= $hgt ?>"/></svg><span class="tip"><b><?= number_format($v, 0, '', ' ') . ' ' . $viewsWord($v) ?></b><?= $week[(int)gmdate('w', strtotime($date))] ?>, <?= gmdate('d.m', strtotime($date)) ?></span></li>
+            <?php endforeach; ?>
+        </ul>
         <div class="spark-l"><?php foreach (array_keys($days) as $date): ?><span><?= $week[(int)gmdate('w', strtotime($date))] ?></span><?php endforeach; ?></div>
     </section>
 </div>
