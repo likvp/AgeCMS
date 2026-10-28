@@ -374,6 +374,19 @@ final class HttpIntegrationTest extends HttpCase
         return ['status' => $r['status'], 'json' => json_decode($r['body'], true)];
     }
 
+    public function testInstallButtonsAnswerWithoutRunningAnythingWhenNothingIsMissing(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+        $page = $this->form(['action' => 'env_install', 'which' => '*'], $csrf);
+        $this->assertSame(200, $page['status']);
+        $missing = array_filter(\AgeCMS\Installer::checks(), static fn(array $c): bool => !$c['ok'] && \AgeCMS\ServerSetup::installable($c['label']));
+        if ($missing === []) {
+            $this->assertContains('Нечего ставить', $page['body']);
+        }
+        $this->assertContains('Требования сервера', $page['body']);
+    }
+
     public function testTheHistoryPageShowsAdminActionsNextToPageEdits(): void
     {
         $this->boot();

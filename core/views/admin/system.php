@@ -2,6 +2,7 @@
 /**
  * @var string $csrf
  * @var bool $isAdmin
+ * @var array<string,mixed>|null $envResult
  */
 defined('AGECMS_BOOTED') || exit;
 
@@ -22,13 +23,25 @@ $lastUpdate = Updater::last();
 $blockers = $newer === null ? [] : array_merge(Updater::verifyRelease($newer) !== null ? [Updater::verifyRelease($newer)] : [], Updater::preflight());
 $rollbacks = Updater::rollbacks();
 ?>
-<?php $envChecks = \AgeCMS\Installer::checks(); $envMissing = array_filter($envChecks, static fn(array $c): bool => !$c['ok']); ?>
+<?php
+$envChecks = \AgeCMS\Installer::checks();
+$envMissing = array_filter($envChecks, static fn(array $c): bool => !$c['ok']);
+$envInstallable = array_filter($envMissing, static fn(array $c): bool => \AgeCMS\ServerSetup::installable($c['label']));
+?>
 <section class="panel">
-    <div class="panel-h"><h2>Требования сервера</h2><span class="tag <?= $envMissing === [] ? 'ok' : 'warn' ?>"><?= $envMissing === [] ? 'всё есть' : 'не хватает ' . count($envMissing) ?></span></div>
+    <div class="panel-h"><h2>Требования сервера</h2><span class="tag <?= $envMissing === [] ? 'ok' : 'warn' ?>"><?= $envMissing === [] ? 'всё есть' : 'не хватает ' . count($envMissing) ?></span><?php if ($envInstallable !== [] && $isAdmin): ?><form method="post" class="inline" data-confirm="Установить недостающее?" data-confirm-text="Сайт попробует поставить пакеты PHP на сервер. Если прав нет, он покажет команды для ручной установки." data-confirm-ok="Установить"><?= admin_post_fields($csrf, 'env_install') ?><input type="hidden" name="which" value="*"><button class="btn sm primary" type="submit"><?= icon('terminal-window') ?>Установить недостающее</button></form><?php endif; ?></div>
     <div class="panel-b">
         <p class="muted">PHP <?= h(PHP_VERSION) ?>, так его видит сам сайт (командная строка на сервере может использовать другой PHP).</p>
+        <?php if (!empty($envResult)): ?>
+            <div class="notice <?= $envResult['ok'] ? 'ok' : 'warn' ?>" role="status"><?= icon('info') ?><div>
+                <p><b><?= h($envResult['title']) ?></b></p>
+                <pre class="agent-text" id="env-result"><?= h($envResult['text']) ?></pre>
+                <p><button class="btn sm" type="button" data-copy="#env-result"><?= icon('copy') ?>Копировать</button></p>
+            </div></div>
+        <?php endif; ?>
         <?php foreach ($envChecks as $c): ?>
-            <p><span class="tag <?= $c['ok'] ? 'ok' : ($c['level'] === 'required' ? 'err' : 'warn') ?>"><?= $c['ok'] ? 'есть' : ($c['level'] === 'required' ? 'нет, нужно' : 'нет, совет') ?></span> <b><?= h($c['label']) ?></b><?= $c['note'] !== '' ? ' <span class="muted">' . h($c['note']) . '</span>' : '' ?><?= !$c['ok'] && $c['fix'] !== '' ? '<br><small class="muted">Как поставить: ' . h($c['fix']) . '</small>' : '' ?></p>
+            <p><span class="tag <?= $c['ok'] ? 'ok' : ($c['level'] === 'required' ? 'err' : 'warn') ?>"><?= $c['ok'] ? 'есть' : ($c['level'] === 'required' ? 'нет, нужно' : 'нет, совет') ?></span> <b><?= h($c['label']) ?></b><?= $c['note'] !== '' ? ' <span class="muted">' . h($c['note']) . '</span>' : '' ?><?= !$c['ok'] && $c['fix'] !== '' ? '<br><small class="muted">Как поставить: ' . h($c['fix']) . '</small>' : '' ?>
+                <?php if (!$c['ok'] && $isAdmin && \AgeCMS\ServerSetup::installable($c['label'])): ?><form method="post" class="inline"><?= admin_post_fields($csrf, 'env_install') ?><input type="hidden" name="which" value="<?= h($c['label']) ?>"><button class="btn sm" type="submit"><?= icon('terminal-window') ?>Установить</button></form><?php endif; ?></p>
         <?php endforeach; ?>
     </div>
 </section>

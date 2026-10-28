@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, Slug, Updater, Updates};
+use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, ServerSetup, Slug, Updater, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -27,6 +27,7 @@ $error = '';
 $newToken = '';
 $newPassword = null;
 $newAgent = null;
+$envResult = null;
 $recoveryCodes = null;
 $notice = '';
 $user = Auth::user();
@@ -328,6 +329,15 @@ try {
                     $flash = $url === '' ? 'Проверка обновлений выключена' : ($state['error'] !== '' ? 'Адрес сохранён, но проверить не вышло: ' . $state['error'] : 'Настройки обновлений сохранены');
                     $section = 'system';
                     break;
+                case 'env_install':
+                    Security::requirePermission($actor, 'system.manage');
+                    $which = (string)($_POST['which'] ?? '');
+                    $wanted = $which === '*' ? array_column(array_filter(Installer::checks(), static fn(array $c): bool => !$c['ok']), 'label') : [$which];
+                    $envResult = ServerSetup::install($wanted);
+                    $flash = $envResult['ok'] ? $envResult['title'] : '';
+                    $error = $envResult['ok'] ? $error : $envResult['title'];
+                    $section = 'system';
+                    break;
                 case 'updates_check':
                     Security::requirePermission($actor, 'system.manage');
                     $state = Updates::check();
@@ -583,7 +593,7 @@ if ($user === null) {
     $csrf = Auth::csrf();
     $isAdmin = Security::can($user['role'], 'system.manage');
     $canWrite = Security::can($user['role'], 'content.write');
-    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword', 'newAgent', 'recoveryCodes', 'adminModule', 'moduleReply'));
+    admin_view('layout', compact('user', 'csrf', 'isAdmin', 'canWrite', 'section', 'flash', 'error', 'newToken', 'newPassword', 'newAgent', 'envResult', 'recoveryCodes', 'adminModule', 'moduleReply'));
 }
 ?>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>

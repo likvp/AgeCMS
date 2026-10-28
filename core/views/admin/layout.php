@@ -10,6 +10,7 @@
  * @var string $newToken
  * @var array<string,string>|null $newPassword
  * @var array<string,mixed>|null $newAgent
+ * @var array<string,mixed>|null $envResult
  * @var list<string>|null $recoveryCodes
  * @var array<string,mixed>|null $adminModule
  * @var \AgeCMS\ModuleResponse|null $moduleReply
@@ -129,7 +130,7 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
             <?php endif; ?>
             <div class="enter">
             <?php
-            $vars = compact('user', 'csrf', 'isAdmin', 'canWrite');
+            $vars = compact('user', 'csrf', 'isAdmin', 'canWrite', 'envResult');
             if ($section === 'module') {
                 admin_view('module', $vars + ['reply' => $moduleReply, 'moduleName' => (string)$adminModule['page']['module']]);
             } elseif (in_array($section, ['settings', 'module_settings'], true) && !$isAdmin) {
