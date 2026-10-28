@@ -76,14 +76,38 @@ $rollbacks = Updater::rollbacks();
 <section class="panel">
     <div class="panel-h"><h2>Модули</h2></div>
     <?php if ($modules === []): ?>
-        <div class="empty"><?= icon('seal-check') ?><b>Модулей нет</b><span>Подписанные модули кладутся в каталог modules.</span></div>
+        <div class="empty"><?= icon('seal-check') ?><b>Модулей нет</b><span>Модуль загружается zip-архивом ниже или кладётся папкой в modules.</span></div>
     <?php else: ?>
-    <table class="tbl"><thead><tr><th>Модуль</th><th>Состояние</th><th></th></tr></thead><tbody>
-        <?php foreach ($modules as $name => $m): ?>
-            <tr><td class="mono"><?= h($name) ?></td><td><?= $m['status'] === 'ok' ? '<span class="tag ok">подпись проверена</span>' : '<span class="tag err">заблокирован</span> <small>' . h($m['reason']) . '</small>' ?></td>
-                <td><?php if ($isAdmin && \AgeCMS\ModuleSettings::fields($name) !== []): ?><a class="btn sm" href="<?= h(admin_url('module_settings', ['m' => $name])) ?>"><?= icon('gear-six') ?>Настройки</a><?php endif; ?></td></tr>
+    <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Модуль</th><th>Состояние</th><th></th></tr></thead><tbody>
+        <?php foreach ($modules as $name => $m):
+            $signedBy = $m['signed'] === 'site' ? 'подписан этим сайтом' : (is_string($m['signed']) ? 'подпись разработчика ' . substr($m['signed'], 10) : '');
+        ?>
+            <tr><td class="mono"><?= h($name) ?></td>
+                <td><?php if ($m['status'] === 'ok' && $m['signed'] !== null): ?><span class="tag ok">подпись проверена</span> <small class="muted"><?= h($signedBy) ?></small>
+                    <?php elseif ($m['status'] === 'ok'): ?><span class="tag err">подпись не проверена</span> <small class="muted">свой модуль, работает без подписи</small>
+                    <?php elseif ($m['status'] === 'disabled'): ?><span class="tag plain">выключен</span>
+                    <?php else: ?><span class="tag err">заблокирован</span> <small><?= h((string)$m['reason']) ?></small><?php endif; ?></td>
+                <td><div class="actions-row">
+                    <?php if ($isAdmin && $m['status'] === 'ok' && \AgeCMS\ModuleSettings::fields($name) !== []): ?><a class="btn sm" href="<?= h(admin_url('module_settings', ['m' => $name])) ?>"><?= icon('gear-six') ?>Настройки</a><?php endif; ?>
+                    <?php if ($isAdmin): ?>
+                        <?php if ($m['status'] === 'ok' && $m['signed'] === null): ?><form method="post" data-confirm="Подписать модуль <?= h($name) ?> ключом этого сайта?" data-confirm-text="Подписывайте только код, который вы проверили. После подписи любое изменение его файлов заблокирует модуль." data-confirm-ok="Подписать"><?= admin_post_fields($csrf, 'module_sign') ?><input type="hidden" name="module" value="<?= h($name) ?>"><button class="btn sm" type="submit"><?= icon('seal-check') ?>Подписать</button></form><?php endif; ?>
+                        <form method="post"><?= admin_post_fields($csrf, $m['status'] === 'disabled' ? 'module_enable' : 'module_disable') ?><input type="hidden" name="module" value="<?= h($name) ?>"><button class="btn sm" type="submit"><?= $m['status'] === 'disabled' ? 'Включить' : 'Выключить' ?></button></form>
+                        <form method="post" data-confirm="Удалить модуль <?= h($name) ?>?" data-confirm-text="Папка модуля уйдёт в data/module-backups, его данные в базе останутся." data-confirm-ok="Удалить" data-danger><?= admin_post_fields($csrf, 'module_delete') ?><input type="hidden" name="module" value="<?= h($name) ?>"><button class="ib danger" type="submit" title="Удалить" aria-label="Удалить модуль <?= h($name) ?>"><?= icon('trash') ?></button></form>
+                    <?php endif; ?>
+                </div></td></tr>
         <?php endforeach; ?>
-    </tbody></table>
+    </tbody></table></div>
+    <?php endif; ?>
+    <?php if ($isAdmin): ?>
+    <form method="post" enctype="multipart/form-data" class="panel-b">
+        <?= admin_post_fields($csrf, 'module_upload') ?>
+        <p>Свой модуль загружается zip-архивом: <code>manifest.json</code> (поля <code>name</code>, <code>class</code>, <code>entry</code>) и файлы модуля, как в <code>docs/MODULES.md</code>. Модуль с подписью разработчика или этого сайта проверяется; модуль без подписи работает сразу, но помечается красным. Код модуля выполняется на сервере с правами сайта: ставьте только то, чему доверяете.</p>
+        <div class="row center">
+            <input class="in" type="file" name="module_zip" accept=".zip,application/zip" required aria-label="Архив модуля">
+            <label class="chk"><input type="checkbox" name="replace" value="1"><span>Заменить, если уже есть</span></label>
+            <button class="btn primary" type="submit"><?= icon('upload-simple') ?>Загрузить модуль</button>
+        </div>
+    </form>
     <?php endif; ?>
 </section>
 

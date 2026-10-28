@@ -28,7 +28,7 @@ final class ModuleRoutesTest extends HttpCase
 
     // 1. Only modules with a verified signature get addresses.
 
-    public function testOnlyVerifiedModulesGetAddresses(): void
+    public function testTamperedModulesGetNoAddresses(): void
     {
         $this->boot();
         $sql = ['migrations/001_init.sql' => 'CREATE TABLE mod_rt_tampered_t (id INTEGER PRIMARY KEY);'];
@@ -42,7 +42,7 @@ final class ModuleRoutesTest extends HttpCase
         $this->assertSame(200, $ok['status']);
         $this->assertContains('hello 1', $ok['body']);
         $this->assertSame(404, $this->http('GET', '/rt_tampered/hello')['status'], 'file changed after signing');
-        $this->assertSame(404, $this->http('GET', '/rt_unsigned/hello')['status'], 'signature file missing');
+        $this->assertSame(200, $this->http('GET', '/rt_unsigned/hello')['status'], 'without a signature file the module runs as a user module');
         $this->assertSame(405, $this->http('POST', '/rt_tampered/form', '{}', ['Content-Type' => 'application/json'])['status'], 'a POST finds nothing either');
 
         Database::reset();

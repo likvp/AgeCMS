@@ -94,7 +94,7 @@ final class ModuleSettings
             try {
                 self::parse($info['manifest']);
             } catch (AgeCMSException $e) {
-                $modules[$name] = ['status' => 'blocked', 'reason' => $e->getMessage(), 'manifest' => null];
+                $modules[$name] = ['status' => 'blocked', 'reason' => $e->getMessage(), 'manifest' => null, 'signed' => null];
                 Logger::log('warning', 'module.blocked', ['module' => $name, 'reason' => $e->getMessage()]);
             }
         }

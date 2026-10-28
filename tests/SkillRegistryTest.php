@@ -53,12 +53,18 @@ final class SkillRegistryTest extends TestCase
         $this->assertContains('Unlisted executable file', $this->status()['reason']);
     }
 
-    public function testMissingOrForgedSignatureBlocksTheModule(): void
+    public function testMissingSignatureRunsAsUserModuleForgedSignatureBlocks(): void
     {
         $this->freshSite();
         $sig = file_get_contents($this->dir() . '/manifest.json.sig');
         unlink($this->dir() . '/manifest.json.sig');
-        $this->assertContains('is missing', $this->status()['reason']);
+        $this->assertSame('ok', $this->status()['status'], 'a module without a signature is a user module and runs');
+        $this->assertSame(null, $this->status()['signed']);
+        $this->assertTrue(in_array(basename($this->dir()), SkillRegistry::unsigned(), true), 'listed for the red notice');
+        Config::set('modules.allow_unsigned', false);
+        SkillRegistry::reset();
+        $this->assertContains('only signed modules', $this->status()['reason']);
+        Config::set('modules.allow_unsigned', true);
         file_put_contents($this->dir() . '/manifest.json.sig', json_encode(['alg' => 'hmac-sha256', 'key_id' => 'local', 'sig' => str_repeat('a', 64)]));
         $this->assertContains('Signature does not match', $this->status()['reason']);
         file_put_contents($this->dir() . '/manifest.json.sig', $sig);

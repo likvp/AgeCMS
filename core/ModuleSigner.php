@@ -20,26 +20,7 @@ final class ModuleSigner
         }
         $manifest = json_decode((string)file_get_contents($dir . '/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
 
-        $files = [];
-        $skills = [];
-        $migrations = [];
-        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
-        foreach ($it as $file) {
-            $relative = ltrim(substr($file->getPathname(), strlen($dir)), '/');
-            if (!$file->isFile() || $relative === 'manifest.json' || $relative === 'manifest.json.sig') {
-                continue;
-            }
-            $files[$relative] = hash_file('sha256', $file->getPathname());
-            if (preg_match('~^skills/[^/]+\.json$~', $relative) === 1) {
-                $skills[] = $relative;
-            }
-            if (preg_match('~^migrations/[A-Za-z0-9_.-]+\.sql$~', $relative) === 1) {
-                $migrations[] = $relative;
-            }
-        }
-        ksort($files);
-        sort($skills);
-        sort($migrations);
+        ['files' => $files, 'skills' => $skills, 'migrations' => $migrations] = self::scan($dir);
         $manifest['name'] = $name;
         $manifest['files'] = $files;
         $manifest['skills'] = $skills;
@@ -62,6 +43,37 @@ final class ModuleSigner
         file_put_contents($dir . '/manifest.json', $bytes);
         file_put_contents($dir . '/manifest.json.sig', json_encode($sig) . "\n");
         return ['files' => count($files), 'alg' => $sig['alg']];
+    }
+
+    /**
+     * Every file of a module folder with its sha256, its skills/*.json and migrations/*.sql in name order.
+     * manifest.json and manifest.json.sig are not listed.
+     *
+     * @return array{files:array<string,string>,skills:list<string>,migrations:list<string>}
+     */
+    public static function scan(string $dir): array
+    {
+        $files = [];
+        $skills = [];
+        $migrations = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $file) {
+            $relative = ltrim(substr($file->getPathname(), strlen($dir)), '/');
+            if (!$file->isFile() || $relative === 'manifest.json' || $relative === 'manifest.json.sig') {
+                continue;
+            }
+            $files[$relative] = hash_file('sha256', $file->getPathname());
+            if (preg_match('~^skills/[^/]+\.json$~', $relative) === 1) {
+                $skills[] = $relative;
+            }
+            if (preg_match('~^migrations/[A-Za-z0-9_.-]+\.sql$~', $relative) === 1) {
+                $migrations[] = $relative;
+            }
+        }
+        ksort($files);
+        sort($skills);
+        sort($migrations);
+        return ['files' => $files, 'skills' => $skills, 'migrations' => $migrations];
     }
 
     /** @return array{public:string} */

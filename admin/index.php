@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug, Updater, Updates};
+use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, Slug, Updater, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -327,6 +327,36 @@ try {
                         throw new AgeCMSException('Проверить не вышло: ' . $state['error']);
                     }
                     $flash = Updates::available() !== null ? 'Есть новая версия ' . Updates::available()['version'] : 'У вас последняя версия ' . Updates::version();
+                    $section = 'system';
+                    break;
+                case 'module_upload':
+                    Security::requirePermission($actor, 'system.manage');
+                    $up = $_FILES['module_zip'] ?? null;
+                    if (!is_array($up) || ($up['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string)$up['tmp_name'])) {
+                        throw new AgeCMSException('Выберите zip-архив модуля (до 12 МБ)');
+                    }
+                    $done = ModuleInstaller::install(ModuleInstaller::filesFromZip((string)$up['tmp_name']), isset($_POST['replace']), (string)$user['username']);
+                    $flash = 'Модуль ' . $done['name'] . ($done['replaced'] ? ' заменён' : ' установлен') . ': '
+                        . ($done['status'] === 'ok' ? ($done['signed'] === null ? 'работает без подписи' : 'подпись проверена') : 'заблокирован (' . $done['reason'] . ')');
+                    $section = 'system';
+                    break;
+                case 'module_enable':
+                case 'module_disable':
+                    Security::requirePermission($actor, 'system.manage');
+                    ModuleInstaller::setEnabled((string)($_POST['module'] ?? ''), $action === 'module_enable', (string)$user['username']);
+                    $flash = 'Модуль ' . ($_POST['module'] ?? '') . ($action === 'module_enable' ? ' включён' : ' выключен');
+                    $section = 'system';
+                    break;
+                case 'module_delete':
+                    Security::requirePermission($actor, 'system.manage');
+                    ModuleInstaller::delete((string)($_POST['module'] ?? ''), (string)$user['username']);
+                    $flash = 'Модуль ' . ($_POST['module'] ?? '') . ' удалён. Копия папки лежит в data/module-backups, его данные в базе остались';
+                    $section = 'system';
+                    break;
+                case 'module_sign':
+                    Security::requirePermission($actor, 'system.manage');
+                    ModuleInstaller::sign((string)($_POST['module'] ?? ''), (string)$user['username']);
+                    $flash = 'Модуль ' . ($_POST['module'] ?? '') . ' подписан ключом этого сайта. Теперь любое изменение его файлов заблокирует модуль';
                     $section = 'system';
                     break;
                 case 'core_update':

@@ -135,7 +135,7 @@ final class ModuleRoutes
                 }
                 array_push($claimed, ...$routes);
             } catch (AgeCMSException $e) {
-                $modules[$name] = ['status' => 'blocked', 'reason' => $e->getMessage(), 'manifest' => null];
+                $modules[$name] = ['status' => 'blocked', 'reason' => $e->getMessage(), 'manifest' => null, 'signed' => null];
                 Logger::log('warning', 'module.blocked', ['module' => $name, 'reason' => $e->getMessage()]);
             }
         }

@@ -6,18 +6,21 @@ namespace AgeCMS;
 use Throwable;
 
 /**
- * Module-as-a-Skill loader. A module is a folder in modules/ with a manifest.json that lists every file
- * with its sha256, and manifest.json.sig. The registry refuses a module when the signature is missing or wrong,
- * when a listed file changed, or when an executable file exists that the manifest does not list.
- * Signatures: hmac-sha256 with the site's own key (modules signed on this server by bin/sign-module.php),
- * or ed25519 with a publisher key listed in config trusted_publishers (modules from outside).
+ * Module-as-a-Skill loader. A module is a folder in modules/ with a manifest.json and usually manifest.json.sig.
+ * A signed module (the manifest lists every file with its sha256) is refused when the signature is wrong, when a
+ * listed file changed, or when an executable file exists that the manifest does not list: that is what a planted
+ * or altered file looks like. Signatures: hmac-sha256 with the site's own key (modules signed on this server by
+ * bin/sign-module.php or the «Подписать» button), or ed25519 with a publisher key listed in config trusted_publishers.
+ * A module without manifest.json.sig is a user module: it runs as it is ("signed" => null), the admin shows it
+ * in red on every page, and config modules.allow_unsigned = false refuses such modules on a site that wants
+ * only signed code. Config modules.disabled lists modules switched off in the admin.
  * A verified module may also declare "routes" (ModuleRoutes), "admin" pages (ModuleAdmin) and "migrations" (ModuleMigrator) in its manifest.
  */
 final class SkillRegistry
 {
     private const EXECUTABLE = ['php', 'phtml', 'phar', 'inc', 'php5', 'php7', 'php8', 'pht', 'htaccess'];
 
-    /** @var array<string,array{status:string,reason:?string,manifest:?array<string,mixed>}>|null */
+    /** @var array<string,array{status:string,reason:?string,manifest:?array<string,mixed>,signed:?string}>|null */
     private static ?array $modules = null;
     /** @var array<string,ModuleInterface> */
     private static array $instances = [];
@@ -35,19 +38,31 @@ final class SkillRegistry
         self::$booted = false;
     }
 
-    /** @return array<string,array{status:string,reason:?string,manifest:?array<string,mixed>}> */
+    /** @return array<string,array{status:string,reason:?string,manifest:?array<string,mixed>,signed:?string}> */
     public static function modules(): array
     {
         if (self::$modules !== null) {
             return self::$modules;
         }
         self::$modules = [];
+        $disabled = (array)Config::get('modules.disabled', []);
         foreach (glob(self::modulesDir() . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
             $name = basename($dir);
+            $signedFile = is_file($dir . '/manifest.json.sig');
+            if (in_array($name, $disabled, true)) {
+                self::$modules[$name] = ['status' => 'disabled', 'reason' => null, 'manifest' => null, 'signed' => null];
+                continue;
+            }
             try {
-                self::$modules[$name] = ['status' => 'ok', 'reason' => null, 'manifest' => self::verify($dir, $name)];
+                if ($signedFile) {
+                    self::$modules[$name] = ['status' => 'ok', 'reason' => null, 'manifest' => self::verify($dir, $name), 'signed' => self::signer($dir)];
+                } elseif (Config::get('modules.allow_unsigned', true) !== true) {
+                    throw new AgeCMSException('Not signed, and this site runs only signed modules (modules.allow_unsigned)');
+                } else {
+                    self::$modules[$name] = ['status' => 'ok', 'reason' => null, 'manifest' => self::unsignedManifest($dir, $name), 'signed' => null];
+                }
             } catch (AgeCMSException $e) {
-                self::$modules[$name] = ['status' => 'blocked', 'reason' => $e->getMessage(), 'manifest' => null];
+                self::$modules[$name] = ['status' => 'blocked', 'reason' => $e->getMessage(), 'manifest' => null, 'signed' => null];
                 Logger::log('warning', 'module.blocked', ['module' => $name, 'reason' => $e->getMessage()]);
             }
         }
@@ -79,7 +94,7 @@ final class SkillRegistry
                 }
                 $instance->register();
             } catch (Throwable $e) {
-                self::$modules[$name] = ['status' => 'blocked', 'reason' => 'load failed: ' . $e->getMessage(), 'manifest' => null];
+                self::$modules[$name] = ['status' => 'blocked', 'reason' => 'load failed: ' . $e->getMessage(), 'manifest' => null, 'signed' => null];
                 Logger::log('error', 'module.load_failed', ['module' => $name, 'error' => $e->getMessage()]);
             }
         }
@@ -237,6 +252,42 @@ final class SkillRegistry
             }
         }
         return $manifest;
+    }
+
+    /** @return list<string> names of user modules that run without a signature */
+    public static function unsigned(): array
+    {
+        return array_keys(array_filter(self::modules(), static fn(array $m): bool => $m['status'] === 'ok' && $m['signed'] === null));
+    }
+
+    /**
+     * The manifest of a module without a signature, filled the way bin/sign-module.php would fill it:
+     * every file with its hash, skills/*.json, migrations/*.sql in name order.
+     *
+     * @return array<string,mixed>
+     */
+    public static function unsignedManifest(string $dir, string $name): array
+    {
+        $manifest = json_decode((string)@file_get_contents($dir . '/manifest.json'), true);
+        if (!is_array($manifest)) {
+            throw new AgeCMSException('manifest.json is missing or is not JSON');
+        }
+        if (($manifest['name'] ?? null) !== $name || preg_match('/^[a-z0-9_]{1,40}$/', $name) !== 1) {
+            throw new AgeCMSException('Manifest name does not match the folder name');
+        }
+        $entry = (string)($manifest['entry'] ?? 'Module.php');
+        if (preg_match('~^[A-Za-z0-9_./-]+\.php$~', $entry) !== 1 || str_contains($entry, '..') || !is_file($dir . '/' . $entry)) {
+            throw new AgeCMSException("Entry file is missing: {$entry}");
+        }
+        ['files' => $files, 'skills' => $skills, 'migrations' => $migrations] = ModuleSigner::scan($dir);
+        return ['files' => $files, 'skills' => $skills, 'migrations' => $migrations] + $manifest;
+    }
+
+    /** 'site' for the site's own key, 'publisher:<key id>' for a trusted publisher. Called after verify(). */
+    private static function signer(string $dir): string
+    {
+        $sig = json_decode((string)file_get_contents($dir . '/manifest.json.sig'), true);
+        return ($sig['alg'] ?? '') === 'ed25519' ? 'publisher:' . (string)($sig['key_id'] ?? '') : 'site';
     }
 
     /** @param array<string,mixed> $sig */

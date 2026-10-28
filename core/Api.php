@@ -37,6 +37,11 @@ final class Api
             'update_core' => ['system.manage', 'Install the newer core found by check_core_update: signed package only, database and old files are backed up first, a failed write puts the old files back. Pages, uploads, settings, modules and own themes are not touched. Tell the owner before you call it. Administrators only.', $obj([], [])],
             'rollback_core' => ['system.manage', 'Put back the core files saved before the last update_core (the database stays as it is). Administrators only.', $obj([], [])],
             'set_core_updates' => ['system.manage', 'Change where updates are checked (url: https address of release.json, empty switches checks off) and/or auto (true installs new signed versions by itself within a day). Administrators only.', $obj(['url' => ['type' => 'string'], 'auto' => ['type' => 'boolean']], [])],
+            'list_modules' => ['system.manage', 'Installed modules: status (ok, disabled, blocked), signed (site, publisher:<key>, or null for a user module without a signature), reason when blocked. Administrators only.', $obj([], [])],
+            'install_module' => ['system.manage', 'Install a module from files: {"manifest.json": "...", "Module.php": "...", "skills/x.json": "..."} as text, or zip_base64. manifest.json needs name, class, entry (see docs/MODULES.md in the core). Without manifest.json.sig the module runs at once as a user module and the owner sees it in red. replace: true overwrites a module with the same name (the old one is kept in data/module-backups). The code runs on the server with the site rights: tell the owner what it does before you install it. Administrators only.', $obj(['files' => ['type' => 'object'], 'zip_base64' => ['type' => 'string'], 'replace' => ['type' => 'boolean']], [])],
+            'enable_module' => ['system.manage', 'Switch a module back on. Administrators only.', $obj(['name' => ['type' => 'string']], ['name'])],
+            'disable_module' => ['system.manage', 'Switch a module off without deleting it. Administrators only.', $obj(['name' => ['type' => 'string']], ['name'])],
+            'delete_module' => ['system.manage', 'Remove a module: its folder moves to data/module-backups, its tables mod_<name>_* stay. Administrators only.', $obj(['name' => ['type' => 'string']], ['name'])],
         ];
     }
 
@@ -105,6 +110,10 @@ final class Api
             'update_core' => self::updateCore($actor),
             'rollback_core' => Updater::rollback() + ['note' => 'Files are back. The database was not rolled back.'],
             'set_core_updates' => self::setCoreUpdates($args),
+            'list_modules' => ['modules' => self::moduleList()],
+            'install_module' => self::installModule($actor, $args),
+            'enable_module', 'disable_module' => self::toggleModule($actor, $tool === 'enable_module', self::string($args, 'name')),
+            'delete_module' => ['kept_in' => 'data/module-backups/' . basename(ModuleInstaller::delete(self::string($args, 'name'), $actor->type . ':' . $actor->name)), 'modules' => self::moduleList()],
         };
     }
 
@@ -124,10 +133,56 @@ final class Api
             'settings' => Seo::settings(),
             'menus' => $menus,
             'block_types' => Theme::blocks($theme),
-            'modules' => array_map(static fn(array $m): array => ['status' => $m['status'], 'reason' => $m['reason']], SkillRegistry::modules()),
+            'modules' => self::moduleList(),
             'frozen' => CircuitBreaker::frozenInfo(),
             'token' => Auth::currentToken(),
         ];
+    }
+
+    /** @return array<string,array{status:string,signed:?string,reason:?string}> */
+    private static function moduleList(): array
+    {
+        return array_map(static fn(array $m): array => ['status' => $m['status'], 'signed' => $m['signed'], 'reason' => $m['reason']], SkillRegistry::modules());
+    }
+
+    /**
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>
+     */
+    private static function installModule(Actor $actor, array $args): array
+    {
+        if (is_string($args['zip_base64'] ?? null) && $args['zip_base64'] !== '') {
+            $bytes = base64_decode($args['zip_base64'], true);
+            if ($bytes === false) {
+                throw new AgeCMSException('zip_base64 is not base64');
+            }
+            $tmp = tempnam(sys_get_temp_dir(), 'agecms-module');
+            file_put_contents($tmp, $bytes);
+            try {
+                $files = ModuleInstaller::filesFromZip($tmp);
+            } finally {
+                @unlink($tmp);
+            }
+        } elseif (is_array($args['files'] ?? null) && $args['files'] !== []) {
+            $files = [];
+            foreach ($args['files'] as $path => $text) {
+                if (!is_string($text)) {
+                    throw new AgeCMSException("files.{$path} must be the file text");
+                }
+                $files[(string)$path] = $text;
+            }
+        } else {
+            throw new AgeCMSException('Pass files (path => text) or zip_base64');
+        }
+        $done = ModuleInstaller::install($files, ($args['replace'] ?? false) === true, $actor->type . ':' . $actor->name);
+        return $done + ['note' => $done['signed'] === null && $done['status'] === 'ok' ? 'Runs without a signature: the owner sees it in red and can sign it in «Система» after checking the code.' : ''];
+    }
+
+    /** @return array<string,mixed> */
+    private static function toggleModule(Actor $actor, bool $on, string $name): array
+    {
+        ModuleInstaller::setEnabled($name, $on, $actor->type . ':' . $actor->name);
+        return ['name' => $name, 'modules' => self::moduleList()];
     }
 
     /** @return array<string,mixed> */

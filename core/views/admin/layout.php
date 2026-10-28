@@ -16,12 +16,13 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{CircuitBreaker, Database, Media, Pages, Updates};
+use AgeCMS\{CircuitBreaker, Database, Media, Pages, SkillRegistry, Updates};
 
 $frozen = CircuitBreaker::frozenInfo();
 // Agent tokens that run out within a week (or already did while still in use): the owner hears about it here, not only the agent.
 $expiring = $isAdmin ? Database::rows("SELECT name, expires_at FROM api_tokens WHERE revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at < ? AND last_used_at IS NOT NULL AND last_used_at >= ? ORDER BY expires_at", [gmdate('Y-m-d\\TH:i:s\\Z', time() + 7 * 86400), gmdate('Y-m-d\\TH:i:s\\Z', time() - 30 * 86400)]) : [];
 $newCore = $isAdmin ? Updates::available() : null;
+$unsignedModules = $isAdmin ? SkillRegistry::unsigned() : [];
 $nav = [
     ['overview', 'Обзор', 'squares-four', null],
     ['pages', 'Страницы', 'file-text', Pages::count()],
@@ -106,6 +107,11 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
                     <p><b>Скоро заканчивается токен агента:</b>
                     <?php foreach ($expiring as $i => $t): $left = (int)ceil((strtotime($t['expires_at']) - time()) / 86400); ?><?= $i > 0 ? ', ' : ' ' ?><?= h($t['name']) ?> (<?= $left > 0 ? 'ещё ' . $left . ' дн.' : 'уже закончился' ?>)<?php endforeach; ?>.
                     Чтобы агент не потерял доступ, получите новый текст для него в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>».</p>
+                </div></div>
+            <?php endif; ?>
+            <?php if ($unsignedModules !== []): ?>
+                <div class="notice error" role="alert"><?= icon('warning-circle') ?><div>
+                    <p><b>Работают модули без подписи:</b> <?= h(implode(', ', $unsignedModules)) ?>. Это свой код, сайт его не проверял. Если вы его не ставили, выключите или удалите его в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>».</p>
                 </div></div>
             <?php endif; ?>
             <?php if ($newCore !== null && $section !== 'system'): ?>
