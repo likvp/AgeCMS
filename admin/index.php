@@ -475,6 +475,11 @@ function admin_url(string $section, array $params = []): string
     return '/admin/?' . http_build_query(['s' => $section] + $params, '', '&', PHP_QUERY_RFC3986);
 }
 
+// The header goes out before the first byte of the page: without output buffering (php.ini default on many hosts) a later header() is too late.
+if ($user === null && $section === 'reset') {
+    header('Referrer-Policy: no-referrer'); // the link carries the secret
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -490,9 +495,6 @@ function admin_url(string $section, array $params = []): string
 <body>
 <?php
 if ($user === null) {
-    if ($section === 'reset') {
-        header('Referrer-Policy: no-referrer'); // the link carries the secret
-    }
     admin_view(in_array($section, ['forgot', 'reset'], true) ? $section : (Auth::pendingSecondFactor() !== null ? 'login2' : 'login'), ['error' => $error, 'notice' => $notice, 'resetDone' => ($_GET['reset'] ?? '') === 'ok']);
 } else {
     $csrf = Auth::csrf();
