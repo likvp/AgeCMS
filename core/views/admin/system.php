@@ -22,6 +22,16 @@ $lastUpdate = Updater::last();
 $blockers = $newer === null ? [] : array_merge(Updater::verifyRelease($newer) !== null ? [Updater::verifyRelease($newer)] : [], Updater::preflight());
 $rollbacks = Updater::rollbacks();
 ?>
+<?php $envChecks = \AgeCMS\Installer::checks(); $envMissing = array_filter($envChecks, static fn(array $c): bool => !$c['ok']); ?>
+<section class="panel">
+    <div class="panel-h"><h2>Требования сервера</h2><span class="tag <?= $envMissing === [] ? 'ok' : 'warn' ?>"><?= $envMissing === [] ? 'всё есть' : 'не хватает ' . count($envMissing) ?></span></div>
+    <div class="panel-b">
+        <p class="muted">PHP <?= h(PHP_VERSION) ?>, так его видит сам сайт (командная строка на сервере может использовать другой PHP).</p>
+        <?php foreach ($envChecks as $c): ?>
+            <p><span class="tag <?= $c['ok'] ? 'ok' : ($c['level'] === 'required' ? 'err' : 'warn') ?>"><?= $c['ok'] ? 'есть' : ($c['level'] === 'required' ? 'нет, нужно' : 'нет, совет') ?></span> <b><?= h($c['label']) ?></b><?= $c['note'] !== '' ? ' <span class="muted">' . h($c['note']) . '</span>' : '' ?><?= !$c['ok'] && $c['fix'] !== '' ? '<br><small class="muted">Как поставить: ' . h($c['fix']) . '</small>' : '' ?></p>
+        <?php endforeach; ?>
+    </div>
+</section>
 <section class="panel">
     <div class="panel-h"><h2>Версия ядра</h2><?= $newer !== null ? '<span class="tag warn">есть ' . h($newer['version']) . '</span>' : ($updUrl !== '' && $updState['error'] === '' && $updState['checked_at'] > 0 ? '<span class="tag ok">последняя</span>' : '') ?></div>
     <div class="panel-b">

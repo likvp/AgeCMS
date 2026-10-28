@@ -103,9 +103,11 @@ final class Installer
     }
 
     /**
-     * Environment checks shown by the web installer and enforced by install().
+     * Environment checks shown by the web installer, printed by bin/requirements.php and enforced by install().
+     * level: "required" stops the installation, "recommended" means a feature is off without it (the installer goes on and
+     * says so), fix is the command or panel step that installs it.
      *
-     * @return list<array{label:string,ok:bool,required:bool,note:string}>
+     * @return list<array{label:string,ok:bool,required:bool,level:string,note:string,fix:string}>
      */
     public static function checks(): array
     {
@@ -118,16 +120,21 @@ final class Installer
             }
         }
         $webp = extension_loaded('gd') && function_exists('imagewebp');
+        $v = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+        $row = static fn(string $label, bool $ok, string $level, string $note, string $fix = ''): array => ['label' => $label, 'ok' => $ok, 'required' => $level === 'required', 'level' => $level, 'note' => $note, 'fix' => $fix];
         return [
-            ['label' => 'PHP 8.1 или новее', 'ok' => PHP_VERSION_ID >= 80100, 'required' => true, 'note' => 'найден ' . PHP_VERSION],
-            ['label' => 'pdo_sqlite', 'ok' => extension_loaded('pdo_sqlite'), 'required' => true, 'note' => 'драйвер базы данных'],
-            ['label' => 'SQLite с полнотекстовым поиском (FTS5)', 'ok' => $fts, 'required' => true, 'note' => 'нужен для поиска по сайту'],
-            ['label' => 'mbstring', 'ok' => extension_loaded('mbstring'), 'required' => true, 'note' => 'работа с русским текстом'],
-            ['label' => 'json', 'ok' => extension_loaded('json'), 'required' => true, 'note' => ''],
-            ['label' => 'gd с WebP', 'ok' => $webp, 'required' => false, 'note' => 'без неё картинки не сжимаются в WebP'],
-            ['label' => 'curl', 'ok' => extension_loaded('curl'), 'required' => false, 'note' => 'вебхуки, Telegram, IndexNow'],
-            ['label' => 'sodium', 'ok' => extension_loaded('sodium'), 'required' => false, 'note' => 'подписи модулей Ed25519'],
-            ['label' => 'zip', 'ok' => extension_loaded('zip'), 'required' => false, 'note' => 'резервные копии'],
+            $row('PHP 8.1 или новее', PHP_VERSION_ID >= 80100, 'required', 'найден ' . PHP_VERSION, 'выбрать PHP 8.1+ для сайта (панель хостинга) или поставить пакет php' . $v . ' на сервер'),
+            $row('pdo_sqlite', extension_loaded('pdo_sqlite'), 'required', 'драйвер базы данных', 'Debian/Ubuntu: apt install php' . $v . '-sqlite3; в панели хостинга включить pdo_sqlite и sqlite3'),
+            $row('SQLite с полнотекстовым поиском (FTS5)', $fts, 'required', 'нужен для поиска по сайту', 'обновить libsqlite3 или сменить сборку PHP; на хостинге написать в поддержку'),
+            $row('mbstring', extension_loaded('mbstring'), 'required', 'работа с русским текстом', 'Debian/Ubuntu: apt install php' . $v . '-mbstring'),
+            $row('json', extension_loaded('json'), 'required', ''),
+            $row('sodium', extension_loaded('sodium'), 'recommended', 'подписи Ed25519: без него не работает кнопка «Обновить» (ядро) и проверка подписанных модулей', 'Debian/Ubuntu: apt install php' . $v . '-common (модуль sodium входит в него), RHEL/Remi: php-sodium, Alpine: php' . PHP_MAJOR_VERSION . PHP_MINOR_VERSION . '-sodium, образ php: docker-php-ext-install sodium; на хостинге включить sodium в «Расширения PHP» или попросить поддержку'),
+            $row('zlib', function_exists('gzdecode'), 'recommended', 'сжатые пакеты обновлений и резервные копии', 'Debian/Ubuntu: apt install php' . $v . '-common; на хостинге включить zlib'),
+            $row('PHP может писать в файлы ядра', !array_filter(Updater::preflight(), static fn(string $p): bool => str_starts_with($p, 'PHP не может писать')), 'recommended', 'нужно кнопке «Обновить»: пользователь PHP должен быть владельцем core/, admin/, bin/, assets/ (кроме cache и uploads), themes/default, index.php, .htaccess', 'chown -R пользователь-php:группа каталог-сайта (после git pull от root это нужно повторять), не 0777'),
+            $row('openssl', extension_loaded('openssl'), 'recommended', 'двухфакторный вход, письма по SMTP с шифрованием, обращения по https', 'Debian/Ubuntu: apt install php' . $v . '-common; на хостинге включить openssl'),
+            $row('gd с WebP', $webp, 'recommended', 'без неё картинки не сжимаются в WebP', 'Debian/Ubuntu: apt install php' . $v . '-gd; на хостинге включить gd (с поддержкой WebP)'),
+            $row('curl', extension_loaded('curl'), 'recommended', 'вебхуки, Telegram, IndexNow, проверка новых версий', 'Debian/Ubuntu: apt install php' . $v . '-curl; на хостинге включить curl'),
+            $row('zip', extension_loaded('zip'), 'recommended', 'резервные копии и установка модулей из архива', 'Debian/Ubuntu: apt install php' . $v . '-zip; на хостинге включить zip'),
         ];
     }
 

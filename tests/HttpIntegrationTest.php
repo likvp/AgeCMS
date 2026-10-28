@@ -402,6 +402,9 @@ final class HttpIntegrationTest extends HttpCase
         $this->assertContains($base . '/admin/mcp.php', $ok['json']['result']['mcp']);
         $structure = $this->http('POST', '/admin/api.php', json_encode(['action' => 'get_site_structure']), ['Authorization' => "Bearer {$token}", 'Content-Type' => 'application/json']);
         $this->assertSame(200, $structure['status']);
+        $decoded = json_decode($structure['body'], true); $env = ($decoded['result'] ?? $decoded)['environment'] ?? null;
+        $this->assertTrue(is_array($env) && isset($env['php'], $env['missing_required'], $env['missing_recommended']), 'the web PHP reports what it lacks');
+        $this->assertSame([], $env['missing_required'], 'the test server has what is required');
         $init = $this->rpc($token, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => []]);
         $this->assertContains($base . '/AGENT.md', $init['json']['result']['instructions']);
         $this->assertSame(1, (int)Database::value("SELECT COUNT(*) FROM api_tokens WHERE name = 'claude-agent' AND revoked_at IS NULL"));
