@@ -5,11 +5,44 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{Backup, Config, Database, SkillRegistry};
+use AgeCMS\{Backup, Config, Database, SkillRegistry, Updates};
 
 $modules = SkillRegistry::modules();
 ?>
 <div class="pagehead"><div class="grow"><h1>Система</h1><p>Модули, доступ для ИИ-агентов и обслуживание.</p></div></div>
+
+<?php
+$release = Updates::current();
+$newer = Updates::available();
+$updState = Updates::state();
+$updUrl = Updates::sourceUrl();
+?>
+<section class="panel">
+    <div class="panel-h"><h2>Версия ядра</h2><?= $newer !== null ? '<span class="tag warn">есть ' . h($newer['version']) . '</span>' : ($updUrl !== '' && $updState['error'] === '' && $updState['checked_at'] > 0 ? '<span class="tag ok">последняя</span>' : '') ?></div>
+    <div class="panel-b">
+        <p>Установлена <b class="mono">AgeCMS <?= h($release['version']) ?></b><?= $release['date'] !== '' ? ' от ' . h(date('d.m.Y', (int)strtotime($release['date']))) : '' ?>.
+        <?php if ($updUrl === ''): ?>Проверка обновлений выключена: не задан адрес, где лежит файл с номером последней версии.
+        <?php elseif ($updState['checked_at'] > 0): ?>Последняя проверка <?= h(admin_date(gmdate('Y-m-d\TH:i:s\Z', $updState['checked_at']))) ?><?= $updState['error'] !== '' ? '. Не вышло: ' . h($updState['error']) . '.' : '.' ?>
+        <?php else: ?>Ещё не проверялось, проверка идёт раз в сутки.<?php endif; ?></p>
+        <?php if ($newer !== null): ?>
+            <div class="notice warn"><?= icon('info') ?><div>
+                <p><b>Вышла версия <?= h($newer['version']) ?></b><?= $newer['date'] !== '' ? ' от ' . h(date('d.m.Y', (int)strtotime($newer['date']))) : '' ?>.<?= $newer['url'] !== '' ? ' <a href="' . h($newer['url']) . '" target="_blank" rel="noopener noreferrer">Что нового</a>' : '' ?></p>
+                <?php if ($newer['notes'] !== ''): ?><p class="pre-line"><?= h($newer['notes']) ?></p><?php endif; ?>
+                <p>Сайт сам себя не обновляет: файлы ядра заменяет хостер или разработчик. Содержимое, картинки и настройки при этом не трогаются, база догонит новую версию сама при первом заходе.</p>
+            </div></div>
+        <?php endif; ?>
+        <?php if ($isAdmin): ?>
+        <form method="post">
+            <?= admin_post_fields($csrf, 'updates_save') ?>
+            <label class="f"><span>Где проверять обновления <small>(адрес файла release.json последней версии, https; пусто - не проверять)</small></span><input class="in" type="url" name="updates_url" maxlength="500" placeholder="https://..." value="<?= h($updUrl) ?>"></label>
+            <div class="row center">
+                <button class="btn primary" type="submit">Сохранить</button>
+                <?php if ($updUrl !== ''): ?><button class="btn" type="submit" name="action" value="updates_check" formnovalidate><?= icon('magnifying-glass') ?>Проверить сейчас</button><?php endif; ?>
+            </div>
+        </form>
+        <?php endif; ?>
+    </div>
+</section>
 
 <section class="panel">
     <div class="panel-h"><h2>Обслуживание</h2></div>

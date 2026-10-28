@@ -7,8 +7,9 @@ use Throwable;
 
 /**
  * Housekeeping that cron would otherwise do: finish stuck jobs, send IndexNow pings, re-render pages
- * dropped from the cache. It runs after the response has gone out, when someone saves in the admin or
- * through the API, and on ordinary visits that reach PHP (at most once every 30 seconds). No cron needed.
+ * dropped from the cache, ask once a day whether a newer core is out. It runs after the response has gone out,
+ * when someone saves in the admin or through the API, and on ordinary visits that reach PHP (at most once
+ * every 30 seconds). No cron needed.
  */
 final class Background
 {
@@ -50,6 +51,11 @@ final class Background
     public static function run(bool $always = false, float $budgetSeconds = 8.0): ?array
     {
         $ticked = self::tick($budgetSeconds);
+        try {
+            Updates::checkIfDue();
+        } catch (Throwable $e) {
+            Logger::log('error', 'updates.failed', ['error' => $e->getMessage()]);
+        }
         if (!is_dir(Queue::dir()) || !self::pending()) {
             return $ticked ? ['jobs' => 0, 'pings' => 0, 'rebuilt' => 0, 'ticked' => true] : null;
         }

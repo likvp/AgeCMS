@@ -110,6 +110,7 @@ final class Api
         $theme = Theme::active();
         return [
             'site_url' => Seo::siteUrl(),
+            'core' => ['version' => Updates::version(), 'newer' => Updates::available()['version'] ?? null],
             'active_theme' => $theme,
             'pages' => Pages::listing(),
             'settings' => Seo::settings(),

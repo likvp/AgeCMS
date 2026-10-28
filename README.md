@@ -49,7 +49,7 @@ php bin/install.php --url=https://example.com --name="Мой сайт"
 | `php bin/verify-chain.php` | проверить цепочку хэшей ревизий |
 | `php bin/clear-cache.php` / `rebuild-cache.php` | сбросить и пересобрать кэш |
 | `php bin/backup.php [--telegram]` | снимок базы |
-| `php bin/config.php get\|set <ключ> [значение]` | настройки и секреты (`secrets.telegram_bot_token`, `secrets.telegram_chat_id`) |
+| `php bin/config.php get\|set <ключ> [значение]` | настройки и секреты (`secrets.telegram_bot_token`, `secrets.telegram_chat_id`, адрес проверки обновлений `updates.url`) |
 | `php bin/sign-module.php <модуль>` | подписать модуль после правки |
 
 ## Подключить агента

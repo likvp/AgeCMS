@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug};
+use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -295,6 +295,26 @@ try {
                     }
                     Config::set('agent_access.token_days', $days);
                     $flash = 'Настройки доступа для агентов сохранены';
+                    $section = 'system';
+                    break;
+                case 'updates_save':
+                    Security::requirePermission($actor, 'system.manage');
+                    $url = trim((string)($_POST['updates_url'] ?? ''));
+                    if ($url !== '' && (strlen($url) > 500 || preg_match('~^https://[^\s"<>]+$~', $url) !== 1)) {
+                        throw new AgeCMSException('Адрес проверки обновлений должен начинаться с https://');
+                    }
+                    Config::set('updates.url', $url);
+                    $state = $url !== '' ? Updates::check() : null;
+                    $flash = $url === '' ? 'Проверка обновлений выключена' : ($state['error'] !== '' ? 'Адрес сохранён, но проверить не вышло: ' . $state['error'] : 'Адрес сохранён, проверка прошла');
+                    $section = 'system';
+                    break;
+                case 'updates_check':
+                    Security::requirePermission($actor, 'system.manage');
+                    $state = Updates::check();
+                    if ($state['error'] !== '') {
+                        throw new AgeCMSException('Проверить не вышло: ' . $state['error']);
+                    }
+                    $flash = Updates::available() !== null ? 'Есть новая версия ' . Updates::available()['version'] : 'У вас последняя версия ' . Updates::version();
                     $section = 'system';
                     break;
                 case 'invite_create':

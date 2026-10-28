@@ -208,6 +208,7 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 .notice.warn .i { color: var(--warn); }
 .notice > div { flex: 1; min-width: 0; }
 .notice p:last-child { margin: 0; }
+.pre-line { white-space: pre-line; }
 
 .empty { display: grid; justify-items: center; text-align: center; gap: 6px; padding: 44px 20px; color: var(--muted); }
 .empty .i { width: 28px; height: 28px; color: var(--line-strong); }

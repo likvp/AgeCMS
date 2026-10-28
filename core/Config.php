@@ -22,6 +22,7 @@ final class Config
         'backup' => ['keep' => 7, 'telegram' => false, 'before_agent' => true, 'keep_auto' => 5],
         'agent_access' => ['self_issue' => true, 'token_days' => 90, 'invite_hours' => 24],
         'mail' => ['transport' => 'mail', 'from' => '', 'from_name' => '', 'leads_to' => '', 'leads_notify' => true, 'smtp' => ['host' => '', 'port' => 465, 'secure' => 'ssl', 'user' => '', 'pass' => '']],
+        'updates' => ['url' => ''],
         'rate_limit' => ['mcp_per_minute' => 120, 'login_fails' => 5, 'login_window' => 900],
     ];
 
