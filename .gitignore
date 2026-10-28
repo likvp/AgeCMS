@@ -8,3 +8,7 @@ modules/*/manifest.json.sig
 .DS_Store
 *.log
 /dist/
+
+# Рабочие документы, хранятся только локально
+/docs/ТЗ.md
+/docs/PLAN.md

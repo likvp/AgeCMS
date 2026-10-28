@@ -42,7 +42,7 @@
 
 ### Деловая часть
 Не код, делает владелец проекта:
-- Заявка в Yandex Cloud Boost / AI Studio Boost: питч-документ на основе [docs/ТЗ.md](docs/ТЗ.md) и замеров.
+- Заявка в Yandex Cloud Boost / AI Studio Boost: питч-документ на основе ТЗ и замеров.
 - Регистрация программы для ЭВМ в Роспатенте, реестр отечественного ПО. Лицензия Proprietary с этим согласуется.
 - Товарный знак AgeCMS (классы МКТУ 09 и 42).
 - Переговоры с хостерами по [HOSTER_INTEGRATION_WHITEPAPER.md](HOSTER_INTEGRATION_WHITEPAPER.md).
