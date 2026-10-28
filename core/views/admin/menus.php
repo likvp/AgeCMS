@@ -30,4 +30,4 @@ $json = json_encode(['mode' => 'menus', 'csrf' => $csrf, 'menus' => $menus, 'kno
 <div id="ag-editor"><div class="skel"></div><div class="skel"></div></div>
 <noscript><div class="notice error"><?= icon('warning-circle') ?><div>Редактору нужен JavaScript.</div></div></noscript>
 <script type="application/json" id="ag-editor-data"><?= $json ?></script>
-<script src="/assets/admin/editor.js" defer></script>
+<script src="<?= h(admin_asset('editor.js')) ?>" defer></script>

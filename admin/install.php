@@ -59,7 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $root = dirname(__DIR__);
 $warnUrl = !str_starts_with($guess, 'https://') && !preg_match('~^http://(localhost|127\.0\.0\.1)(:\d+)?$~', $guess);
 $h = static fn($v): string => ag_e($v);
-$icon = static fn(string $n): string => '<svg class="i" aria-hidden="true"><use href="/assets/admin/icons.svg#' . $n . '"/></svg>';
+$asset = static fn(string $f): string => '/assets/admin/' . $f . '?v=' . (is_file(AGECMS_ROOT . '/assets/admin/' . $f) ? filemtime(AGECMS_ROOT . '/assets/admin/' . $f) : 1);
+$icon = static fn(string $n): string => '<svg class="i" aria-hidden="true"><use href="' . $h($asset('icons.svg')) . '#' . $n . '"/></svg>';
 $self = '/admin/install.php';
 ?>
 <!DOCTYPE html>
@@ -69,8 +70,8 @@ $self = '/admin/install.php';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>Установка AgeCMS</title>
-    <link rel="stylesheet" href="/assets/admin/admin.css">
-    <script src="/assets/admin/theme.js"></script>
+    <link rel="stylesheet" href="<?= $h($asset('admin.css')) ?>">
+    <script src="<?= $h($asset('theme.js')) ?>"></script>
 </head>
 <body>
 <?php $now = $result !== null ? 3 : $step; ?>
@@ -159,6 +160,6 @@ $self = '/admin/install.php';
 <?php endif; ?>
 </main>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
-<script src="/assets/admin/admin.js" defer></script>
+<script src="<?= $h($asset('admin.js')) ?>" defer></script>
 </body>
 </html>

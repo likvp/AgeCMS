@@ -221,6 +221,7 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 .stat .v { font: 600 1.7rem/1.1 var(--mono); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .stat .l { color: var(--muted); font-size: 0.82rem; margin-top: 6px; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; margin-top: 18px; align-items: start; }
+.grid2 > .panel { margin: 0; }
 @media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; } .stat { border-right: 0; border-bottom: 1px solid var(--line); } }
 .feed { list-style: none; margin: 0; padding: 0; }
 .feed li { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 11px 18px; border-bottom: 1px solid var(--line); }

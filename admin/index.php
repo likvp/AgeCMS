@@ -530,10 +530,19 @@ function admin_view(string $name, array $vars = []): void
     require __DIR__ . '/../core/views/admin/' . $name . '.php';
 }
 
+/** URL of an admin file with ?v=mtime: browsers keep it for weeks, a core update must still reach them. */
+function admin_asset(string $file): string
+{
+    $path = AGECMS_ROOT . '/assets/admin/' . $file;
+    return '/assets/admin/' . $file . '?v=' . (is_file($path) ? filemtime($path) : 1);
+}
+
 /** Inline SVG icon from the sprite. */
 function icon(string $name): string
 {
-    return '<svg class="i" aria-hidden="true"><use href="/assets/admin/icons.svg#' . $name . '"/></svg>';
+    static $sprite = null;
+    $sprite ??= admin_asset('icons.svg');
+    return '<svg class="i" aria-hidden="true"><use href="' . $sprite . '#' . $name . '"/></svg>';
 }
 
 /** Compact timestamp: 2026-10-27 06:15. */
@@ -582,8 +591,8 @@ if ($user === null && $section === 'reset') {
     <meta name="robots" content="noindex, nofollow">
     <title>AgeCMS</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23cf4a17'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='monospace' font-size='18' font-weight='700' fill='white'%3EA%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="/assets/admin/admin.css">
-    <script src="/assets/admin/theme.js"></script>
+    <link rel="stylesheet" href="<?= h(admin_asset('admin.css')) ?>">
+    <script src="<?= h(admin_asset('theme.js')) ?>"></script>
 </head>
 <body>
 <?php
@@ -597,6 +606,6 @@ if ($user === null) {
 }
 ?>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
-<script src="/assets/admin/admin.js" defer></script>
+<script src="<?= h(admin_asset('admin.js')) ?>" defer></script>
 </body>
 </html>
