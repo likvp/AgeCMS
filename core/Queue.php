@@ -16,6 +16,10 @@ final class Queue
     private const OPERATIONS = [
         'update_block_field' => ['updateBlockField', 'content.write'],
         'update_block_data' => ['updateBlockData', 'content.write'],
+        'add_block' => ['addBlock', 'content.write'],
+        'move_block' => ['moveBlock', 'content.write'],
+        'duplicate_block' => ['duplicateBlock', 'content.write'],
+        'delete_block' => ['deleteBlock', 'content.write'],
         'create_page' => ['createPage', 'content.write'],
         'update_page' => ['updatePage', 'content.write'],
         'rollback' => ['rollback', 'content.write'],
@@ -165,6 +169,10 @@ final class Queue
         return match ($job['op']) {
             'update_block_field' => Content::updateBlockField($actor, (string)$a['slug'], (string)$a['block_id'], (string)$a['field_path'], $a['value'] ?? ''),
             'update_block_data' => Content::updateBlockData($actor, (string)$a['slug'], (string)$a['block_id'], (array)($a['payload'] ?? [])),
+            'add_block' => Content::addBlock($actor, (string)$a['slug'], (string)$a['type'], isset($a['after']) ? (string)$a['after'] : null, isset($a['data']) ? (array)$a['data'] : null),
+            'move_block' => Content::moveBlock($actor, (string)$a['slug'], (string)$a['block_id'], (string)($a['after'] ?? '')),
+            'duplicate_block' => Content::duplicateBlock($actor, (string)$a['slug'], (string)$a['block_id']),
+            'delete_block' => Content::deleteBlock($actor, (string)$a['slug'], (string)$a['block_id']),
             'create_page' => Content::createPage($actor, (string)$a['slug'], (array)($a['fields'] ?? [])),
             'update_page' => Content::updatePage($actor, (string)$a['slug'], (array)($a['fields'] ?? [])),
             'rename_page' => Content::renamePage($actor, (string)$a['slug'], (string)$a['new_slug']),

@@ -40,9 +40,17 @@ final class Renderer
                 continue;
             }
             self::$context['block'] = $block['id'];
-            $content .= self::include($file, ['data' => $block['data'], 'id' => $block['id'], 'slug' => $slug, 'editing' => $editing]);
+            $html = self::include($file, ['data' => $block['data'], 'id' => $block['id'], 'slug' => $slug, 'editing' => $editing]);
+            // In edit mode every block sits in a wrapper, so editor.js knows where a block starts and ends. The script makes it
+            // display: contents (the page policy forbids inline style attributes), so the theme looks the same.
+            $content .= $editing
+                ? '<div data-ag-wrap="' . ag_e($block['id']) . '" data-ag-type="' . ag_e($block['type']) . '">' . $html . '</div>'
+                : $html;
         }
         self::$context['block'] = '';
+        if ($editing) {
+            $content .= '<div data-ag-end></div>' . BlockEditor::payload($slug, $theme, $doc, $csrf);
+        }
 
         $tags = ['page:' . $slug, 'settings', 'theme:' . $theme, 'menu:header', 'menu:footer'];
         foreach (Pages::ancestors($slug) as $ancestor) {

@@ -28,7 +28,7 @@ $site = $settings['site_name'] ?? '';
 </head>
 <body<?= $editing ? ' class="is-editing"' : '' ?>>
 <?php if ($editing): ?>
-    <div class="ag-bar"><strong>Режим редактирования</strong> <span>Нажмите на текст, чтобы изменить. Правки сохраняются сами.</span> <span id="ag-status" role="status"></span> <a href="/admin/">Админка</a></div>
+    <div class="ag-bar"><strong>Режим редактирования</strong> <span>Нажмите на текст, чтобы изменить. Наведите курсор на блок, чтобы переместить, изменить или удалить его. Правки сохраняются сами.</span> <span id="ag-status" role="status"></span> <a href="/admin/">Админка</a></div>
 <?php endif; ?>
     <header class="site-header">
         <div class="container bar">

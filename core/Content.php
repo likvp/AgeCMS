@@ -65,6 +65,95 @@ final class Content
      * @param array<string,mixed> $fields page document fields, "title" is required
      * @return array<string,mixed>
      */
+    /**
+     * Adds a block of a type from the theme. $after is the id of the block it follows, '' puts it first, null last.
+     * Without $data the block gets the placeholder text of its required fields (see BlockEditor::skeleton).
+     *
+     * @param array<string,mixed>|null $data
+     * @return array<string,mixed> the usual result and block_id
+     */
+    public static function addBlock(Actor $actor, string $slug, string $type, ?string $after, ?array $data): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $type, $after, $data): array {
+            $before = self::requireDoc($slug);
+            $theme = $before['theme'] !== '' ? $before['theme'] : Theme::active();
+            $schema = Theme::exists($theme) ? (Theme::blocks($theme)[$type] ?? null) : null;
+            if ($schema === null) {
+                throw new ValidationException(["Block type '{$type}' is not defined by theme '{$theme}'"]);
+            }
+            $id = BlockEditor::newId($before, $type);
+            $block = ['id' => $id, 'type' => $type, 'data' => $data ?? BlockEditor::skeleton($schema['fields'] ?? [])];
+            $next = $before;
+            array_splice($next['blocks'], self::insertAt($before, $after), 0, [$block]);
+            $result = self::commit($pdo, $actor, $slug, "Добавление блока {$id}", $before, SchemaValidator::document($next), false);
+            return $result + ['block_id' => $id];
+        });
+    }
+
+    /**
+     * Moves a block behind $after ('' moves it to the top).
+     *
+     * @return array<string,mixed>
+     */
+    public static function moveBlock(Actor $actor, string $slug, string $blockId, string $after): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $blockId, $after): array {
+            $before = self::requireDoc($slug);
+            $index = self::blockIndex($before, $blockId);
+            if ($after === $blockId) {
+                throw new ValidationException(['A block cannot follow itself']);
+            }
+            $moved = $before;
+            [$block] = array_splice($moved['blocks'], $index, 1);
+            array_splice($moved['blocks'], self::insertAt($moved, $after), 0, [$block]);
+            return self::commit($pdo, $actor, $slug, "Перенос блока {$blockId}", $before, SchemaValidator::document($moved), false);
+        });
+    }
+
+    /**
+     * Copies a block right behind itself under a new id.
+     *
+     * @return array<string,mixed> the usual result and block_id of the copy
+     */
+    public static function duplicateBlock(Actor $actor, string $slug, string $blockId): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $blockId): array {
+            $before = self::requireDoc($slug);
+            $index = self::blockIndex($before, $blockId);
+            $copy = $before['blocks'][$index];
+            $copy['id'] = BlockEditor::newId($before, $copy['type']);
+            $after = $before;
+            array_splice($after['blocks'], $index + 1, 0, [$copy]);
+            $result = self::commit($pdo, $actor, $slug, "Копия блока {$blockId}", $before, SchemaValidator::document($after), false);
+            return $result + ['block_id' => $copy['id']];
+        });
+    }
+
+    /**
+     * Removes a block. It stays in the history and comes back with rollback_revision.
+     *
+     * @return array<string,mixed>
+     */
+    public static function deleteBlock(Actor $actor, string $slug, string $blockId): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $blockId): array {
+            $before = self::requireDoc($slug);
+            $index = self::blockIndex($before, $blockId);
+            $after = $before;
+            array_splice($after['blocks'], $index, 1);
+            return self::commit($pdo, $actor, $slug, "Удаление блока {$blockId}", $before, SchemaValidator::document($after), false);
+        });
+    }
+
+    /** @param array<string,mixed> $doc */
+    private static function insertAt(array $doc, ?string $after): int
+    {
+        if ($after === null) {
+            return count($doc['blocks']);
+        }
+        return $after === '' ? 0 : self::blockIndex($doc, $after) + 1;
+    }
+
     public static function createPage(Actor $actor, string $slug, array $fields): array
     {
         return self::run($actor, static function (PDO $pdo) use ($actor, $slug, $fields): array {
