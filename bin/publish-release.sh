@@ -13,14 +13,15 @@ PACKAGE="$DIST/agecms-$VERSION.json.gz"
 [ -f "$PACKAGE" ] || { echo "No $PACKAGE" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
-trap 'git worktree remove --force "$WORK" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
+trap 'git worktree remove --force "$WORK" >/dev/null 2>&1 || true; rm -rf "$WORK"; git branch -D releases-new >/dev/null 2>&1 || true' EXIT
 git fetch -q origin releases 2>/dev/null || true
 if git rev-parse -q --verify origin/releases >/dev/null; then
   git worktree add -q --detach "$WORK" origin/releases
 else
   git worktree add -q --detach "$WORK"
   git -C "$WORK" checkout -q --orphan releases-new
-  git -C "$WORK" rm -rq . 2>/dev/null || true
+  git -C "$WORK" read-tree --empty
+  git -C "$WORK" clean -fdxq
   printf '# AgeCMS releases\n\nSigned core packages for the update button in «Система». The newest version is described by `release.json`; `agecms-<version>.json.gz` are the packages. Built by `bin/release.php`, published by `bin/publish-release.sh` from the main branch.\n' > "$WORK/README.md"
 fi
 cp "$DIST/release.json" "$PACKAGE" "$WORK/"
