@@ -53,6 +53,7 @@ php bin/install.php --url=https://example.com --name="Мой сайт"
 | `php bin/sign-module.php <модуль>` | подписать модуль после правки |
 | `php bin/update.php [--install\|--rollback]` | проверить, поставить новую версию ядра или вернуть прежнюю |
 | `php bin/release.php --version=x.y.z --key=<файл>` | собрать подписанный пакет новой версии в `dist/` |
+| `bin/publish-release.sh` | выложить собранную версию в ветку `releases`, откуда сайты её берут |
 
 ## Подключить агента
 

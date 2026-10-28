@@ -68,6 +68,8 @@ abstract class TestCase
         SkillRegistry::reset();
         TestEnv::copyModules();
         Installer::install($options + ['site_url' => 'https://example.test', 'site_name' => 'Test Site', 'admin_password' => 'Passw0rd-test-1', 'demo' => false]);
+        // Tests never ask the real update source.
+        Config::set('updates.url', '');
     }
 
     protected function admin(): Actor

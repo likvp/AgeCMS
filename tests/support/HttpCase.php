@@ -17,6 +17,12 @@ abstract class HttpCase extends TestCase
     protected function stop(): void
     {
         if (is_resource($this->proc)) {
+            // With PHP_CLI_SERVER_WORKERS the server forks workers that outlive a terminated parent; stop them first,
+            // or every run leaves processes behind until the system runs out of them.
+            $pid = (int)(proc_get_status($this->proc)['pid'] ?? 0);
+            if ($pid > 0) {
+                exec('pkill -TERM -P ' . $pid . ' 2>/dev/null');
+            }
             proc_terminate($this->proc);
             proc_close($this->proc);
             $this->proc = null;

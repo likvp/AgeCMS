@@ -35,6 +35,16 @@ final class UpdatesTest extends TestCase
         $this->assertSame(['version' => '2.0.1', 'date' => '', 'notes' => 'ok', 'url' => ''], $r);
     }
 
+    public function testDefaultSourceIsTheReleasesBranch(): void
+    {
+        $this->freshSite();
+        $config = require Config::file();
+        unset($config['updates']);
+        Config::save($config);
+        $this->assertSame('https://raw.githubusercontent.com/likvp/AgeCMS/releases/release.json', Updates::sourceUrl());
+        $this->assertSame(false, Config::get('updates.auto'), 'installing by itself stays off');
+    }
+
     public function testNoSourceMeansNoCheckAndNoNotice(): void
     {
         $this->site();
