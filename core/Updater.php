@@ -9,6 +9,8 @@ use Throwable;
  * Installs a newer core from the admin ("Обновить" in «Система»), from bin/update.php or by itself when
  * updates.auto is on. Only a package signed by a key from core/release-keys.json (or config
  * updates.trusted_keys) is installed, so whoever controls the download address still cannot run code here.
+ * A release carries two signatures over the same bytes: Ed25519 (checked with sodium) and ECDSA P-256 (checked
+ * with openssl, for hostings built without sodium); one valid signature is enough.
  *
  * Package: gzip of {"format":1,"version":"x.y.z","files":{"path":"base64"}}, built by bin/release.php.
  * Only core files are written (see allowedPath()): data/, assets/uploads/, assets/cache/, modules/ and
@@ -64,7 +66,10 @@ final class Updater
         return false;
     }
 
-    /** @return array<string,string> key id => base64 ed25519 public key */
+    /** Release signature algorithms this core knows: Ed25519 needs sodium, ECDSA P-256 needs openssl (hostings without sodium). */
+    public const ALGS = ['ed25519', 'ecdsa-p256-sha256'];
+
+    /** @return array<string,string> key id => public key (base64 for ed25519, PEM for ecdsa-p256-sha256) */
     public static function trustedKeys(): array
     {
         $keys = json_decode((string)@file_get_contents(__DIR__ . '/release-keys.json'), true);
@@ -82,26 +87,73 @@ final class Updater
         return "agecms-release\n{$release['version']}\n{$release['sha256']}\n{$release['size']}\n";
     }
 
-    /** Null when the release carries a valid signature from a trusted key, otherwise the reason. */
-    public static function verifyRelease(array $release): ?string
+    /** @return list<string> the algorithms this server can check */
+    public static function availableAlgs(): array
     {
-        if (!function_exists('sodium_crypto_sign_verify_detached')) {
-            return 'На сервере нет расширения PHP sodium, подпись обновления не проверить';
+        return array_values(array_filter([
+            function_exists('sodium_crypto_sign_verify_detached') ? 'ed25519' : null,
+            function_exists('openssl_verify') && defined('OPENSSL_ALGO_SHA256') ? 'ecdsa-p256-sha256' : null,
+        ]));
+    }
+
+    /**
+     * Null when the release carries a valid signature from a trusted key, otherwise the reason. One good signature is
+     * enough: a release is signed twice (Ed25519 and ECDSA P-256) so that a server without sodium checks the second one.
+     * $algs limits the algorithms tried (tests, bin/release.php checking each signature).
+     *
+     * @param list<string>|null $algs
+     */
+    public static function verifyRelease(array $release, ?array $algs = null): ?string
+    {
+        $algs = array_values(array_intersect($algs ?? self::availableAlgs(), self::availableAlgs()));
+        if ($algs === []) {
+            return 'На сервере нет расширений PHP sodium и openssl, подпись обновления не проверить';
         }
         if (($release['package'] ?? '') === '' || preg_match('/^[0-9a-f]{64}$/', (string)($release['sha256'] ?? '')) !== 1 || (int)($release['size'] ?? 0) <= 0) {
             return 'Для этой версии нет пакета для установки, обновите файлы вручную';
         }
-        $sig = $release['signature'] ?? null;
         $keys = self::trustedKeys();
-        if (!is_array($sig) || ($sig['alg'] ?? '') !== 'ed25519' || !isset($keys[(string)($sig['key_id'] ?? '')])) {
-            return 'Пакет не подписан известным ключом';
+        $message = self::signedMessage($release);
+        $tried = false;
+        foreach (self::signatures($release) as $sig) {
+            $public = $keys[$sig['key_id']] ?? null;
+            if ($public === null || !in_array($sig['alg'], $algs, true)) {
+                continue;
+            }
+            $tried = true;
+            $signature = base64_decode($sig['sig'], true);
+            if ($signature === false) {
+                continue;
+            }
+            if ($sig['alg'] === 'ed25519') {
+                $raw = base64_decode($public, true);
+                if ($raw !== false && strlen($raw) === SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES && strlen($signature) === SODIUM_CRYPTO_SIGN_BYTES
+                    && sodium_crypto_sign_verify_detached($signature, $message, $raw)) {
+                    return null;
+                }
+            } elseif (str_contains($public, 'BEGIN PUBLIC KEY') && @openssl_verify($message, $signature, $public, OPENSSL_ALGO_SHA256) === 1) {
+                return null;
+            }
         }
-        $public = base64_decode($keys[(string)$sig['key_id']], true);
-        $signature = base64_decode((string)($sig['sig'] ?? ''), true);
-        if ($public === false || $signature === false || strlen($public) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES || strlen($signature) !== SODIUM_CRYPTO_SIGN_BYTES) {
-            return 'Подпись пакета повреждена';
+        return $tried ? 'Подпись пакета не сходится' : 'Пакет не подписан известным ключом, который можно проверить на этом сервере';
+    }
+
+    /**
+     * Every signature of a release: the list "signatures" and the single "signature" older cores read.
+     *
+     * @return list<array{alg:string,key_id:string,sig:string}>
+     */
+    public static function signatures(array $release): array
+    {
+        $all = array_merge(isset($release['signature']) ? [$release['signature']] : [], (array)($release['signatures'] ?? []));
+        $out = [];
+        foreach ($all as $sig) {
+            if (is_array($sig) && in_array($sig['alg'] ?? null, self::ALGS, true) && is_string($sig['key_id'] ?? null) && is_string($sig['sig'] ?? null)
+                && !in_array($sig, $out, true)) {
+                $out[] = ['alg' => $sig['alg'], 'key_id' => $sig['key_id'], 'sig' => $sig['sig']];
+            }
         }
-        return sodium_crypto_sign_verify_detached($signature, self::signedMessage($release), $public) ? null : 'Подпись пакета не сходится';
+        return $out;
     }
 
     /** Absolute package URL: a relative "package" is resolved against the address of release.json. */
@@ -125,8 +177,8 @@ final class Updater
     public static function preflight(): array
     {
         $problems = [];
-        if (!function_exists('sodium_crypto_sign_verify_detached')) {
-            $problems[] = 'нет расширения PHP sodium';
+        if (self::availableAlgs() === []) {
+            $problems[] = 'нет расширений PHP sodium и openssl (нужно хотя бы одно, чтобы проверить подпись)';
         }
         if (!function_exists('gzdecode')) {
             $problems[] = 'нет расширения PHP zlib';

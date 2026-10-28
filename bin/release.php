@@ -3,7 +3,11 @@ declare(strict_types=1);
 
 // Builds a signed core release that sites can install from «Система» (or by themselves with updates.auto).
 //   php bin/release.php --version=1.1.0 --notes="Что изменилось" --key=<ed25519 secret file> [--key-id=agecms-2026]
+//                       --p256-key=<ECDSA P-256 private key, PEM> [--p256-key-id=agecms-2026-p256]
 //                       [--url=<changelog link>] [--package-url=<https address of the package>] [--out=dist]
+// Two signatures over the same bytes: Ed25519 for servers with sodium, ECDSA P-256 for servers that only have openssl.
+// The keys of the official releases: ~/.config/agecms/release-ed25519.key and ~/.config/agecms/release-p256.pem on
+// Lerk's Mac, copies in his Obsidian vault (Pass/, «AgeCMS доступ»).
 // Writes core/release.json (version, date, notes), then <out>/agecms-<version>.json.gz and <out>/release.json.
 // Upload both files to one public https folder and point updates.url of the sites at that release.json.
 // Without --package-url the package is referenced by its file name, next to release.json.
@@ -37,6 +41,14 @@ try {
     $public = base64_encode(sodium_crypto_sign_publickey_from_secretkey($secret));
     if ((Updater::trustedKeys()[$keyId] ?? '') !== $public) {
         throw new RuntimeException("The public key of --key is not core/release-keys.json[\"{$keyId}\"]: sites would refuse the package");
+    }
+    $p256 = @openssl_pkey_get_private((string)@file_get_contents((string)($opts['p256-key'] ?? '')));
+    if ($p256 === false) {
+        throw new RuntimeException('--p256-key=<ECDSA P-256 private key, PEM> is required (servers without sodium check this signature)');
+    }
+    $p256Id = (string)($opts['p256-key-id'] ?? 'agecms-2026-p256');
+    if (trim((string)(Updater::trustedKeys()[$p256Id] ?? '')) !== trim((string)openssl_pkey_get_details($p256)['key'])) {
+        throw new RuntimeException("The public key of --p256-key is not core/release-keys.json[\"{$p256Id}\"]: sites without sodium would refuse the package");
     }
     $root = dirname(__DIR__);
     $out = rtrim((string)($opts['out'] ?? $root . '/dist'), '/');
@@ -77,9 +89,15 @@ try {
     $release['sha256'] = hash('sha256', $package);
     $release['size'] = strlen($package);
     $release['signature'] = ['alg' => 'ed25519', 'key_id' => $keyId, 'sig' => base64_encode(sodium_crypto_sign_detached(Updater::signedMessage($release), $secret))];
+    if (!openssl_sign(Updater::signedMessage($release), $ecdsa, $p256, OPENSSL_ALGO_SHA256)) {
+        throw new RuntimeException('openssl_sign failed');
+    }
+    $release['signatures'] = [$release['signature'], ['alg' => 'ecdsa-p256-sha256', 'key_id' => $p256Id, 'sig' => base64_encode($ecdsa)]];
     file_put_contents("{$out}/release.json", json_encode($release, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n");
-    if (Updater::verifyRelease($release) !== null) {
-        throw new RuntimeException('The signature does not verify: ' . Updater::verifyRelease($release));
+    foreach (Updater::ALGS as $alg) {
+        if (($why = Updater::verifyRelease($release, [$alg])) !== null) {
+            throw new RuntimeException("The {$alg} signature does not verify: {$why}");
+        }
     }
     printf("AgeCMS %s: %d files, %d KB\n%s\n%s\n", $version, count($files), intdiv(strlen($package), 1024), "{$out}/{$name}", "{$out}/release.json");
 } catch (Throwable $e) {

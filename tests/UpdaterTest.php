@@ -19,9 +19,12 @@ final class UpdaterTest extends TestCase
             @mkdir(dirname(AGECMS_UPDATE_ROOT . '/' . $path), 0755, true);
             file_put_contents(AGECMS_UPDATE_ROOT . '/' . $path, $body);
         }
-        $pair = sodium_crypto_sign_keypair();
-        $this->secret = sodium_crypto_sign_secretkey($pair);
-        Config::set('updates.trusted_keys', ['test-key' => base64_encode(sodium_crypto_sign_publickey($pair))]);
+        // The P-256 tests also run on a PHP built without sodium.
+        if (function_exists('sodium_crypto_sign_keypair')) {
+            $pair = sodium_crypto_sign_keypair();
+            $this->secret = sodium_crypto_sign_secretkey($pair);
+            Config::set('updates.trusted_keys', ['test-key' => base64_encode(sodium_crypto_sign_publickey($pair))]);
+        }
         Config::set('updates.url', self::SOURCE);
     }
 
@@ -55,6 +58,48 @@ final class UpdaterTest extends TestCase
         };
         Updates::check($fetch);
         return $fetch;
+    }
+
+    /** A release signed only with ECDSA P-256, as a server without sodium sees it. Returns the fetcher and the release. */
+    private function publishP256(string $package, string $version = '1.1.0', bool $forge = false): array
+    {
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+        Config::set('updates.trusted_keys', ['test-p256' => openssl_pkey_get_details($key)['key']]);
+        $release = ['version' => $version, 'date' => '2026-11-01', 'notes' => '', 'url' => '', 'package' => "agecms-{$version}.json.gz", 'sha256' => hash('sha256', $package), 'size' => strlen($package)];
+        openssl_sign($forge ? 'something else' : Updater::signedMessage($release), $sig, $key, OPENSSL_ALGO_SHA256);
+        $release['signatures'] = [['alg' => 'ecdsa-p256-sha256', 'key_id' => 'test-p256', 'sig' => base64_encode($sig)]];
+        $fetch = static fn(string $url): array => ['status' => 200, 'body' => $url === self::SOURCE ? (string)json_encode($release) : $package];
+        Updates::check($fetch);
+        return [$fetch, $release];
+    }
+
+    public function testP256SignatureWorksWithoutSodium(): void
+    {
+        $this->site();
+        [$fetch, $release] = $this->publishP256(Updater::pack($this->files('1.1.0'), '1.1.0'));
+        $this->assertSame(null, Updater::verifyRelease($release, ['ecdsa-p256-sha256']), 'openssl alone is enough');
+        if (function_exists('sodium_crypto_sign_verify_detached')) {
+            $this->assertContains('не подписан известным ключом', (string)Updater::verifyRelease($release, ['ed25519']), 'sodium alone cannot check a P-256 signature');
+        }
+        $this->assertSame(1, count(Updates::available()['signatures'] ?? []), 'the signatures list survives the stored state');
+        Updater::install($fetch);
+        $this->assertSame('new index 1.1.0', $this->read('index.php'), 'a release signed only with P-256 installs');
+    }
+
+    public function testForgedP256SignatureIsRefused(): void
+    {
+        $this->site();
+        [$fetch, $release] = $this->publishP256(Updater::pack($this->files('1.1.0'), '1.1.0'), '1.1.0', true);
+        $this->assertContains('не сходится', (string)Updater::verifyRelease($release, ['ecdsa-p256-sha256']));
+        $this->assertThrows(AgeCMSException::class, fn() => Updater::install($fetch), 'не сходится');
+        $this->assertSame('old index', $this->read('index.php'));
+    }
+
+    public function testShippedP256KeyIsTrusted(): void
+    {
+        $this->freshSite();
+        $pem = Updater::trustedKeys()['agecms-2026-p256'] ?? '';
+        $this->assertTrue(openssl_pkey_get_public($pem) !== false && openssl_pkey_get_details(openssl_pkey_get_public($pem))['ec']['curve_name'] === 'prime256v1', 'core/release-keys.json carries the P-256 release key');
     }
 
     private function read(string $path): string

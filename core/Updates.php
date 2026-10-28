@@ -58,13 +58,19 @@ final class Updates
         $notes = is_string($data['notes'] ?? null) ? mb_substr(trim($data['notes']), 0, 2000) : '';
         $url = is_string($data['url'] ?? null) && preg_match('~^https://[^\s"<>]+$~', $data['url']) === 1 ? $data['url'] : '';
         $release = ['version' => $data['version'], 'date' => $date, 'notes' => $notes, 'url' => $url];
-        // The package for Updater: where it lies, its hash and size, the publisher signature over them.
-        $sig = $data['signature'] ?? null;
+        // The package for Updater: where it lies, its hash and size, the publisher signatures over them
+        // ("signature" is the Ed25519 one older cores read, "signatures" all of them).
+        $sigs = Updater::signatures($data);
         if (is_string($data['package'] ?? null) && preg_match('~^(https://[^\s"<>]+|[A-Za-z0-9._-]+)$~', $data['package']) === 1
             && is_string($data['sha256'] ?? null) && preg_match('/^[0-9a-f]{64}$/', $data['sha256']) === 1
-            && is_int($data['size'] ?? null) && $data['size'] > 0
-            && is_array($sig) && is_string($sig['alg'] ?? null) && is_string($sig['key_id'] ?? null) && is_string($sig['sig'] ?? null)) {
-            $release += ['package' => $data['package'], 'sha256' => $data['sha256'], 'size' => $data['size'], 'signature' => ['alg' => $sig['alg'], 'key_id' => $sig['key_id'], 'sig' => $sig['sig']]];
+            && is_int($data['size'] ?? null) && $data['size'] > 0 && $sigs !== []) {
+            $release += ['package' => $data['package'], 'sha256' => $data['sha256'], 'size' => $data['size'], 'signatures' => array_slice($sigs, 0, 4)];
+            foreach ($sigs as $sig) {
+                if ($sig['alg'] === 'ed25519') {
+                    $release['signature'] = $sig;
+                    break;
+                }
+            }
         }
         return $release;
     }
