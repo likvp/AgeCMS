@@ -1,26 +1,26 @@
 {
-    "version": "1.2.1",
+    "version": "1.2.2",
     "date": "2026-10-28",
-    "notes": "Обновление из админки работает на хостингах без расширения PHP sodium: выпуск подписан ещё и ключом ECDSA P-256, его проверяет openssl.\nОбновление сохраняет права файлов (скрипты bin/*.sh больше не теряют право на запуск).\nПроверка требований к серверу для установки агентами (bin/requirements.php).",
+    "notes": "Журнал всех действий в истории админки: обновление и откат ядра, пользователи, токены и коды приглашения, модули, почта, бэкапы, очистка кэша, заморозка записи, медиа. Пароли и ключи в журнал не попадают.\nОбновление ядра, сделанное версией без журнала, дописывается в историю при первом заходе в неё.",
     "url": "",
-    "package": "agecms-1.2.1.json.gz",
-    "sha256": "2af6fbd70e98c8c83eae09461ac7ce7e709ccf2028084afc532d1e9246b271b5",
-    "size": 389180,
+    "package": "agecms-1.2.2.json.gz",
+    "sha256": "a655055f2de42f612df20113ebd670dd112a8cc024271bfec0ff02c3a6b3e398",
+    "size": 394637,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "cSRYOU+Z4qJPKhF8iU3+xEB4M42LuuzsQwJzQcm4l9sQj1Y/w7mOW3e+XBFu+m+ast36Ri1UXu80YrrnGlz5CA=="
+        "sig": "0j97F/dvoH90kf6j9NmwkmBZgFzgUBPOL9TB570OaTTD9E4F54K1gx1Fq05+5Qbz4qlNDASNxdm6Yc/REWRdAw=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "cSRYOU+Z4qJPKhF8iU3+xEB4M42LuuzsQwJzQcm4l9sQj1Y/w7mOW3e+XBFu+m+ast36Ri1UXu80YrrnGlz5CA=="
+            "sig": "0j97F/dvoH90kf6j9NmwkmBZgFzgUBPOL9TB570OaTTD9E4F54K1gx1Fq05+5Qbz4qlNDASNxdm6Yc/REWRdAw=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEYCIQCWNWSO+iQGhfayud3JdJEMOuUcnnv1IMYdj7tcPIkFjQIhAIeP63NopZpzAaQn+sU9410mO6ApVmhmTANVWv3kn6F/"
+            "sig": "MEQCIHrM4wt+ee9syuwr4QsV5H2lzLmmFSGtr37MaUUDZDajAiAGHtbtJavG87eiaRhsRJhHcpNsYrMYLXKjlS6yaSQCog=="
         }
     ]
 }
