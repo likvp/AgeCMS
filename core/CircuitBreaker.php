@@ -33,12 +33,14 @@ final class CircuitBreaker
     {
         $value = json_encode(['since' => ag_now(), 'reason' => $reason], JSON_UNESCAPED_UNICODE);
         Database::write(static fn(PDO $pdo) => $pdo->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('frozen', ?)")->execute([$value]));
+        Audit::record(Audit::SYSTEM, 'Запись заморожена автоматически: ' . $reason, 'system:предохранитель');
     }
 
     public static function unfreeze(): void
     {
         Database::write(static fn(PDO $pdo) => $pdo->exec("DELETE FROM settings WHERE key = 'frozen'"));
         Logger::log('info', 'circuit_breaker.unfrozen');
+        Audit::record(Audit::SYSTEM, 'Снята заморозка записи');
     }
 
     /**

@@ -125,6 +125,7 @@ final class ModuleMigrator
         foreach ($pending as $file => $item) {
             $insert->execute([$module, $file, $item['hash'], ag_now()]);
         }
+        Audit::record(Audit::MODULES, "Миграции модуля {$module}: применено " . count($pending) . ' (' . implode(', ', array_keys($pending)) . ')', 'system:миграции модулей');
         return count($pending);
     }
 

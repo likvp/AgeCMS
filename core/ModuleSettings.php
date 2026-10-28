@@ -172,6 +172,9 @@ final class ModuleSettings
         }
         Config::set("module_settings.{$module}", $values);
         Logger::log('info', 'module.settings_saved', ['module' => $module, 'changed' => $changed]);
+        if ($changed !== []) {
+            Audit::record(Audit::MODULES, "Настройки модуля {$module}: изменено " . implode(', ', $changed));
+        }
         return $changed;
     }
 

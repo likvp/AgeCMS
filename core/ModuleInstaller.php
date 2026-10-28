@@ -120,6 +120,7 @@ final class ModuleInstaller
         SkillRegistry::reset();
         $info = SkillRegistry::modules()[$name] ?? ['status' => 'blocked', 'reason' => 'not found after install', 'signed' => null];
         Logger::log($info['signed'] === null ? 'warning' : 'info', 'module.installed', ['module' => $name, 'by' => $by, 'replaced' => $exists, 'status' => $info['status'], 'signed' => $info['signed']]);
+        Audit::record(Audit::MODULES, ($exists ? 'Обновлён модуль ' : 'Установлен модуль ') . $name . ($info['signed'] === null ? ' (без подписи)' : ' (подписан)') . ($info['status'] === 'blocked' ? ', заблокирован: ' . $info['reason'] : ''), $by);
         return ['name' => $name, 'status' => $info['status'], 'signed' => $info['signed'], 'reason' => $info['reason'], 'replaced' => $exists];
     }
 
@@ -133,6 +134,7 @@ final class ModuleInstaller
         Config::set('modules.disabled', $disabled);
         SkillRegistry::reset();
         Logger::log('info', $enabled ? 'module.enabled' : 'module.disabled', ['module' => $name, 'by' => $by]);
+        Audit::record(Audit::MODULES, ($enabled ? 'Включён модуль ' : 'Выключен модуль ') . $name, $by);
     }
 
     /** Moves the module folder to data/module-backups; its data in the database stays. */
@@ -143,6 +145,7 @@ final class ModuleInstaller
         Config::set('modules.disabled', array_values(array_diff((array)Config::get('modules.disabled', []), [$name])));
         SkillRegistry::reset();
         Logger::log('warning', 'module.deleted', ['module' => $name, 'by' => $by, 'kept' => basename($kept)]);
+        Audit::record(Audit::MODULES, "Удалён модуль {$name} (копия сохранена: " . basename($kept) . ')', $by);
         return $kept;
     }
 
@@ -153,6 +156,7 @@ final class ModuleInstaller
         ModuleSigner::sign($name);
         SkillRegistry::reset();
         Logger::log('info', 'module.signed', ['module' => $name, 'by' => $by]);
+        Audit::record(Audit::MODULES, "Модуль {$name} подписан ключом сайта", $by);
     }
 
     /** @param array<string,string> $files */

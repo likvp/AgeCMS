@@ -54,6 +54,7 @@ final class Background
         try {
             Updates::checkIfDue();
             Updater::autoInstallIfDue();
+            Audit::catchUp();
         } catch (Throwable $e) {
             Logger::log('error', 'updates.failed', ['error' => $e->getMessage()]);
         }

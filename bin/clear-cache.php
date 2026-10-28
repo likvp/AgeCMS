@@ -7,4 +7,6 @@ if (PHP_SAPI !== 'cli') {
 }
 require __DIR__ . '/../core/bootstrap.php';
 
-echo 'Removed ' . AgeCMS\Cache::clearAll() . " cached files.\n";
+$removed = AgeCMS\Cache::clearAll();
+AgeCMS\Audit::record(AgeCMS\Audit::SYSTEM, "Очищен кэш страниц (файлов: {$removed})");
+echo "Removed {$removed} cached files.\n";

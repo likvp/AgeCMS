@@ -374,6 +374,20 @@ final class HttpIntegrationTest extends HttpCase
         return ['status' => $r['status'], 'json' => json_decode($r['body'], true)];
     }
 
+    public function testTheHistoryPageShowsAdminActionsNextToPageEdits(): void
+    {
+        $this->boot();
+        \AgeCMS\Auth::createUser('helper', 'Helper-Passw0rd-1', 'editor');
+        \AgeCMS\Audit::record(\AgeCMS\Audit::CORE, 'Обновление ядра: 1.1.1 -> 1.2.0 (файлов: 3)', 'human:admin');
+        $this->adminLogin();
+        $page = $this->http('GET', '/admin/?s=history', null, [], true);
+        $this->assertSame(200, $page['status']);
+        $this->assertContains('Обновление ядра: 1.1.1 -&gt; 1.2.0', $page['body']);
+        $this->assertContains('Создан пользователь helper', $page['body']);
+        $this->assertContains('Ядро', $page['body']);
+        $this->assertNotContains('Helper-Passw0rd-1', $page['body']);
+    }
+
     public function testAnAgentIssuesItselfATokenFromTheOwnersLoginAndPassword(): void
     {
         $this->boot();

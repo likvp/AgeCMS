@@ -28,6 +28,7 @@ switch ($args[0] ?? '') {
         }
         $decoded = json_decode($args[2], true);
         Config::set($args[1], json_last_error() === JSON_ERROR_NONE ? $decoded : $args[2]);
+        AgeCMS\Audit::record(AgeCMS\Audit::SYSTEM, "Изменена настройка {$args[1]} из консоли");
         echo "Saved.\n";
         break;
     default:

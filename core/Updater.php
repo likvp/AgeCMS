@@ -242,10 +242,14 @@ final class Updater
             $result = self::apply($files, $from, $to);
             Logger::log('info', 'updates.installed', ['from' => $from, 'to' => $to, 'files' => $result['files'], 'by' => $by]);
             self::remember(['ok' => true, 'from' => $from, 'to' => $to, 'by' => $by, 'error' => '']);
+            Audit::record(Audit::CORE, "Обновление ядра: {$from} -> {$to} (файлов: {$result['files']})", self::journalActor($by));
+            self::markAudited();
             return $result;
         } catch (Throwable $e) {
             Logger::log('error', 'updates.install_failed', ['from' => $from, 'to' => $to, 'by' => $by, 'error' => $e->getMessage()]);
             self::remember(['ok' => false, 'from' => $from, 'to' => $to, 'by' => $by, 'error' => $e->getMessage()]);
+            Audit::record(Audit::CORE, 'Обновление ядра не удалось (' . ($to !== '' ? "{$from} -> {$to}" : $from) . '): ' . $e->getMessage(), self::journalActor($by));
+            self::markAudited();
             throw $e instanceof AgeCMSException ? $e : new AgeCMSException('Обновление не удалось: ' . $e->getMessage());
         } finally {
             flock($handle, LOCK_UN);
@@ -398,6 +402,7 @@ final class Updater
         Updates::reset();
         Cache::clearAll();
         Logger::log('warning', 'updates.rolled_back', ['to' => (string)($data['version'] ?? ''), 'file' => $name]);
+        Audit::record(Audit::CORE, 'Откат ядра к версии ' . (string)($data['version'] ?? '?') . " (файл {$name}). База не откатывалась");
         return ['version' => (string)($data['version'] ?? ''), 'files' => count($data['files'])];
     }
 
@@ -417,6 +422,32 @@ final class Updater
             return null;
         }
         return ['ok' => $data['ok'] === true, 'from' => (string)($data['from'] ?? ''), 'to' => (string)($data['to'] ?? ''), 'by' => (string)($data['by'] ?? ''), 'error' => (string)($data['error'] ?? ''), 'at' => (int)$data['at']];
+    }
+
+    /** Who is named in the history for an install started by `$by`: the admin's name, 'type:name' from the API, 'auto' or 'cli'. */
+    public static function journalActor(string $by): string
+    {
+        return match ($by) {
+            'auto' => 'system:автообновление',
+            'cli' => 'cli:cli',
+            default => $by,
+        };
+    }
+
+    /** The last install attempt has reached the history. A core without the journal that installed this one could not do it. */
+    public static function markAudited(): void
+    {
+        $data = json_decode((string)@file_get_contents(AGECMS_DATA . '/update-last.json'), true);
+        if (is_array($data)) {
+            $data['audited'] = true;
+            @file_put_contents(AGECMS_DATA . '/update-last.json', json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+        }
+    }
+
+    public static function lastAudited(): bool
+    {
+        $data = json_decode((string)@file_get_contents(AGECMS_DATA . '/update-last.json'), true);
+        return !is_array($data) || ($data['audited'] ?? false) === true;
     }
 
     private static function remember(array $attempt): void

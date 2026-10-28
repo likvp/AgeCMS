@@ -89,7 +89,7 @@ final class Installer
             $set->execute(['site_description', (string)($options['site_description'] ?? '')]);
             $set->execute(['active_theme', 'default']);
         });
-        Auth::createUser($user, $password, 'admin', (string)($options['admin_email'] ?? ''));
+        Audit::quietly(static fn() => Auth::createUser($user, $password, 'admin', (string)($options['admin_email'] ?? '')));
 
         if ($options['demo'] ?? true) {
             self::seed();

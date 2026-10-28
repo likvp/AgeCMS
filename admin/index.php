@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, Slug, Updater, Updates};
+use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, Slug, Updater, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -231,6 +231,7 @@ try {
                             'pass' => $pass !== '' ? $pass : (string)($old['pass'] ?? ''),
                         ],
                     ]);
+                    Audit::record(Audit::MAIL, 'Настройки почты: ' . ($transport === 'smtp' ? "отправка через SMTP {$_POST['smtp_host']}" : 'отправка средствами сервера') . ', заявки ' . (isset($_POST['leads_notify']) ? 'на почту' : 'не отправляются'));
                     $flash = 'Настройки почты сохранены';
                     $section = 'settings';
                     break;
@@ -240,6 +241,7 @@ try {
                     if ($to === '') {
                         throw new AgeCMSException('Сначала укажите свою почту в разделе «Пользователи»');
                     }
+                    Audit::record(Audit::MAIL, 'Отправлено тестовое письмо на ' . Mailer::mask($to));
                     Mailer::send($to, 'Проверка почты AgeCMS', "Это тестовое письмо. Если вы его читаете, сброс пароля по почте будет работать.\n");
                     $flash = 'Тестовое письмо отправлено на ' . Mailer::mask($to);
                     $section = 'settings';
@@ -288,12 +290,16 @@ try {
                     break;
                 case 'backup':
                     Security::requirePermission($actor, 'system.manage');
-                    $flash = 'Бэкап создан: ' . basename(Backup::create());
+                    $backup = basename(Backup::create());
+                    Audit::record(Audit::BACKUP, "Создан бэкап {$backup}");
+                    $flash = 'Бэкап создан: ' . $backup;
                     $section = 'system';
                     break;
                 case 'clear_cache':
                     Security::requirePermission($actor, 'cache.clear');
-                    $flash = 'Кэш очищен, файлов: ' . Cache::clearAll();
+                    $cleared = Cache::clearAll();
+                    Audit::record(Audit::SYSTEM, "Очищен кэш страниц (файлов: {$cleared})");
+                    $flash = 'Кэш очищен, файлов: ' . $cleared;
                     $section = 'system';
                     break;
                 case 'agent_access_save':
@@ -305,6 +311,7 @@ try {
                         throw new AgeCMSException('Срок токена: от 0 (без срока) до 3650 дней');
                     }
                     Config::set('agent_access.token_days', $days);
+                    Audit::record(Audit::TOKENS, 'Доступ агентов: токены на ' . ($days > 0 ? $days . ' дн.' : 'без срока') . ', самостоятельная выдача ' . (isset($_POST['self_issue']) ? 'разрешена' : 'запрещена') . ', бэкап перед правкой агента ' . (isset($_POST['before_agent']) ? 'включён' : 'выключен'));
                     $flash = 'Настройки доступа для агентов сохранены';
                     $section = 'system';
                     break;
@@ -316,6 +323,7 @@ try {
                     }
                     Config::set('updates.url', $url);
                     Config::set('updates.auto', $url !== '' && isset($_POST['updates_auto']));
+                    Audit::record(Audit::CORE, $url === '' ? 'Проверка обновлений ядра выключена' : 'Обновления ядра: адрес ' . $url . ', автоустановка ' . (isset($_POST['updates_auto']) ? 'включена' : 'выключена'));
                     $state = $url !== '' ? Updates::check() : null;
                     $flash = $url === '' ? 'Проверка обновлений выключена' : ($state['error'] !== '' ? 'Адрес сохранён, но проверить не вышло: ' . $state['error'] : 'Настройки обновлений сохранены');
                     $section = 'system';

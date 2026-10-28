@@ -31,7 +31,9 @@ final class Media
         $tmp = tempnam(sys_get_temp_dir(), 'agimg');
         file_put_contents($tmp, $response['body']);
         try {
-            return self::optimize($tmp, $quality);
+            $stored = self::optimize($tmp, $quality);
+            Audit::record(Audit::MEDIA, "Загружена картинка {$stored} (по ссылке)");
+            return $stored;
         } finally {
             @unlink($tmp);
         }
@@ -54,7 +56,9 @@ final class Media
         if ((int)($file['size'] ?? 0) > self::MAX_BYTES) {
             throw new ValidationException(['The file is larger than 10 MB']);
         }
-        return self::optimize($file['tmp_name'], $quality);
+        $stored = self::optimize($file['tmp_name'], $quality);
+        Audit::record(Audit::MEDIA, "Загружена картинка {$stored}");
+        return $stored;
     }
 
     /**
@@ -112,6 +116,7 @@ final class Media
             self::move(self::dir() . "/{$base}.{$ext}", self::trashDir() . "/{$base}.{$ext}");
         }
         Logger::log('info', 'media.trashed', ['name' => $name]);
+        Audit::record(Audit::MEDIA, "Картинка {$name} перенесена в корзину");
     }
 
     /**
@@ -164,6 +169,7 @@ final class Media
             @chmod($to, 0644);
         }
         Logger::log('info', 'media.restored', ['name' => $name]);
+        Audit::record(Audit::MEDIA, "Картинка {$name} возвращена из корзины");
     }
 
     /** Erases an image from the trash for good. */
@@ -177,6 +183,7 @@ final class Media
         @unlink(self::trashDir() . "/{$base}.webp");
         @unlink(self::trashDir() . "/{$base}.avif");
         Logger::log('info', 'media.purged', ['name' => $name]);
+        Audit::record(Audit::MEDIA, "Картинка {$name} удалена навсегда");
     }
 
     private static function ensureTrashDir(): void

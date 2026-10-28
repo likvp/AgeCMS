@@ -59,7 +59,7 @@ $viewsWord = static function (int $n): string {
                 <?php foreach ($recent as $r): ?>
                     <li>
                         <span class="dot<?= $r['actor_type'] === 'agent' ? ' agent' : '' ?>" title="<?= h($r['actor_type']) ?>"><?= h(mb_strtoupper(mb_substr((string)$r['actor_name'], 0, 1))) ?></span>
-                        <span class="t"><b><?= h($r['action_desc']) ?></b><small><?= h($r['actor_name']) ?> &middot; <?= $r['page_slug'][0] === '@' ? h($r['page_slug']) : '/' . h($r['page_slug']) ?></small></span>
+                        <span class="t"><b><?= h($r['action_desc']) ?></b><small><?= h($r['actor_name']) ?> &middot; <?= $r['page_slug'][0] === '@' ? h(\AgeCMS\Audit::label($r['page_slug']) ?? $r['page_slug']) : '/' . h($r['page_slug']) ?></small></span>
                         <small class="num"><?= admin_date($r['created_at']) ?></small>
                     </li>
                 <?php endforeach; ?>

@@ -81,6 +81,7 @@ final class Api
             throw new NotFoundException("Unknown tool '{$tool}'");
         }
         Security::requirePermission($actor, $definitions[$tool][0]);
+        Audit::as($actor);
 
         return match ($tool) {
             'get_site_structure' => self::structure(),
@@ -105,7 +106,7 @@ final class Api
             'list_revisions' => ['revisions' => Revisions::history(self::string($args, 'slug'), (int)($args['limit'] ?? 50))],
             'rollback_revision' => Queue::submit($actor, 'rollback', ['slug' => self::string($args, 'slug'), 'revision_id' => (int)($args['revision_id'] ?? 0)]),
             'import_image' => ['path' => Media::importUrl(self::string($args, 'url'))],
-            'clear_cache' => ['cleared' => Cache::clearAll()],
+            'clear_cache' => self::clearCache(),
             'check_core_update' => self::coreUpdate(true),
             'update_core' => self::updateCore($actor),
             'rollback_core' => Updater::rollback() + ['note' => 'Files are back. The database was not rolled back.'],
@@ -236,7 +237,16 @@ final class Api
         if (Updates::sourceUrl() === '') {
             Config::set('updates.auto', false);
         }
+        Audit::record(Audit::CORE, 'Обновления ядра: адрес ' . (Updates::sourceUrl() ?: 'не задан') . ', автоустановка ' . (Updater::autoEnabled() ? 'включена' : 'выключена'));
         return self::coreUpdate(array_key_exists('url', $args));
+    }
+
+    /** @return array<string,mixed> */
+    private static function clearCache(): array
+    {
+        $cleared = Cache::clearAll();
+        Audit::record(Audit::SYSTEM, "Очищен кэш страниц (файлов: {$cleared})");
+        return ['cleared' => $cleared];
     }
 
     /** @return array<string,mixed> */

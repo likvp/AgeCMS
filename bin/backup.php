@@ -11,6 +11,7 @@ use AgeCMS\{Backup, Config};
 
 try {
     $file = Backup::create();
+    AgeCMS\Audit::record(AgeCMS\Audit::BACKUP, 'Создан бэкап ' . basename($file));
     echo "Backup: {$file}\n";
     if (in_array('--telegram', $argv, true) || Config::get('backup.telegram', false)) {
         echo Backup::sendTelegram($file) ? "Sent to Telegram.\n" : "Telegram not configured or the send failed.\n";

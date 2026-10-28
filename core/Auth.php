@@ -67,7 +67,9 @@ final class Auth
         if ($user === null) {
             return null;
         }
-        return new Actor('human', $user['username'], $user['role'], 'h-' . substr(hash('sha256', session_id()), 0, 16));
+        $actor = new Actor('human', $user['username'], $user['role'], 'h-' . substr(hash('sha256', session_id()), 0, 16));
+        Audit::as($actor);
+        return $actor;
     }
 
     /**
@@ -288,6 +290,7 @@ final class Auth
         });
         unset($_SESSION['totp_setup']);
         Logger::log('info', 'auth.totp_enabled', ['user' => $user['username']]);
+        Audit::record(Audit::USERS, "Включён второй фактор (код из приложения) у пользователя {$user['username']}");
         return $codes;
     }
 
@@ -300,6 +303,7 @@ final class Auth
         }
         self::clearTotp((int)$user['id']);
         Logger::log('info', 'auth.totp_disabled', ['user' => $user['username']]);
+        Audit::record(Audit::USERS, "Выключен второй фактор у пользователя {$user['username']}");
     }
 
     /** An administrator removes the second step of someone who lost the phone and the recovery codes; that person's sessions end. */
@@ -308,6 +312,7 @@ final class Auth
         self::clearTotp($userId);
         Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE users SET pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([$userId]));
         Logger::log('warning', 'auth.totp_reset', ['user_id' => $userId]);
+        Audit::record(Audit::USERS, 'Сброшен второй фактор у пользователя ' . (Database::value('SELECT username FROM users WHERE id = ?', [$userId]) ?? '#' . $userId));
     }
 
     private static function clearTotp(int $userId): void
@@ -370,7 +375,9 @@ final class Auth
             Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?')->execute([ag_now(), $row['id']]));
         }
         self::$currentToken = ['name' => (string)$row['name'], 'role' => (string)$row['role'], 'expires_at' => $row['expires_at']];
-        return new Actor('agent', (string)$row['name'], (string)$row['role'], 'tok-' . $row['id'] . '-' . gmdate('YmdH'));
+        $actor = new Actor('agent', (string)$row['name'], (string)$row['role'], 'tok-' . $row['id'] . '-' . gmdate('YmdH'));
+        Audit::as($actor);
+        return $actor;
     }
 
     /** What the agent should read when its request is refused with 401. */
@@ -415,7 +422,9 @@ final class Auth
             self::assertEmailFree($pdo, $email, 0);
             $pdo->prepare('INSERT INTO users (username, password_hash, role, email, created_at) VALUES (?, ?, ?, ?, ?)')
                 ->execute([$username, password_hash($password, PASSWORD_DEFAULT), $role, $email, ag_now()]);
-            return $pdo->lastInsertId();
+            $id = $pdo->lastInsertId();
+            Audit::record(Audit::USERS, "Создан пользователь {$username} (роль: {$role})");
+            return $id;
         });
     }
 
@@ -453,6 +462,7 @@ final class Auth
             self::assertEmailFree($pdo, $email, $userId);
             $pdo->prepare('UPDATE users SET email = ? WHERE id = ?')->execute([$email, $userId]);
             Logger::log('info', 'user.email_changed', ['user' => $user['username']]);
+            Audit::record(Audit::USERS, "Изменена почта пользователя {$user['username']}");
         });
     }
 
@@ -550,6 +560,7 @@ final class Auth
             $pdo->prepare('UPDATE users SET password_hash = ?, pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $row['user_id']]);
             $pdo->prepare('DELETE FROM password_resets WHERE user_id = ?')->execute([$row['user_id']]);
             Logger::log('info', 'user.password_changed', ['user' => $row['username'], 'by' => 'email_link']);
+            Audit::record(Audit::USERS, "Пароль пользователя {$row['username']} заменён по ссылке из письма", 'human:' . $row['username']);
             return (string)$row['username'];
         });
         AntiSpam::clear('login-user:' . strtolower($username));
@@ -577,6 +588,7 @@ final class Auth
             }
             $pdo->prepare('UPDATE users SET role = ? WHERE id = ?')->execute([$role, $userId]);
             Logger::log('info', 'user.role_changed', ['user' => $user['username'], 'from' => $user['role'], 'to' => $role]);
+            Audit::record(Audit::USERS, "Роль пользователя {$user['username']}: {$user['role']} -> {$role}");
         });
     }
 
@@ -593,6 +605,7 @@ final class Auth
             $pdo->prepare('UPDATE api_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL')->execute([ag_now(), $userId]);
             $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
             Logger::log('info', 'user.deleted', ['user' => $user['username']]);
+            Audit::record(Audit::USERS, "Удалён пользователь {$user['username']}, его токены отозваны");
         });
     }
 
@@ -613,6 +626,7 @@ final class Auth
             }
             $pdo->prepare('UPDATE users SET blocked_at = ?, pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([$blocked ? ag_now() : null, $userId]);
             Logger::log('info', $blocked ? 'user.blocked' : 'user.unblocked', ['user' => $user['username']]);
+            Audit::record(Audit::USERS, ($blocked ? 'Заблокирован пользователь ' : 'Разблокирован пользователь ') . $user['username']);
         });
     }
 
@@ -629,6 +643,7 @@ final class Auth
             $_SESSION['epoch'] = $epoch; // this device stays signed in, the others are ended
         }
         Logger::log('info', 'user.password_changed', ['id' => $userId, 'by' => 'self']);
+        Audit::record(Audit::USERS, 'Пароль изменён самим пользователем ' . (Database::value('SELECT username FROM users WHERE id = ?', [$userId]) ?? '#' . $userId));
     }
 
     /** Administrator sets a new password for another account. */
@@ -639,6 +654,7 @@ final class Auth
             $user = self::lockedUser($pdo, $userId);
             $pdo->prepare('UPDATE users SET password_hash = ?, pwd_epoch = pwd_epoch + 1 WHERE id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $userId]);
             Logger::log('info', 'user.password_changed', ['user' => $user['username'], 'by' => 'admin']);
+            Audit::record(Audit::USERS, "Администратор задал новый пароль пользователю {$user['username']}");
         });
     }
 
@@ -711,6 +727,7 @@ final class Auth
         $plain = 'agc_' . Security::token(32);
         Database::write(static fn(PDO $pdo) => $pdo->prepare('INSERT INTO api_tokens (name, token_hash, role, created_at, user_id, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
             ->execute([$name, Security::hashToken($plain), $role, ag_now(), $userId, $expires]));
+        Audit::record(Audit::TOKENS, "Выдан токен «{$name}» (роль: {$role}, " . ($expires === null ? 'без срока' : 'до ' . $expires) . ')');
         return $plain;
     }
 
@@ -763,6 +780,7 @@ final class Auth
             throw new ValidationException(["The token name '{$name}' is taken, pick another"]);
         }
         $lifetime = self::tokenDays($days);
+        Audit::as(Actor::human($user['username'], (string)$user['role']));
         // The agent gets a user of its own (named after it, a random password nobody knows), so the owner's account stays
         // out of it: blocking or deleting the agent's user stops the agent, the owner's login is untouched.
         $agentUser = null;
@@ -808,6 +826,7 @@ final class Auth
         $hours = max(1, (int)Config::get('agent_access.invite_hours', 24));
         Database::write(static fn(PDO $pdo) => $pdo->prepare('INSERT INTO agent_invites (code_hash, role, token_days, note, expires_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
             ->execute([Security::hashToken($code), $role, $tokenDays, mb_substr(trim($note), 0, 80), time() + $hours * 3600, $createdBy, ag_now()]));
+        Audit::record(Audit::TOKENS, "Создан одноразовый код приглашения для агента (роль: {$role}, токен на " . ($tokenDays > 0 ? $tokenDays . ' дн.' : 'без срока') . ')', 'human:' . $createdBy);
         return $code;
     }
 
@@ -839,6 +858,7 @@ final class Auth
             throw new ValidationException(['The invitation code is wrong, already used or expired. Ask the owner for a new one.']);
         }
         $days = (int)$row['token_days'];
+        Audit::as(Actor::agent($name, (string)$row['role']));
         $token = self::createToken($name, (string)$row['role'], $days);
         Logger::log('info', 'token.invite_redeemed', ['name' => $name, 'role' => $row['role'], 'days' => $days]);
         return ['token' => $token, 'role' => (string)$row['role'], 'name' => $name, 'expires_at' => $days > 0 ? gmdate('Y-m-d\TH:i:s\Z', time() + $days * 86400) : null];
@@ -849,7 +869,11 @@ final class Auth
         return (bool)Database::write(static function (PDO $pdo) use ($name): bool {
             $stmt = $pdo->prepare('UPDATE api_tokens SET revoked_at = ? WHERE name = ? AND revoked_at IS NULL');
             $stmt->execute([ag_now(), $name]);
-            return $stmt->rowCount() > 0;
+            $done = $stmt->rowCount() > 0;
+            if ($done) {
+                Audit::record(Audit::TOKENS, "Отозван токен «{$name}»");
+            }
+            return $done;
         });
     }
 }
