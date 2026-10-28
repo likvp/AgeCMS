@@ -10,7 +10,7 @@ PHP 8.1+ и SQLite, без зависимостей, без cron, без сбо�
 [![PHP](https://img.shields.io/badge/PHP-8.1%20%E2%86%92%208.5-777BB4?logo=php&logoColor=white)](#-требования)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20%2B%20FTS5-003B57?logo=sqlite&logoColor=white)](#-как-это-устроено)
 [![MCP](https://img.shields.io/badge/MCP-JSON--RPC%202.0-8b5cf6)](#-подключить-ии-агента)
-[![Tests](https://img.shields.io/badge/tests-236%20passed-16a34a)](#-тесты-и-замеры)
+[![Tests](https://img.shields.io/badge/tests-passing-16a34a)](#-тесты-и-замеры)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a)](#-как-это-устроено)
 [![License](https://img.shields.io/badge/license-Proprietary-lightgrey)](LICENSE)
 
@@ -36,64 +36,83 @@ AgeCMS сделана под это с первого дня:
 
 ## 🚀 Быстрый старт
 
-### Попробовать на своём компьютере (1 минута)
+### Сервер на Debian или Ubuntu: одна команда
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/likvp/AgeCMS/main/install.sh | sudo bash -s -- example.com
+```
+
+Около двух минут, и в конце будет адрес сайта, админки и пароль администратора. Пароль показывается один раз, сохраните его сразу.
+
+Что делает [install.sh](install.sh) сам:
+
+- ставит PHP со всеми нужными расширениями (если в системе PHP старше 8.1, подключает репозиторий со свежим PHP);
+- ставит nginx или настраивает Apache, если он уже стоит на сервере;
+- скачивает AgeCMS в `/var/www/example.com`, отдаёт каталог пользователю PHP и проверяет среду;
+- получает сертификат Let's Encrypt и включает https (домен должен уже смотреть на сервер, иначе сайт останется на http);
+- устанавливает сайт, включает ночной бэкап базы и проверяет, что главная открывается.
+
+Без домена (`... | sudo bash`) сайт встанет на IP сервера по http. Повторный запуск ничего не сломает: если сайт уже стоит, установщик скажет об этом и выйдет.
+
+<details>
+<summary><b>Параметры установщика</b></summary>
+
+<br>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/likvp/AgeCMS/main/install.sh | sudo bash -s -- example.com --name="Мой сайт" --email=you@example.com
+```
+
+| Параметр | Что делает |
+| --- | --- |
+| `--name="Мой сайт"` | название сайта (по умолчанию домен) |
+| `--email=you@example.com` | почта для Let's Encrypt, туда придут напоминания о сертификате |
+| `--admin=имя`, `--password=...` | логин и пароль администратора (пароль по умолчанию придумывается) |
+| `--dir=/var/www/site` | куда ставить |
+| `--web=nginx` или `--web=apache` | веб-сервер (по умолчанию nginx, или Apache, если он уже стоит) |
+| `--php=8.4` | версия PHP (по умолчанию из системы) |
+| `--no-ssl` | без сертификата |
+| `--no-demo` | пустой сайт без демо-страниц |
+
+Если сертификат не получился (домен ещё не смотрел на сервер), включите https позже, в каталоге сайта:
+
+```bash
+certbot --nginx -d example.com
+sudo -u www-data php bin/config.php set site_url https://example.com
+sudo -u www-data php bin/rebuild-cache.php --all
+```
+
+Проверено на Ubuntu 22.04 и 24.04, Debian 12 (nginx и Apache). Журнал установки: `/var/log/agecms-install.log`.
+
+</details>
+
+### Попробовать на своём компьютере
 
 Нужен только PHP 8.1+ с `pdo_sqlite` и `mbstring`.
 
 ```bash
-git clone https://github.com/likvp/AgeCMS.git agecms
-cd agecms
-php bin/requirements.php
-php bin/install.php --url=http://127.0.0.1:8000 --name="Мой сайт"
+git clone https://github.com/likvp/AgeCMS.git agecms && cd agecms
+php bin/install.php --url=http://127.0.0.1:8000
 php -S 127.0.0.1:8000 tests/support/router.php
 ```
 
-Откройте **http://127.0.0.1:8000** (демо-сайт) и **http://127.0.0.1:8000/admin/** (логин `admin`, пароль установщик напечатал один раз, сохраните его сразу).
+Откройте **http://127.0.0.1:8000/admin/**, логин `admin`, пароль напечатала вторая команда.
 
-> `php -S` годится для пробы. На сервере используйте nginx или Apache, как ниже: только тогда теневой кэш отдаётся без PHP.
+<details>
+<summary><b>Установка вручную (другая система, свой веб-сервер)</b></summary>
 
-### Поставить на сервер (nginx или Apache)
+<br>
 
-**1. Скачайте и проверьте среду.**
+1. `git clone https://github.com/likvp/AgeCMS.git /var/www/agecms && cd /var/www/agecms`
+2. `php bin/requirements.php`: перечислит, чего не хватает, и в каждой строке напишет, как поставить. Повторяйте, пока не увидите «Всё необходимое есть».
+3. `chown -R www-data:www-data /var/www/agecms` (владелец каталога должен быть пользователь PHP, не `0777`).
+4. `sudo -u www-data php bin/install.php --url=https://example.com --name="Мой сайт"`
+5. nginx: [nginx.vhost.example](nginx.vhost.example), поправьте `server_name`, `root` и сокет PHP-FPM. Apache: [.htaccess](.htaccess) работает сам, нужны `mod_rewrite`, `mod_headers` и `AllowOverride All`.
+6. В админке, раздел «Система», блок «Требования сервера», видно, чего не хватает именно PHP веб-сервера: он бывает другим, чем в консоли.
 
-```bash
-git clone https://github.com/likvp/AgeCMS.git /var/www/agecms
-cd /var/www/agecms
-php bin/requirements.php
-```
+Cron не нужен: очередь, кэш и пинги поисковикам обрабатываются сами после сохранения и при заходах посетителей.
 
-Команда перечисляет, чего не хватает, и в каждой строке пишет, как поставить. Для Debian и Ubuntu всё рекомендуемое ставится одной строкой (подставьте свою версию PHP):
-
-```bash
-apt install php8.3-fpm php8.3-sqlite3 php8.3-mbstring php8.3-gd php8.3-curl php8.3-zip
-```
-
-Повторяйте `php bin/requirements.php`, пока не увидите «Всё необходимое есть».
-
-**2. Установите сайт.**
-
-```bash
-php bin/install.php --url=https://example.com --name="Мой сайт"
-```
-
-Создаются база в `data/`, ключ подписей, демо-страницы и администратор. Пароль печатается один раз. Флаги: `--admin=имя`, `--password=...`, `--no-demo` (пустой сайт), `--strict` (не ставить без рекомендуемых расширений).
-
-**3. Отдайте каталог пользователю PHP.**
-
-```bash
-chown -R www-data:www-data /var/www/agecms
-```
-
-Не открывайте `0777`. Пользователь PHP должен быть владельцем каталога, иначе не будут работать загрузка картинок и кнопка «Обновить».
-
-**4. Настройте веб-сервер.**
-
-- **nginx:** скопируйте [nginx.vhost.example](nginx.vhost.example) в `/etc/nginx/sites-available/`, поправьте `server_name`, `root` и сокет PHP-FPM, включите сайт и выполните `nginx -t && systemctl reload nginx`.
-- **Apache:** [.htaccess](.htaccess) из корня работает сам. Нужны `mod_rewrite`, `mod_headers` и `AllowOverride All`.
-
-**5. Войдите в `/admin/` и смените пароль.** В разделе «Система», блок «Требования сервера», видно, каких расширений не хватает именно PHP веб-сервера: он бывает другим, чем в консоли.
-
-Готово. Cron не нужен: очередь, кэш и пинги поисковикам обрабатываются сами после сохранения и при заходах посетителей.
+</details>
 
 ### Хостинг без SSH
 

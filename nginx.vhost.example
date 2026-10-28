@@ -29,7 +29,7 @@ server {
 
     # Internals are never served.
     location ~ ^/(data|core|bin|tests|bench|docs|modules)(/|$) { return 404; }
-    location ~ ^/(LICENSE|README\.md|CONTRIBUTING\.md|ROADMAP\.md|HOSTER_INTEGRATION_WHITEPAPER\.md|nginx\.vhost\.example)$ { return 404; }
+    location ~ ^/(LICENSE|README\.md|CONTRIBUTING\.md|ROADMAP\.md|HOSTER_INTEGRATION_WHITEPAPER\.md|AGENTS\.md|install\.sh|nginx\.vhost\.example)$ { return 404; }
     location ~ /\.(?!well-known/) { return 404; }
 
     # Cache files are reachable only through the internal try_files redirect below.

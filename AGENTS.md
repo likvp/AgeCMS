@@ -2,6 +2,16 @@
 
 Этот файл читает агент, которого попросили поставить AgeCMS. Правка уже работающего сайта описана в `core/agent.md` (на сайте он отдаётся как `/AGENT.md`).
 
+## Свой сервер на Debian или Ubuntu
+
+Если у вас root на сервере с Debian или Ubuntu, всё ниже делает одна команда: PHP с расширениями, nginx (или уже стоящий Apache), права, виртуальный хост, сертификат Let's Encrypt, установка и ночной бэкап.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/likvp/AgeCMS/main/install.sh | sudo bash -s -- example.com --name="Название"
+```
+
+В конце она печатает адрес админки и пароль администратора: передайте его владельцу, в журналы и чаты не копируйте. Параметры: `--email=`, `--admin=`, `--password=`, `--dir=`, `--web=nginx|apache`, `--php=8.4`, `--no-ssl`, `--no-demo`. Журнал: `/var/log/agecms-install.log`. Если сертификат не получен (домен ещё не смотрит на сервер), сайт работает по http, позже выполните в каталоге сайта `certbot --nginx -d example.com`, затем `sudo -u www-data php bin/config.php set site_url https://example.com` и `sudo -u www-data php bin/rebuild-cache.php --all`. После этого переходите к шагу 5 ниже. На хостинге с панелью, на другой системе или со своим веб-сервером ставьте по шагам.
+
 ## Порядок установки
 
 1. **Проверьте среду, до установки.**

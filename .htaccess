@@ -19,7 +19,10 @@ AddDefaultCharset UTF-8
     RewriteRule ^modules/ - [R=404,L]
     RewriteRule (^|/)\.(?!well-known/) - [R=404,L]
     RewriteRule ^(composer\.(json|lock)|phpunit\.xml.*)$ - [R=404,L]
-    RewriteRule ^(LICENSE|README\.md|CONTRIBUTING\.md|ROADMAP\.md|HOSTER_INTEGRATION_WHITEPAPER\.md|nginx\.vhost\.example)$ - [R=404,L]
+    RewriteRule ^(LICENSE|README\.md|CONTRIBUTING\.md|ROADMAP\.md|HOSTER_INTEGRATION_WHITEPAPER\.md|AGENTS\.md|install\.sh|nginx\.vhost\.example)$ - [R=404,L]
+
+    # Only the front controller and the admin entry points run PHP, as in nginx.vhost.example.
+    RewriteRule ^(?!index\.php$|admin/(index|api|mcp|install|upload)\.php$).+\.php$ - [R=404,L]
 
     # Direct requests for cache files are refused, the public URL is the page URL (THE_REQUEST is the client's own line).
     RewriteCond %{THE_REQUEST} \s/assets/cache/
@@ -29,14 +32,14 @@ AddDefaultCharset UTF-8
     RewriteRule ^index$ index.php [L]
 
     # 3. Shadow cache hit: a rendered copy exists, PHP is never started.
-    #    Only plain GETs without a query string and without the admin marker cookie.
-    RewriteCond %{REQUEST_METHOD} =GET
+    #    Only plain GET and HEAD requests without a query string and without the admin marker cookie.
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)$
     RewriteCond %{QUERY_STRING} ^$
     RewriteCond %{HTTP_COOKIE} !(^|;\s*)agecms_admin=
     RewriteCond %{DOCUMENT_ROOT}/assets/cache/$1.html -f
     RewriteRule ^([a-z0-9][a-z0-9_/-]*)$ assets/cache/$1.html [L]
 
-    RewriteCond %{REQUEST_METHOD} =GET
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)$
     RewriteCond %{QUERY_STRING} ^$
     RewriteCond %{HTTP_COOKIE} !(^|;\s*)agecms_admin=
     RewriteCond %{DOCUMENT_ROOT}/assets/cache/index.html -f
