@@ -61,7 +61,12 @@ final class Seo
             $lines[] = '<meta name="twitter:card" content="summary_large_image">';
         }
         $lines[] = '<script type="application/ld+json">' . json_encode(self::jsonLd($slug, $doc, $settings), self::LD_FLAGS) . '</script>';
-        return implode("\n    ", $lines);
+        // Verification codes go on every page; the counter only on pages that search engines may index (never the cabinet or search).
+        $analytics = Analytics::headLines($settings);
+        if ((int)$doc['is_noindex'] === 1) {
+            $analytics = array_values(array_filter($analytics, static fn(string $l): bool => !str_starts_with($l, '<script')));
+        }
+        return implode("\n    ", array_merge($lines, $analytics));
     }
 
     /**

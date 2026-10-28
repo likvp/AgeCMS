@@ -24,6 +24,26 @@ $settings = Seo::settings();
         <code class="cmd">php bin/config.php set site_url https://example.com</code>
     </div>
 </section>
+<?php
+$ymId = $settings['yandex_metrika_id'] ?? '';
+$ymOn = array_filter(explode(',', $settings['yandex_metrika_options'] ?? ($ymId === '' ? 'clickmap,trackLinks,accurateTrackBounce' : '')));
+?>
+<section class="panel">
+    <div class="panel-h"><h2>Аналитика и вебмастер</h2><span class="tag <?= $ymId !== '' ? 'ok' : 'warn' ?>"><?= $ymId !== '' ? 'Метрика подключена' : 'Метрика не подключена' ?></span></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'analytics_save') ?>
+        <label class="f"><span>Яндекс Метрика <small>(номер счётчика)</small></span><input class="in" type="text" name="yandex_metrika_id" value="<?= h($ymId) ?>" inputmode="numeric" pattern="[0-9]*" maxlength="12" placeholder="например 113843789" autocomplete="off"><small class="hint">Номер из кабинета Метрики. Код ставить не нужно: сайт сам подключит счётчик на страницах, которые видят поисковики. Личный кабинет, поиск и страницы ошибок счётчика не получают.</small></label>
+        <div class="f"><span class="lbl">Что включить в счётчике</span>
+            <?php foreach (\AgeCMS\Analytics::METRIKA_OPTIONS as $key => $label): ?>
+                <label class="chk"><input type="checkbox" name="yandex_metrika_options[]" value="<?= h($key) ?>"<?= in_array($key, $ymOn, true) ? ' checked' : '' ?>><span><?= h($label) ?></span></label>
+            <?php endforeach; ?>
+            <small class="hint">Вебвизор записывает действия посетителей: скажите об этом в политике конфиденциальности. Поля форм Метрика скрывает сама.</small>
+        </div>
+        <label class="f"><span>Яндекс Вебмастер <small>(код подтверждения)</small></span><input class="in" type="text" name="yandex_webmaster" value="<?= h($settings['yandex_webmaster'] ?? '') ?>" maxlength="64" placeholder="например 31d36f48e3135250" autocomplete="off" autocapitalize="none" spellcheck="false"><small class="hint">Только сам код из метатега <code>yandex-verification</code> (то, что в <code>content="..."</code>). Тег появится в <code>&lt;head&gt;</code> каждой страницы.</small></label>
+        <label class="f"><span>Другие метатеги подтверждения <small>(по одному в строке: имя=значение)</small></span><textarea class="in" name="verification_tags" rows="3" maxlength="2000" placeholder="google-site-verification=abc123&#10;msvalidate.01=ABC123" spellcheck="false" autocapitalize="none"><?= h($settings['verification_tags'] ?? '') ?></textarea><small class="hint">Для Google Search Console, Bing и всего, что просит подтвердить сайт метатегом. <b>Яндекс Директ</b> отдельного кода на сайте не требует: цели и аудитории он берёт из счётчика Метрики, номер которого выбирают в самой кампании.</small></label>
+        <div class="actions-row"><button class="btn primary" type="submit">Сохранить</button></div>
+    </form>
+</section>
 <?php $smtp = (array)Config::get('mail.smtp', []); $tr = Mailer::transport(); $sec = (string)($smtp['secure'] ?? 'ssl'); ?>
 <section class="panel">
     <div class="panel-h"><h2>Почта</h2><span class="tag <?= Mailer::configured() ? 'ok' : 'warn' ?>"><?= Mailer::configured() ? 'настроена' : 'не настроена' ?></span></div>

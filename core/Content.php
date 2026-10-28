@@ -357,27 +357,33 @@ final class Content
     /**
      * Site name and description (administrators only). Versioned as the pseudo page "@settings".
      *
-     * @param array<string,mixed> $values only "site_name", "site_description" and "llms_text" are accepted
+     * @param array<string,mixed> $values only "site_name", "site_description", "llms_text" and the analytics settings (see Analytics) are accepted
      * @return array<string,mixed>
      */
     public static function setSettings(Actor $actor, array $values): array
     {
         Security::requirePermission($actor, 'system.manage');
         return self::run($actor, static function (PDO $pdo) use ($actor, $values): array {
-            // llms_text is the one multi-line value: Markdown for language models, published in /llms.txt.
-            $limits = ['site_name' => [1, 100], 'site_description' => [0, 300], 'llms_text' => [0, 4000]];
+            // llms_text and verification_tags are the multi-line values; every other setting is one line of plain text.
+            $limits = [
+                'site_name' => [1, 100], 'site_description' => [0, 300], 'llms_text' => [0, 4000],
+                'yandex_metrika_id' => [0, 12], 'yandex_metrika_options' => [0, 120], 'yandex_webmaster' => [0, 64], 'verification_tags' => [0, 2000],
+            ];
+            $multiline = ['llms_text', 'verification_tags'];
             $errors = [];
             $clean = [];
             foreach ($values as $key => $value) {
                 if (!isset($limits[$key])) {
                     $errors[] = "Unknown setting '{$key}'";
-                } elseif (!is_string($value) || preg_match($key === 'llms_text' ? '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/' : '/[\x00-\x1F\x7F]/', $value) === 1) {
-                    $errors[] = $key === 'llms_text' ? "{$key} must be plain text" : "{$key} must be plain text on one line";
+                } elseif (!is_string($value) || preg_match(in_array($key, $multiline, true) ? '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/' : '/[\x00-\x1F\x7F]/', $value) === 1) {
+                    $errors[] = in_array($key, $multiline, true) ? "{$key} must be plain text" : "{$key} must be plain text on one line";
                 } else {
-                    $value = trim($key === 'llms_text' ? str_replace(["\r\n", "\r"], "\n", $value) : $value);
+                    $value = trim(in_array($key, $multiline, true) ? str_replace(["\r\n", "\r"], "\n", $value) : $value);
                     $length = mb_strlen($value);
                     if ($length < $limits[$key][0] || $length > $limits[$key][1]) {
                         $errors[] = "{$key} must be {$limits[$key][0]}-{$limits[$key][1]} characters";
+                    } elseif ($value !== '' && ($problem = Analytics::problem($key, $value)) !== null) {
+                        $errors[] = $problem;
                     }
                     $clean[$key] = $value;
                 }

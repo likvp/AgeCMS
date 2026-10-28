@@ -107,6 +107,17 @@ try {
                     $flash = $result['changed'] ? 'Настройки сохранены, ревизия #' . $result['revision_id'] : 'Без изменений';
                     $section = 'settings';
                     break;
+                case 'analytics_save':
+                    $options = array_values(array_intersect(array_keys(\AgeCMS\Analytics::METRIKA_OPTIONS), (array)($_POST['yandex_metrika_options'] ?? [])));
+                    $result = Queue::submit($actor, 'set_settings', ['values' => [
+                        'yandex_metrika_id' => trim((string)($_POST['yandex_metrika_id'] ?? '')),
+                        'yandex_metrika_options' => implode(',', $options),
+                        'yandex_webmaster' => trim((string)($_POST['yandex_webmaster'] ?? '')),
+                        'verification_tags' => (string)($_POST['verification_tags'] ?? ''),
+                    ]]);
+                    $flash = $result['changed'] ? 'Аналитика и подтверждения сохранены, ревизия #' . $result['revision_id'] : 'Без изменений';
+                    $section = 'settings';
+                    break;
                 case 'page_delete':
                     $slug = (string)($_POST['slug'] ?? '');
                     Queue::submit($actor, 'delete_page', ['slug' => $slug]);

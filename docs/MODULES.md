@@ -203,3 +203,14 @@ $path = ModuleUpload::stored('mailing', $kept); // найти сохранённ
 - `https://www.openstreetmap.org/export/embed.html` (OpenStreetMap).
 
 Тему или модуль, которому нужна карта, строят на `<iframe src="https://yandex.ru/map-widget/v1/?...">`. Другой адрес браузер заблокирует. Политика одинакова в `core/security-headers.php`, `.htaccess` и `nginx.vhost.example` (это проверяет тест), потому что страницы из кэша отдаёт веб-сервер без PHP. Чтобы разрешить ещё что-то, правится строка во всех трёх файлах.
+
+## Счётчики и подтверждение сайта (Метрика, Вебмастер, Директ)
+
+В админке «Настройки» есть раздел «Аналитика и вебмастер»; то же делает агент через `set_settings` (ключи `yandex_metrika_id`, `yandex_metrika_options`, `yandex_webmaster`, `verification_tags`; значения проверяются, пустая строка выключает). Это настройки сайта с историей ревизий, как название сайта.
+
+- **Яндекс Метрика.** Нужен только номер счётчика. Ядро пишет в `<head>` тег `<script src="/assets/analytics.js" defer data-ym="..." data-ym-options="...">`, а файл `assets/analytics.js` сам подключает `https://mc.yandex.ru/metrika/tag.js` и вызывает `ym(номер, 'init', ...)`. Inline-скрипта нет, поэтому политика безопасности остаётся строгой. Параметры: `webvisor`, `clickmap`, `trackLinks`, `accurateTrackBounce`, `trackHash`.
+- **Счётчик получают только страницы, которые видят поисковики.** Личный кабинет, поиск, ошибки и любые страницы с `noindex` счётчик не загружают, поэтому персональные данные не попадают в Вебвизор. Подтверждающие метатеги ставятся на все страницы.
+- **Яндекс Вебмастер.** Поле принимает только код (то, что в `content="..."` метатега `yandex-verification`).
+- **Директ, Google, Bing и всё, что просит подтвердить сайт метатегом.** Поле «Другие метатеги подтверждения»: по строке `имя=значение`, не больше 10 строк. Названия, меняющие поведение страницы (`robots`, `viewport`, `refresh`, `content-security-policy` и подобные), не принимаются. Сам Директ кода на сайте не требует: цели и аудитории он берёт из счётчика Метрики.
+- **Политика безопасности.** Для счётчика в `script-src` добавлен `https://mc.yandex.ru`, в `connect-src` `https://mc.yandex.ru`, `https://mc.yandex.com`, `wss://mc.yandex.ru` (Вебвизор), в `frame-src` `https://mc.yandex.ru`, в `worker-src` `'self' blob:`. Строка одинакова в `core/security-headers.php`, `.htaccess` и `nginx.vhost.example`, её сверяют тесты. Других сторонних скриптов она не пускает.
+
