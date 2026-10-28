@@ -82,9 +82,13 @@ final class UpdaterTest extends TestCase
     public function testSignedPackageIsInstalled(): void
     {
         $this->site();
-        $fetch = $this->publish(Updater::pack($this->files('1.1.0'), '1.1.0'));
+        @mkdir(AGECMS_UPDATE_ROOT . '/bin', 0755, true);
+        file_put_contents(AGECMS_UPDATE_ROOT . '/bin/run.sh', "#!/bin/sh\nold\n");
+        chmod(AGECMS_UPDATE_ROOT . '/bin/run.sh', 0755);
+        chmod(AGECMS_UPDATE_ROOT . '/index.php', 0640);
+        $fetch = $this->publish(Updater::pack($this->files('1.1.0', ['bin/run.sh' => "#!/bin/sh\nnew\n", 'bin/new.sh' => "#!/bin/sh\n"]), '1.1.0'));
         $done = Updater::install($fetch);
-        $this->assertSame(['from' => '1.0.0', 'to' => '1.1.0', 'files' => 5], array_diff_key($done, ['rollback' => 1]));
+        $this->assertSame(['from' => '1.0.0', 'to' => '1.1.0', 'files' => 7], array_diff_key($done, ['rollback' => 1]));
         $this->assertSame('new index 1.1.0', $this->read('index.php'));
         $this->assertSame('brand new', $this->read('core/New.php'));
         $this->assertSame('stays', $this->read('core/Gone.php'), 'files the new version does not have are left alone');
@@ -93,6 +97,9 @@ final class UpdaterTest extends TestCase
         $this->assertTrue(Updater::last()['ok'] === true && Updater::last()['to'] === '1.1.0');
         $this->assertTrue(glob(AGECMS_DATA . '/backups/agecms-*') !== [], 'the database was backed up first');
         $this->assertSame([], glob(AGECMS_UPDATE_ROOT . '/core/.agecms-update-*') ?: [], 'no temporary files left');
+        $this->assertSame(0755, fileperms(AGECMS_UPDATE_ROOT . '/bin/run.sh') & 0777, 'a script keeps its execute bit');
+        $this->assertSame(0755, fileperms(AGECMS_UPDATE_ROOT . '/bin/new.sh') & 0777, 'a new script (#!) is runnable');
+        $this->assertSame(0640, fileperms(AGECMS_UPDATE_ROOT . '/index.php') & 0777, 'permissions of a replaced file are kept');
 
         $back = Updater::rollback();
         $this->assertSame('1.0.0', $back['version']);

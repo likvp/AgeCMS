@@ -400,7 +400,8 @@ final class Updater
         if (@file_put_contents($tmp, $bytes) === false) {
             throw new AgeCMSException('Нет прав записать в ' . $dir);
         }
-        @chmod($tmp, 0644);
+        // The package carries no permissions: keep those of the file being replaced, scripts (#!) of a new one stay runnable.
+        @chmod($tmp, is_file($target) ? (fileperms($target) & 0777) : (str_starts_with($bytes, '#!') ? 0755 : 0644));
         if (!@rename($tmp, $target)) {
             @unlink($tmp);
             throw new AgeCMSException('Нет прав заменить ' . $target);
