@@ -1,14 +1,14 @@
 {
-    "version": "1.1.1",
+    "version": "1.2.0",
     "date": "2026-10-28",
-    "notes": "Настройки сайта: раздел «Аналитика и вебмастер» (номер счётчика Яндекс Метрики, код Яндекс Вебмастера, свои метатеги подтверждения для Google, Bing и других). Счётчик подключается файлом без inline-скрипта и не ставится на страницы без индексации (кабинет, поиск). Политика безопасности пускает mc.yandex.ru. Проверено на PHP 8.1-8.5.",
+    "notes": "Свои модули: загрузка zip-архивом в «Системе», выключение, удаление, подпись ключом сайта. Модуль без подписи работает с красной пометкой «подпись не проверена», подписанный с изменённым файлом блокируется.\nИИ-агент с ролью admin может ставить, выключать и удалять модули (install_module и другие).",
     "url": "",
-    "package": "agecms-1.1.1.json.gz",
-    "sha256": "83c4d1be3bcdd84ef63704323df44b2ea12e6c31b42f7df211c1c20b9963f866",
-    "size": 373215,
+    "package": "agecms-1.2.0.json.gz",
+    "sha256": "2d075e92782620cc53f52541ccdb57fde00bf49d63e807a008bf165cd0928083",
+    "size": 382936,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "U1Y2C/7alyjRpH3O88nU8wAFMU8LCoOI+uMXWLFaJhmV12vNU1i0RV/N1GaQUrZvGcUiFckpy+lFGo9VcGZgBA=="
+        "sig": "fuBoiIC6CkDJO1hR8okpVn1vHPb7OQoLy45RdQbs4Mg8tgmdNl0ZRZNNcvrwGgrgnwv/5dR1QlfOUk98jV7PAw=="
     }
 }
