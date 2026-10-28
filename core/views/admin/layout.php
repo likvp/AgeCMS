@@ -110,7 +110,7 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
             <?php endif; ?>
             <?php if ($newCore !== null && $section !== 'system'): ?>
                 <div class="notice warn" role="status"><?= icon('info') ?><div>
-                    <p><b>Вышла новая версия ядра AgeCMS <?= h($newCore['version']) ?></b>, у вас <?= h(Updates::version()) ?>. Что изменилось и как обновить, в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>».</p>
+                    <p><b>Вышла новая версия ядра AgeCMS <?= h($newCore['version']) ?></b>, у вас <?= h(Updates::version()) ?>. Что изменилось и кнопка «Обновить» в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>».</p>
                 </div></div>
             <?php endif; ?>
             <?php if ($frozen !== null): ?>

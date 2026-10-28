@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug, Updates};
+use AgeCMS\{AgeCMSException, AntiSpam, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, Pages, Queue, Security, Seo, Slug, Updater, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -304,8 +304,9 @@ try {
                         throw new AgeCMSException('Адрес проверки обновлений должен начинаться с https://');
                     }
                     Config::set('updates.url', $url);
+                    Config::set('updates.auto', $url !== '' && isset($_POST['updates_auto']));
                     $state = $url !== '' ? Updates::check() : null;
-                    $flash = $url === '' ? 'Проверка обновлений выключена' : ($state['error'] !== '' ? 'Адрес сохранён, но проверить не вышло: ' . $state['error'] : 'Адрес сохранён, проверка прошла');
+                    $flash = $url === '' ? 'Проверка обновлений выключена' : ($state['error'] !== '' ? 'Адрес сохранён, но проверить не вышло: ' . $state['error'] : 'Настройки обновлений сохранены');
                     $section = 'system';
                     break;
                 case 'updates_check':
@@ -317,6 +318,16 @@ try {
                     $flash = Updates::available() !== null ? 'Есть новая версия ' . Updates::available()['version'] : 'У вас последняя версия ' . Updates::version();
                     $section = 'system';
                     break;
+                case 'core_update':
+                    Security::requirePermission($actor, 'system.manage');
+                    $state = Updates::check();
+                    if ($state['error'] !== '') {
+                        throw new AgeCMSException('Проверить не вышло: ' . $state['error']);
+                    }
+                    $done = Updater::install(null, (string)$user['username']);
+                    // The new files are in place: show the result with the new code, not with what this request loaded.
+                    header('Location: ' . admin_url('system', ['updated' => $done['to'], 'files' => $done['files']]), true, 303);
+                    exit;
                 case 'invite_create':
                     Security::requirePermission($actor, 'system.manage');
                     $role = (string)($_POST['role'] ?? 'editor');
@@ -404,6 +415,9 @@ try {
     $error = $e->getMessage();
 }
 $user = Auth::user();
+if ($user !== null && $section === 'system' && preg_match('/^\d{1,4}\.\d{1,4}\.\d{1,4}$/', (string)($_GET['updated'] ?? '')) === 1 && $flash === '' && $error === '') {
+    $flash = 'Ядро обновлено до ' . $_GET['updated'] . ', файлов: ' . (int)($_GET['files'] ?? 0) . '. Копия базы и прежних файлов сохранена.';
+}
 if ($user !== null && in_array($section, ['forgot', 'reset'], true)) {
     $section = 'overview';
 }

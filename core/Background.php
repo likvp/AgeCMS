@@ -7,9 +7,9 @@ use Throwable;
 
 /**
  * Housekeeping that cron would otherwise do: finish stuck jobs, send IndexNow pings, re-render pages
- * dropped from the cache, ask once a day whether a newer core is out. It runs after the response has gone out,
- * when someone saves in the admin or through the API, and on ordinary visits that reach PHP (at most once
- * every 30 seconds). No cron needed.
+ * dropped from the cache, ask once a day whether a newer core is out (and install it when updates.auto is on).
+ * It runs after the response has gone out, when someone saves in the admin or through the API, and on ordinary
+ * visits that reach PHP (at most once every 30 seconds). No cron needed.
  */
 final class Background
 {
@@ -53,6 +53,7 @@ final class Background
         $ticked = self::tick($budgetSeconds);
         try {
             Updates::checkIfDue();
+            Updater::autoInstallIfDue();
         } catch (Throwable $e) {
             Logger::log('error', 'updates.failed', ['error' => $e->getMessage()]);
         }

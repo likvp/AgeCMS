@@ -51,6 +51,8 @@ php bin/install.php --url=https://example.com --name="Мой сайт"
 | `php bin/backup.php [--telegram]` | снимок базы |
 | `php bin/config.php get\|set <ключ> [значение]` | настройки и секреты (`secrets.telegram_bot_token`, `secrets.telegram_chat_id`, адрес проверки обновлений `updates.url`) |
 | `php bin/sign-module.php <модуль>` | подписать модуль после правки |
+| `php bin/update.php [--install\|--rollback]` | проверить, поставить новую версию ядра или вернуть прежнюю |
+| `php bin/release.php --version=x.y.z --key=<файл>` | собрать подписанный пакет новой версии в `dist/` |
 
 ## Подключить агента
 

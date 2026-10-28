@@ -33,6 +33,10 @@ final class Api
             'rollback_revision' => ['content.write', 'Restore a page to its state right after the given revision. Creates a new revision.', $obj(['slug' => $slug, 'revision_id' => ['type' => 'integer']], ['slug', 'revision_id'])],
             'import_image' => ['content.write', 'Download a public image by https URL, convert it to WebP and return its site path for use in og_image or url fields.', $obj(['url' => ['type' => 'string']], ['url'])],
             'clear_cache' => ['cache.clear', 'Drop all cached pages. They are rebuilt on the next visit.', $obj([], [])],
+            'check_core_update' => ['system.manage', 'Ask the update source now: installed core version, the newest one, its notes, whether update_core can install it here (blockers says why not), auto-update state and the last install attempt. Administrators only.', $obj([], [])],
+            'update_core' => ['system.manage', 'Install the newer core found by check_core_update: signed package only, database and old files are backed up first, a failed write puts the old files back. Pages, uploads, settings, modules and own themes are not touched. Tell the owner before you call it. Administrators only.', $obj([], [])],
+            'rollback_core' => ['system.manage', 'Put back the core files saved before the last update_core (the database stays as it is). Administrators only.', $obj([], [])],
+            'set_core_updates' => ['system.manage', 'Change where updates are checked (url: https address of release.json, empty switches checks off) and/or auto (true installs new signed versions by itself within a day). Administrators only.', $obj(['url' => ['type' => 'string'], 'auto' => ['type' => 'boolean']], [])],
         ];
     }
 
@@ -97,6 +101,10 @@ final class Api
             'rollback_revision' => Queue::submit($actor, 'rollback', ['slug' => self::string($args, 'slug'), 'revision_id' => (int)($args['revision_id'] ?? 0)]),
             'import_image' => ['path' => Media::importUrl(self::string($args, 'url'))],
             'clear_cache' => ['cleared' => Cache::clearAll()],
+            'check_core_update' => self::coreUpdate(true),
+            'update_core' => self::updateCore($actor),
+            'rollback_core' => Updater::rollback() + ['note' => 'Files are back. The database was not rolled back.'],
+            'set_core_updates' => self::setCoreUpdates($args),
         };
     }
 
@@ -120,6 +128,58 @@ final class Api
             'frozen' => CircuitBreaker::frozenInfo(),
             'token' => Auth::currentToken(),
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private static function coreUpdate(bool $checkNow): array
+    {
+        $state = $checkNow && Updates::sourceUrl() !== '' ? Updates::check() : Updates::state();
+        $newer = Updates::available();
+        $blockers = $newer === null ? [] : array_values(array_filter(array_merge([Updater::verifyRelease($newer)], Updater::preflight())));
+        return [
+            'version' => Updates::version(),
+            'source' => Updates::sourceUrl(),
+            'checked_at' => $state['checked_at'] > 0 ? gmdate('Y-m-d\TH:i:s\Z', $state['checked_at']) : null,
+            'check_error' => $state['error'] !== '' ? $state['error'] : null,
+            'latest' => $state['latest']['version'] ?? null,
+            'newer' => $newer === null ? null : ['version' => $newer['version'], 'date' => $newer['date'], 'notes' => $newer['notes'], 'url' => $newer['url']],
+            'can_install' => $newer !== null && $blockers === [],
+            'blockers' => $blockers,
+            'auto' => Updater::autoEnabled(),
+            'last_attempt' => Updater::last(),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private static function updateCore(Actor $actor): array
+    {
+        $state = Updates::check();
+        if ($state['error'] !== '') {
+            throw new AgeCMSException('Update check failed: ' . $state['error']);
+        }
+        return Updater::install(null, $actor->type . ':' . $actor->name) + ['note' => 'Installed. The next request runs the new core; call get_site_structure to see core.version.'];
+    }
+
+    /**
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>
+     */
+    private static function setCoreUpdates(array $args): array
+    {
+        if (array_key_exists('url', $args)) {
+            $url = trim((string)$args['url']);
+            if ($url !== '' && (strlen($url) > 500 || preg_match('~^https://[^\s"<>]+$~', $url) !== 1)) {
+                throw new AgeCMSException('url must be an https address or empty');
+            }
+            Config::set('updates.url', $url);
+        }
+        if (array_key_exists('auto', $args)) {
+            Config::set('updates.auto', $args['auto'] === true);
+        }
+        if (Updates::sourceUrl() === '') {
+            Config::set('updates.auto', false);
+        }
+        return self::coreUpdate(array_key_exists('url', $args));
     }
 
     /** @return array<string,mixed> */

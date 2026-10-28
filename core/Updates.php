@@ -18,10 +18,10 @@ final class Updates
     private const RETRY = 3600;
     private const MAX_BYTES = 65536;
 
-    /** @var array{version:string,date:string,notes:string,url:string}|null */
+    /** @var array<string,mixed>|null */
     private static ?array $current = null;
 
-    /** @return array{version:string,date:string,notes:string,url:string} this copy of the core */
+    /** @return array<string,mixed> this copy of the core */
     public static function current(): array
     {
         if (self::$current === null) {
@@ -42,10 +42,11 @@ final class Updates
     }
 
     /**
-     * Reads a release file. Only the four known fields are kept, notes are cut to 2000 characters,
-     * the link is kept only when it is https. Returns null for anything that is not a release.
+     * Reads a release file. Only the known fields are kept, notes are cut to 2000 characters, the link is
+     * kept only when it is https, the package fields only when all four are there. Returns null for anything
+     * that is not a release.
      *
-     * @return array{version:string,date:string,notes:string,url:string}|null
+     * @return array<string,mixed>|null
      */
     public static function parse(string $json): ?array
     {
@@ -56,14 +57,23 @@ final class Updates
         $date = is_string($data['date'] ?? null) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['date']) === 1 ? $data['date'] : '';
         $notes = is_string($data['notes'] ?? null) ? mb_substr(trim($data['notes']), 0, 2000) : '';
         $url = is_string($data['url'] ?? null) && preg_match('~^https://[^\s"<>]+$~', $data['url']) === 1 ? $data['url'] : '';
-        return ['version' => $data['version'], 'date' => $date, 'notes' => $notes, 'url' => $url];
+        $release = ['version' => $data['version'], 'date' => $date, 'notes' => $notes, 'url' => $url];
+        // The package for Updater: where it lies, its hash and size, the publisher signature over them.
+        $sig = $data['signature'] ?? null;
+        if (is_string($data['package'] ?? null) && preg_match('~^(https://[^\s"<>]+|[A-Za-z0-9._-]+)$~', $data['package']) === 1
+            && is_string($data['sha256'] ?? null) && preg_match('/^[0-9a-f]{64}$/', $data['sha256']) === 1
+            && is_int($data['size'] ?? null) && $data['size'] > 0
+            && is_array($sig) && is_string($sig['alg'] ?? null) && is_string($sig['key_id'] ?? null) && is_string($sig['sig'] ?? null)) {
+            $release += ['package' => $data['package'], 'sha256' => $data['sha256'], 'size' => $data['size'], 'signature' => ['alg' => $sig['alg'], 'key_id' => $sig['key_id'], 'sig' => $sig['sig']]];
+        }
+        return $release;
     }
 
     /**
      * What the last check found: checked_at (unix time), error ('' when it went fine) and latest (the release
      * file from the source, null until the first good answer).
      *
-     * @return array{checked_at:int,error:string,source:string,latest:array{version:string,date:string,notes:string,url:string}|null}
+     * @return array{checked_at:int,error:string,source:string,latest:array<string,mixed>|null}
      */
     public static function state(): array
     {
@@ -77,7 +87,7 @@ final class Updates
         ];
     }
 
-    /** @return array{version:string,date:string,notes:string,url:string}|null the newer release, if the source has one */
+    /** @return array<string,mixed>|null the newer release, if the source has one */
     public static function available(): ?array
     {
         $state = self::state();
@@ -129,7 +139,7 @@ final class Updates
      * returns ['status' => int, 'body' => string] or null, like Http::get.
      *
      * @param (callable(string):(array{status:int,body:string}|null))|null $fetch
-     * @return array{checked_at:int,error:string,source:string,latest:array{version:string,date:string,notes:string,url:string}|null}
+     * @return array{checked_at:int,error:string,source:string,latest:array<string,mixed>|null}
      */
     public static function check(?callable $fetch = null): array
     {

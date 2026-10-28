@@ -5,7 +5,7 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{Backup, Config, Database, SkillRegistry, Updates};
+use AgeCMS\{Backup, Config, Database, SkillRegistry, Updater, Updates};
 
 $modules = SkillRegistry::modules();
 ?>
@@ -16,6 +16,11 @@ $release = Updates::current();
 $newer = Updates::available();
 $updState = Updates::state();
 $updUrl = Updates::sourceUrl();
+$auto = Updater::autoEnabled();
+$lastUpdate = Updater::last();
+// Why the button cannot work here: no signed package, missing extensions, files PHP may not write.
+$blockers = $newer === null ? [] : array_merge(Updater::verifyRelease($newer) !== null ? [Updater::verifyRelease($newer)] : [], Updater::preflight());
+$rollbacks = Updater::rollbacks();
 ?>
 <section class="panel">
     <div class="panel-h"><h2>Версия ядра</h2><?= $newer !== null ? '<span class="tag warn">есть ' . h($newer['version']) . '</span>' : ($updUrl !== '' && $updState['error'] === '' && $updState['checked_at'] > 0 ? '<span class="tag ok">последняя</span>' : '') ?></div>
@@ -28,13 +33,23 @@ $updUrl = Updates::sourceUrl();
             <div class="notice warn"><?= icon('info') ?><div>
                 <p><b>Вышла версия <?= h($newer['version']) ?></b><?= $newer['date'] !== '' ? ' от ' . h(date('d.m.Y', (int)strtotime($newer['date']))) : '' ?>.<?= $newer['url'] !== '' ? ' <a href="' . h($newer['url']) . '" target="_blank" rel="noopener noreferrer">Что нового</a>' : '' ?></p>
                 <?php if ($newer['notes'] !== ''): ?><p class="pre-line"><?= h($newer['notes']) ?></p><?php endif; ?>
-                <p>Сайт сам себя не обновляет: файлы ядра заменяет хостер или разработчик. Содержимое, картинки и настройки при этом не трогаются, база догонит новую версию сама при первом заходе.</p>
+                <?php if ($blockers === []): ?>
+                    <p>Обновление заменит только файлы ядра. Страницы, картинки, настройки, модули и свои темы не трогаются. Перед заменой сохраняются копия базы и прежние файлы; если что-то не запишется, прежняя версия вернётся сама.</p>
+                    <?php if ($isAdmin): ?><form method="post" data-confirm="Обновить ядро до <?= h($newer['version']) ?>?" data-confirm-text="Займёт до минуты. Копия базы и прежних файлов сохранится." data-confirm-ok="Обновить"><?= admin_post_fields($csrf, 'core_update') ?><button class="btn primary" type="submit"><?= icon('upload-simple') ?>Обновить до <?= h($newer['version']) ?></button></form><?php endif; ?>
+                <?php else: ?>
+                    <p>Обновить отсюда не получится: <?= h(implode('; ', $blockers)) ?>. Файлы ядра может заменить хостер или разработчик, содержимое и настройки при этом не трогаются.</p>
+                <?php endif; ?>
             </div></div>
+        <?php endif; ?>
+        <?php if ($lastUpdate !== null): ?>
+            <p class="muted"><?= $lastUpdate['ok'] ? 'Последнее обновление' : 'Последняя попытка обновления' ?> <?= h(admin_date(gmdate('Y-m-d\TH:i:s\Z', $lastUpdate['at']))) ?>: <?= h($lastUpdate['from']) ?> &rarr; <?= h($lastUpdate['to'] !== '' ? $lastUpdate['to'] : '?') ?>, <?= $lastUpdate['by'] === 'auto' ? 'автоматически' : h($lastUpdate['by']) ?><?= $lastUpdate['ok'] ? '.' : '. Не вышло: ' . h($lastUpdate['error']) . '.' ?>
+            <?php if ($rollbacks !== []): ?>Прежние файлы сохранены (<code><?= h($rollbacks[0]) ?></code>), вернуть их: <code>php bin/update.php --rollback</code>.<?php endif; ?></p>
         <?php endif; ?>
         <?php if ($isAdmin): ?>
         <form method="post">
             <?= admin_post_fields($csrf, 'updates_save') ?>
             <label class="f"><span>Где проверять обновления <small>(адрес файла release.json последней версии, https; пусто - не проверять)</small></span><input class="in" type="url" name="updates_url" maxlength="500" placeholder="https://..." value="<?= h($updUrl) ?>"></label>
+            <label class="chk"><input type="checkbox" name="updates_auto" value="1"<?= $auto ? ' checked' : '' ?>><span>Обновлять автоматически <small>(сайт сам поставит новую подписанную версию в течение суток после выхода; по умолчанию выключено)</small></span></label>
             <div class="row center">
                 <button class="btn primary" type="submit">Сохранить</button>
                 <?php if ($updUrl !== ''): ?><button class="btn" type="submit" name="action" value="updates_check" formnovalidate><?= icon('magnifying-glass') ?>Проверить сейчас</button><?php endif; ?>

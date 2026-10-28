@@ -8,6 +8,7 @@ define('AGECMS_DATA', TEST_TMP . '/data');
 define('AGECMS_CACHE', TEST_TMP . '/cache');
 define('AGECMS_MODULES', TEST_TMP . '/modules');
 define('AGECMS_UPLOADS', TEST_TMP . '/uploads');
+define('AGECMS_UPDATE_ROOT', TEST_TMP . '/site');
 
 require __DIR__ . '/../core/bootstrap.php';
 require __DIR__ . '/TestCase.php';
