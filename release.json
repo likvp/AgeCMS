@@ -1,14 +1,26 @@
 {
-    "version": "1.2.0",
+    "version": "1.2.1",
     "date": "2026-10-28",
-    "notes": "Свои модули: загрузка zip-архивом в «Системе», выключение, удаление, подпись ключом сайта. Модуль без подписи работает с красной пометкой «подпись не проверена», подписанный с изменённым файлом блокируется.\nИИ-агент с ролью admin может ставить, выключать и удалять модули (install_module и другие).",
+    "notes": "Обновление из админки работает на хостингах без расширения PHP sodium: выпуск подписан ещё и ключом ECDSA P-256, его проверяет openssl.\nОбновление сохраняет права файлов (скрипты bin/*.sh больше не теряют право на запуск).\nПроверка требований к серверу для установки агентами (bin/requirements.php).",
     "url": "",
-    "package": "agecms-1.2.0.json.gz",
-    "sha256": "2d075e92782620cc53f52541ccdb57fde00bf49d63e807a008bf165cd0928083",
-    "size": 382936,
+    "package": "agecms-1.2.1.json.gz",
+    "sha256": "2af6fbd70e98c8c83eae09461ac7ce7e709ccf2028084afc532d1e9246b271b5",
+    "size": 389180,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "fuBoiIC6CkDJO1hR8okpVn1vHPb7OQoLy45RdQbs4Mg8tgmdNl0ZRZNNcvrwGgrgnwv/5dR1QlfOUk98jV7PAw=="
-    }
+        "sig": "cSRYOU+Z4qJPKhF8iU3+xEB4M42LuuzsQwJzQcm4l9sQj1Y/w7mOW3e+XBFu+m+ast36Ri1UXu80YrrnGlz5CA=="
+    },
+    "signatures": [
+        {
+            "alg": "ed25519",
+            "key_id": "agecms-2026",
+            "sig": "cSRYOU+Z4qJPKhF8iU3+xEB4M42LuuzsQwJzQcm4l9sQj1Y/w7mOW3e+XBFu+m+ast36Ri1UXu80YrrnGlz5CA=="
+        },
+        {
+            "alg": "ecdsa-p256-sha256",
+            "key_id": "agecms-2026-p256",
+            "sig": "MEYCIQCWNWSO+iQGhfayud3JdJEMOuUcnnv1IMYdj7tcPIkFjQIhAIeP63NopZpzAaQn+sU9410mO6ApVmhmTANVWv3kn6F/"
+        }
+    ]
 }
