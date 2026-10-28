@@ -174,13 +174,31 @@
         pickerDlg.showModal();
     }
 
+    var viewerDlg, viewerImg;
+
+    // Full screen view of a picked image: click anywhere, Esc or the close button closes it.
+    function openViewer(url) {
+        if (!url) { return; }
+        if (!viewerDlg) {
+            viewerImg = el('img', { alt: '' });
+            viewerDlg = el('dialog', { class: 'viewer', 'aria-label': 'Просмотр картинки', onclick: function () { viewerDlg.close(); } }, [
+                viewerImg,
+                iconBtn('x-circle', 'Закрыть', function () { viewerDlg.close(); })
+            ]);
+            document.body.appendChild(viewerDlg);
+        }
+        viewerImg.src = url;
+        viewerDlg.showModal();
+    }
+
     function imageField(spec, obj, key, title) {
         var input = el('input', { class: 'in', type: 'text', maxlength: spec.max || 500, placeholder: '/assets/uploads/...', oninput: function (e) { setValue(obj, key, spec, e.target.value); preview(); } });
         input.value = obj[key] || '';
-        var pv = el('img', { class: 'pv', alt: '' });
+        var img = el('img', { alt: '' });
+        var pv = el('button', { type: 'button', class: 'pv', title: 'Открыть на весь экран', 'aria-label': 'Открыть картинку на весь экран', onclick: function () { openViewer(img.src); } }, [img]);
         function preview() {
             var v = input.value.trim();
-            if (/^(\/|https?:\/\/)/.test(v)) { pv.src = v; pv.hidden = false; } else { pv.hidden = true; pv.removeAttribute('src'); }
+            if (/^(\/|https?:\/\/)/.test(v)) { img.src = v; pv.hidden = false; } else { pv.hidden = true; img.removeAttribute('src'); }
         }
         var pick = iconBtn('image', 'Выбрать из медиатеки', function () {
             openPicker(input.value, function (url) { input.value = url; setValue(obj, key, spec, url); preview(); });
