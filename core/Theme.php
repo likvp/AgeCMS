@@ -46,6 +46,64 @@ final class Theme
     }
 
     /**
+     * Fields of the theme's own settings ("settings" in theme.json): the sections of SiteSettings::THEME_SECTIONS, each
+     * {"title": "...", "hint": "...", "fields": {name: field}} with fields like those of a block, of the types in
+     * SiteSettings::THEME_TYPES. Anything else is left out, so a mistake in the manifest never breaks the settings page.
+     *
+     * @return array<string,array{title:string,hint:string,fields:array<string,array<string,mixed>>}>
+     */
+    public static function settings(string $name): array
+    {
+        $declared = self::exists($name) ? (self::manifest($name)['settings'] ?? []) : [];
+        $out = [];
+        foreach (SiteSettings::THEME_SECTIONS as $section => $title) {
+            $spec = is_array($declared) ? ($declared[$section] ?? null) : null;
+            if (!is_array($spec) || !is_array($spec['fields'] ?? null)) {
+                continue;
+            }
+            $fields = [];
+            foreach ($spec['fields'] as $field => $fieldSpec) {
+                if (is_string($field) && preg_match('/^[a-z][a-z0-9_]{0,39}$/', $field) === 1 && is_array($fieldSpec)
+                    && in_array($fieldSpec['type'] ?? 'string', SiteSettings::THEME_TYPES, true)) {
+                    $fields[$field] = $fieldSpec;
+                }
+            }
+            if ($fields !== []) {
+                $out[$section] = [
+                    'title' => is_string($spec['title'] ?? null) ? $spec['title'] : $title,
+                    'hint' => is_string($spec['hint'] ?? null) ? $spec['hint'] : '',
+                    'fields' => $fields,
+                ];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Values of the theme settings for the layout, typed: ['header' => ['phone' => '...', 'sticky' => true], 'footer' => [...]].
+     * A field never saved has its "default" from theme.json, or '' (string types), false (bool), null (int).
+     *
+     * @param array<string,string> $stored the settings table (Seo::settings())
+     * @return array<string,array<string,mixed>>
+     */
+    public static function settingValues(string $name, array $stored): array
+    {
+        $out = array_fill_keys(array_keys(SiteSettings::THEME_SECTIONS), []);
+        foreach (self::settings($name) as $section => $spec) {
+            foreach ($spec['fields'] as $field => $fieldSpec) {
+                $raw = $stored["theme.{$section}.{$field}"] ?? null;
+                $type = (string)($fieldSpec['type'] ?? 'string');
+                if ($raw === null || ($raw === '' && $type !== 'string' && $type !== 'text' && $type !== 'url')) {
+                    $out[$section][$field] = $fieldSpec['default'] ?? match ($type) { 'bool' => false, 'int' => null, default => '' };
+                    continue;
+                }
+                $out[$section][$field] = match ($type) { 'bool' => $raw === '1', 'int' => (int)$raw, default => $raw };
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Pages whose content the layout shows on every page (a phone number or an address in the header, for example).
      * Listed in theme.json as "cache_pages"; invalid entries are skipped. Editing such a page drops every cached page.
      *

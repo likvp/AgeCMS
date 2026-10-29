@@ -42,6 +42,11 @@ h3 { font-size: 1.2rem; }
 .nav { display: flex; gap: 20px; flex-wrap: wrap; }
 .nav a { color: var(--muted); text-decoration: none; font-size: 0.95rem; }
 .nav a:hover { color: var(--text); }
+.brand .tagline { margin-left: 6px; color: var(--muted); font-weight: 500; font-size: 0.85rem; letter-spacing: 0; }
+.site-header .phone { font-weight: 700; text-decoration: none; white-space: nowrap; }
+.site-footer .contacts { display: flex; gap: 14px; flex-wrap: wrap; }
+.site-footer .contacts a { text-decoration: none; }
+.site-footer .note { margin: 14px 0 0; white-space: pre-line; }
 .site-footer { margin-top: 80px; border-top: 1px solid var(--line); padding: 28px 0; color: var(--muted); font-size: 0.9rem; }
 
 .hero { padding: clamp(56px, 12vw, 140px) 0 clamp(40px, 8vw, 90px); }

@@ -5,6 +5,9 @@ button { font: inherit; cursor: pointer; }
 .ic { display: inline-flex; vertical-align: middle; }
 .outline { position: fixed; pointer-events: none; border: 2px solid #f5b301; border-radius: 4px; box-shadow: 0 0 0 1px rgba(0,0,0,.25); display: none; }
 .outline.source { background: rgba(245,179,1,.18); border-style: dashed; }
+.outline.region { border-style: dashed; border-color: rgba(245,179,1,.85); }
+.regionbtn { position: fixed; display: none; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 9px; border-radius: 15px; background: #17171a; color: #fff; font-weight: 600; font-size: 13px; text-decoration: none; white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.3); border: 1px solid #f5b301; }
+.regionbtn:hover, .regionbtn:focus-visible { background: #f5b301; color: #1b1b1f; outline: none; }
 .outline.flash { animation: flash 1.4s ease-out 1; }
 @keyframes flash { 0% { background: rgba(245,179,1,.45); } 100% { background: rgba(245,179,1,0); } }
 .bar { position: fixed; display: none; align-items: center; gap: 2px; padding: 4px; background: #17171a; color: #fff; border-radius: 10px; box-shadow: 0 6px 22px rgba(0,0,0,.35); max-width: calc(100vw - 16px); }

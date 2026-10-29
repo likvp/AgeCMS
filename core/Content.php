@@ -444,39 +444,17 @@ final class Content
     }
 
     /**
-     * Site name and description (administrators only). Versioned as the pseudo page "@settings".
+     * Settings of the site (administrators only): the core's keys and the fields the active theme declared, see SiteSettings.
+     * Versioned as the pseudo page "@settings".
      *
-     * @param array<string,mixed> $values only "site_name", "site_description", "llms_text" and the analytics settings (see Analytics) are accepted
+     * @param array<string,mixed> $values
      * @return array<string,mixed>
      */
     public static function setSettings(Actor $actor, array $values): array
     {
         Security::requirePermission($actor, 'system.manage');
         return self::run($actor, static function (PDO $pdo) use ($actor, $values): array {
-            // llms_text and verification_tags are the multi-line values; every other setting is one line of plain text.
-            $limits = [
-                'site_name' => [1, 100], 'site_description' => [0, 300], 'llms_text' => [0, 4000],
-                'yandex_metrika_id' => [0, 12], 'yandex_metrika_options' => [0, 120], 'yandex_webmaster' => [0, 64], 'verification_tags' => [0, 2000],
-            ];
-            $multiline = ['llms_text', 'verification_tags'];
-            $errors = [];
-            $clean = [];
-            foreach ($values as $key => $value) {
-                if (!isset($limits[$key])) {
-                    $errors[] = "Unknown setting '{$key}'";
-                } elseif (!is_string($value) || preg_match(in_array($key, $multiline, true) ? '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/' : '/[\x00-\x1F\x7F]/', $value) === 1) {
-                    $errors[] = in_array($key, $multiline, true) ? "{$key} must be plain text" : "{$key} must be plain text on one line";
-                } else {
-                    $value = trim(in_array($key, $multiline, true) ? str_replace(["\r\n", "\r"], "\n", $value) : $value);
-                    $length = mb_strlen($value);
-                    if ($length < $limits[$key][0] || $length > $limits[$key][1]) {
-                        $errors[] = "{$key} must be {$limits[$key][0]}-{$limits[$key][1]} characters";
-                    } elseif ($value !== '' && ($problem = Analytics::problem($key, $value)) !== null) {
-                        $errors[] = $problem;
-                    }
-                    $clean[$key] = $value;
-                }
-            }
+            [$clean, $errors] = SiteSettings::clean($values, Theme::active());
             if ($clean === [] && $errors === []) {
                 $errors[] = 'No settings to update';
             }
@@ -484,20 +462,17 @@ final class Content
                 throw new ValidationException($errors);
             }
 
+            // A setting that was never saved is not part of the recorded state.
             $before = [];
-            foreach (array_keys($limits) as $key) {
-                $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
-                $stmt->execute([$key]);
-                $stored = $stmt->fetchColumn();
-                if ($stored !== false) { // a setting that was never saved is not part of the recorded state
-                    $before[$key] = (string)$stored;
-                }
+            $known = array_keys(SiteSettings::LIMITS);
+            foreach ($pdo->query("SELECT key, value FROM settings WHERE key LIKE 'theme.%' OR key IN ('" . implode("', '", $known) . "') ORDER BY key")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $before[(string)$row['key']] = (string)$row['value'];
             }
             $after = array_replace($before, $clean);
             $revisionId = Revisions::record($pdo, '@settings', $actor, 'Настройки сайта: ' . implode(', ', array_keys($clean)), $before, $after);
             if ($revisionId !== null) {
                 $set = $pdo->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-                foreach ($after as $key => $value) {
+                foreach ($clean as $key => $value) {
                     $set->execute([$key, $value]);
                 }
             }

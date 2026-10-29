@@ -247,7 +247,7 @@ final class HttpIntegrationTest extends HttpCase
         $csrf = $this->adminLogin();
         $this->assertTrue($csrf !== '');
 
-        foreach (['pages' => 'Новая страница', 'menus' => 'ag-editor-data', 'history' => 'История изменений', 'overview' => 'Просмотры по дням', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Токены для ИИ-агентов'] as $section => $marker) {
+        foreach (['pages' => 'Новая страница', 'settings&tab=menu' => 'ag-editor-data', 'history' => 'История изменений', 'overview' => 'Просмотры по дням', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Токены для ИИ-агентов'] as $section => $marker) {
             $r = $this->http('GET', '/admin/?s=' . $section, null, [], true);
             $this->assertSame(200, $r['status'], $section);
             $this->assertContains($marker, $r['body'], $section);
@@ -279,6 +279,71 @@ final class HttpIntegrationTest extends HttpCase
         $editor = Auth::createToken('ed-bot', 'editor');
         $denied = $this->http('POST', '/admin/api.php', json_encode(['action' => 'set_settings', 'values' => ['site_name' => 'Hacked']]), ['Authorization' => "Bearer {$editor}", 'Content-Type' => 'application/json']);
         $this->assertSame(403, $denied['status'], 'only administrators change settings');
+    }
+
+    public function testSettingsTabsSaveTheirKeysAndTheThemeFields(): void
+    {
+        $this->boot();
+        $csrf = $this->adminLogin();
+
+        $old = $this->http('GET', '/admin/?s=menus', null, [], true);
+        $this->assertSame(302, $old['status'], 'the old menus address leads to the tab');
+        $this->assertSame('/admin/?s=settings&tab=menu', $old['headers']['location']);
+        $main = $this->http('GET', '/admin/?s=settings', null, [], true)['body'];
+        foreach (['Главное', 'Меню', 'Шапка', 'Подвал', 'Почта', 'Аналитика', 'Сайт'] as $title) {
+            $this->assertContains('>' . $title . '</a>', $main, "tab {$title}");
+        }
+        $this->assertContains('href="/admin/?s=settings&amp;tab=main" aria-current="page"', $main, 'the first tab without ?tab=');
+        $this->assertContains('name="org_inn"', $main);
+        $this->assertNotContains('name="llms_text"', $main, 'one tab at a time');
+        $this->assertContains('name="llms_text"', $this->http('GET', '/admin/?s=settings&tab=site', null, [], true)['body']);
+        $this->assertContains('name="t[note]"', $this->http('GET', '/admin/?s=settings&tab=footer', null, [], true)['body'], 'the form of the theme fields');
+        $this->assertContains('aria-current="page">Главное', $this->http('GET', '/admin/?s=settings&tab=nope', null, [], true)['body'], 'an unknown tab is the first one');
+        $this->assertNotContains('href="/admin/?s=menus"', $main, 'no separate menu item in the side menu');
+
+        $saved = $this->form(['action' => 'settings_save', 'tab' => 'main', 'site_name' => 'Ломбард', 'org_phone' => '+7 900 111-22-33', 'org_email' => 'info@example.test', 'org_inn' => '7701234567', 'org_address' => 'г. Киров, ул. Ленина, 1'], $csrf);
+        $this->assertContains('Настройки сохранены', $saved['body']);
+        $this->assertContains('aria-current="page">Главное', $saved['body'], 'the page stays on the tab');
+        $this->assertSame('7701234567', (string)Database::value("SELECT value FROM settings WHERE key = 'org_inn'"));
+        $bad = $this->form(['action' => 'settings_save', 'tab' => 'main', 'site_name' => 'Ломбард', 'org_inn' => '12'], $csrf);
+        $this->assertContains('org_inn must be 10 or 12 digits', $bad['body']);
+
+        $this->form(['action' => 'theme_settings_save', 'tab' => 'footer', 't' => ['note' => 'Работаем без выходных', 'show_contacts' => '1']], $csrf);
+        $this->assertSame('Работаем без выходных', (string)Database::value("SELECT value FROM settings WHERE key = 'theme.footer.note'"));
+        $this->form(['action' => 'theme_settings_save', 'tab' => 'header', 't' => ['tagline' => '', 'show_phone' => '0']], $csrf);
+        $this->assertSame('0', (string)Database::value("SELECT value FROM settings WHERE key = 'theme.header.show_phone'"), 'an unticked box is saved as 0');
+        $home = $this->http('GET', '/')['body'];
+        $this->assertContains('Работаем без выходных', $home, 'the layout shows the theme field');
+        $this->assertContains('href="mailto:info@example.test"', $home, 'and the contacts from «Главное»');
+        $this->assertNotContains('class="phone"', $home, 'the switched off phone is not in the header');
+        $this->assertContains('"taxID": "7701234567"', $home, 'JSON-LD of the organisation');
+
+        $this->assertContains('data-ag-cookie hidden', $home, 'the cookie notice is on by default');
+        $this->form(['action' => 'cookie_save', 'tab' => 'site', 'cookie_text' => 'Мы используем cookie.', 'cookie_policy_url' => '/privacy'], $csrf);
+        $this->assertNotContains('data-ag-cookie', $this->http('GET', '/')['body'], 'switched off in «Сайт»');
+        $this->form(['action' => 'cookie_save', 'tab' => 'site', 'cookie_banner' => '1', 'cookie_text' => 'Мы используем cookie.', 'cookie_policy_url' => '/privacy'], $csrf);
+        $home = $this->http('GET', '/')['body'];
+        $this->assertContains('Мы используем cookie. <a href="/privacy">Подробнее</a>', $home);
+        $this->assertTrue(preg_match('~cookie\.css\?v=\d+">\s*</head>~', $home) === 1, 'its styles in <head>');
+
+        if (function_exists('imagewebp')) {
+            $png = TEST_TMP . '/logo.png';
+            $img = imagecreatetruecolor(40, 20);
+            imagepng($img, $png);
+            $ch = curl_init("http://127.0.0.1:{$this->port}/admin/index.php");
+            curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_COOKIEFILE => $this->jar, CURLOPT_COOKIEJAR => $this->jar,
+                CURLOPT_POSTFIELDS => ['action' => 'settings_save', 'tab' => 'main', 'csrf' => $csrf, 'site_name' => 'Ломбард', 'org_logo' => '', 'org_logo_file' => new CURLFile($png, 'image/png', 'logo.png')]]);
+            $this->assertContains('Настройки сохранены', (string)curl_exec($ch));
+            $this->assertTrue(preg_match('~^/assets/uploads/[a-f0-9]{20}\.webp$~', (string)Database::value("SELECT value FROM settings WHERE key = 'org_logo'")) === 1, 'the uploaded logo is in the media library');
+        }
+
+        Auth::createUser('editor1', 'Passw0rd-editor-1', 'editor');
+        $this->http('POST', '/admin/index.php', http_build_query(['action' => 'logout', 'csrf' => $csrf]), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+        $this->http('POST', '/admin/index.php', http_build_query(['action' => 'login', 'username' => 'editor1', 'password' => 'Passw0rd-editor-1']), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+        $editor = $this->http('GET', '/admin/?s=settings&tab=main', null, [], true)['body'];
+        $this->assertContains('ag-editor-data', $editor, 'an editor gets the menus');
+        $this->assertNotContains('name="org_inn"', $editor, 'but not the settings of the administrator');
+        $this->assertContains('меняет администратор', $editor);
     }
 
     public function testWebInstallerWizard(): void
@@ -662,7 +727,7 @@ final class HttpIntegrationTest extends HttpCase
         $page = $this->http('GET', '/admin/?s=system', null, [], true)['body'];
         $this->assertContains('перед правкой агента', $page);
 
-        $settings = $this->http('GET', '/admin/?s=settings', null, [], true)['body'];
+        $settings = $this->http('GET', '/admin/?s=settings&tab=mail', null, [], true)['body'];
         $this->assertContains('noreply@127.0.0.1', $settings, 'the sender comes from the site address');
         $this->assertContains('Присылать новые заявки на почту', $settings);
     }

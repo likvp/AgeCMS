@@ -100,11 +100,51 @@ try {
                     header('Location: /admin/?s=edit&slug=' . rawurlencode($slug) . '&new=1');
                     exit;
                 case 'settings_save':
+                    // Each tab of the settings page posts its own keys; a form without a tab is the older one with name and description.
+                    $keys = match ((string)($_POST['tab'] ?? '')) {
+                        'main' => ['site_name', 'org_logo', 'org_phone', 'org_phone2', 'org_email', 'org_inn', 'org_legal_name', 'org_address'],
+                        'site' => ['site_description', 'llms_text'],
+                        default => ['site_name', 'site_description', 'llms_text'],
+                    };
+                    $values = [];
+                    foreach ($keys as $key) {
+                        if (isset($_POST[$key])) {
+                            $values[$key] = (string)$_POST[$key];
+                        }
+                    }
+                    $logo = admin_uploaded('org_logo_file');
+                    if ($logo !== null && in_array('org_logo', $keys, true)) {
+                        $values['org_logo'] = $logo;
+                    }
+                    $result = Queue::submit($actor, 'set_settings', ['values' => $values]);
+                    $flash = $result['changed'] ? 'Настройки сохранены, ревизия #' . $result['revision_id'] : 'Без изменений';
+                    $section = 'settings';
+                    break;
+                case 'cookie_save':
                     $result = Queue::submit($actor, 'set_settings', ['values' => [
-                        'site_name' => (string)($_POST['site_name'] ?? ''),
-                        'site_description' => (string)($_POST['site_description'] ?? ''),
-                        'llms_text' => (string)($_POST['llms_text'] ?? ''),
+                        'cookie_banner' => isset($_POST['cookie_banner']) ? '1' : '0',
+                        'cookie_text' => (string)($_POST['cookie_text'] ?? ''),
+                        'cookie_policy_url' => (string)($_POST['cookie_policy_url'] ?? ''),
                     ]]);
+                    $flash = $result['changed'] ? 'Плашка о cookie сохранена, ревизия #' . $result['revision_id'] : 'Без изменений';
+                    $section = 'settings';
+                    break;
+                case 'theme_settings_save':
+                    // Fields of the active theme (theme.json "settings"), the tab is the section: theme.header.*, theme.footer.*
+                    $part = (string)($_POST['tab'] ?? '');
+                    $declared = \AgeCMS\Theme::settings(\AgeCMS\Theme::active())[$part]['fields'] ?? [];
+                    $values = [];
+                    foreach ($declared as $name => $spec) {
+                        $posted = $_POST['t'][$name] ?? null;
+                        if (is_string($posted)) {
+                            $values["theme.{$part}.{$name}"] = $posted;
+                        }
+                        $file = !empty($spec['media']) ? admin_uploaded('tf_' . $name) : null;
+                        if ($file !== null) {
+                            $values["theme.{$part}.{$name}"] = $file;
+                        }
+                    }
+                    $result = Queue::submit($actor, 'set_settings', ['values' => $values]);
                     $flash = $result['changed'] ? 'Настройки сохранены, ревизия #' . $result['revision_id'] : 'Без изменений';
                     $section = 'settings';
                     break;
@@ -551,6 +591,32 @@ function admin_date(?string $v): string
     return $v === null ? '' : h(str_replace('T', ' ', substr($v, 0, 16)));
 }
 
+/**
+ * An image from a form field of the settings page, saved to the media library (WebP). Null when nothing was chosen.
+ * @throws AgeCMSException when the upload failed
+ */
+function admin_uploaded(string $field): ?string
+{
+    $file = $_FILES[$field] ?? null;
+    if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new AgeCMSException('Картинка не загрузилась: файл больше, чем разрешает сервер, или передача прервалась');
+    }
+    return Media::saveUpload($file);
+}
+
+/** A field for a picture: the address, a preview and a file to upload instead. $input is the ready text input. */
+function admin_media_field(string $label, string $input, string $fileField, string $value, string $hint = ''): string
+{
+    $preview = $value !== '' && preg_match('~^/(?!/)~', $value) === 1
+        ? '<img class="media-prev" src="' . h($value) . '" alt="">'
+        : '<span class="media-prev empty">' . icon('image') . '</span>';
+    return '<div class="f"><span class="lbl">' . h($label) . '</span><div class="media-pick">' . $preview . '<div class="grow">' . $input
+        . '<label class="media-file"><span>или загрузите картинку:</span> <input type="file" name="' . h($fileField) . '" accept="image/png,image/jpeg,image/webp,image/gif"></label></div></div>' . $hint . '</div>';
+}
+
 /** Hidden CSRF + action fields for a POST form. */
 function admin_post_fields(string $csrf, string $action): string
 {
@@ -575,6 +641,12 @@ function agent_user_text(string $login, string $password): string
 function admin_url(string $section, array $params = []): string
 {
     return '/admin/?' . http_build_query(['s' => $section] + $params, '', '&', PHP_QUERY_RFC3986);
+}
+
+// Menus became a tab of the settings page; the old address still works.
+if ($user !== null && $section === 'menus' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    header('Location: ' . admin_url('settings', ['tab' => 'menu']));
+    exit;
 }
 
 // The header goes out before the first byte of the page: without output buffering (php.ini default on many hosts) a later header() is too late.

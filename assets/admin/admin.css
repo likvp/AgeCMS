@@ -104,6 +104,19 @@ code { background: var(--hover); padding: 0.1em 0.4em; border-radius: var(--r-sm
 .pagehead .grow { flex: 1 1 320px; min-width: 0; }
 .pagehead p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
 .crumb { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.85rem; text-decoration: none; margin-bottom: 8px; }
+/* Tabs of a long page (AdminTabs): links, the tab is in ?tab=. On a phone the row scrolls sideways. */
+.tabs { position: relative; display: flex; gap: 2px; margin: -6px 0 20px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a { flex: none; padding: 10px 14px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 550; text-decoration: none; white-space: nowrap; }
+.tabs a:hover { color: var(--text); }
+.tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
+.tabs a:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px 6px 0 0; }
+.media-pick { display: flex; gap: 14px; align-items: flex-start; }
+.media-pick .grow { flex: 1; min-width: 0; }
+.media-prev { flex: none; width: 88px; height: 66px; border-radius: var(--r); border: 1px solid var(--line); background: var(--hover); object-fit: contain; }
+.media-prev.empty { display: grid; place-items: center; color: var(--muted); }
+.media-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 0.82rem; color: var(--muted); }
+.media-file input { max-width: 100%; font: inherit; color: var(--text); }
 .actions-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 @media (max-width: 880px) {

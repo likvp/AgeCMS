@@ -29,14 +29,14 @@ $nav = [
     ['pages', 'Страницы', 'file-text', Pages::count()],
     ['media', 'Медиа', 'image', null],
     ['trash', 'Корзина', 'trash', $canWrite ? count(Pages::deleted()) + count(Media::trashed()) : 0],
-    ['menus', 'Меню', 'list', null],
     ['history', 'История', 'clock-counter-clockwise', null],
     ['leads', 'Заявки', 'chat-circle-text', (int)(Database::row('SELECT COUNT(*) AS n FROM leads')['n'] ?? 0)],
 ];
 if ($isAdmin) {
     $nav[] = ['users', 'Пользователи', 'users', null];
-    $nav[] = ['settings', 'Настройки', 'gear-six', null];
 }
+// Menus are a tab of the settings; an editor sees only that tab there.
+$nav[] = ['settings', 'Настройки', 'gear-six', null];
 $nav[] = ['system', 'Система', 'terminal-window', null];
 $moduleNav = \AgeCMS\ModuleAdmin::menu((string)$user['role']);
 $active = $section === 'edit' ? 'pages' : ($section === 'module_settings' ? 'system' : $section);
@@ -133,7 +133,7 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
             $vars = compact('user', 'csrf', 'isAdmin', 'canWrite', 'envResult');
             if ($section === 'module') {
                 admin_view('module', $vars + ['reply' => $moduleReply, 'moduleName' => (string)$adminModule['page']['module']]);
-            } elseif (in_array($section, ['settings', 'module_settings'], true) && !$isAdmin) {
+            } elseif ($section === 'module_settings' && !$isAdmin) {
                 echo '<div class="notice error">' . icon('lock-key') . '<div>Нужна роль администратора.</div></div>';
             } else {
                 admin_view($section, $vars);

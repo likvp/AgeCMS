@@ -150,6 +150,23 @@ final class SchemaValidator
     }
 
     /**
+     * One value against one field of a theme schema (a field of a block or of the theme settings). Errors are added to $errors.
+     *
+     * @param array<string,mixed> $spec
+     * @param list<string> $errors
+     */
+    public static function value(array $spec, mixed $value, string $path, array &$errors): mixed
+    {
+        return self::field($spec, $value, $path, $errors);
+    }
+
+    /** A link a field may hold: http(s), a path on the site, #anchor, mailto: or tel:. */
+    public static function urlValid(string $value): bool
+    {
+        return preg_match(self::URL_PATTERN, $value) === 1;
+    }
+
+    /**
      * @param array<string,mixed> $spec
      * @param list<string> $errors
      */

@@ -224,7 +224,7 @@ final class ModuleRoutesTest extends HttpCase
 
         $this->http('GET', '/');
         $page = $this->http('GET', '/rt_priv/hello');
-        $this->assertContains('<header class="site-header">', $page['body'], 'drawn inside the theme');
+        $this->assertContains('<header class="site-header" data-ag-region="header">', $page['body'], 'drawn inside the theme');
         $this->assertContains('mod-hello', $page['body']);
         $this->assertSame('private, no-store', $page['headers']['cache-control']);
         $this->assertSame('bypass', $page['headers']['x-agecms-cache']);

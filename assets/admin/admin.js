@@ -170,4 +170,10 @@
         drop.addEventListener('drop', function (e) { sendAll(e.dataTransfer.files); });
         drop.addEventListener('submit', function (e) { e.preventDefault(); });
     }
+
+    // Tabs of a long page: on a phone the row scrolls sideways, the current tab is brought into view.
+    document.querySelectorAll('.tabs').forEach(function (nav) {
+        var on = nav.querySelector('[aria-current="page"]');
+        if (on && nav.scrollWidth > nav.clientWidth) { nav.scrollLeft = on.offsetLeft - (nav.clientWidth - on.offsetWidth) / 2; }
+    });
 }());

@@ -13,6 +13,15 @@ function ag_now(): string
     return gmdate('Y-m-d\TH:i:s\Z');
 }
 
+/**
+ * A setting of the site for a template: ag_setting('org_phone'), ag_setting('theme.footer.note'). Empty string when not set.
+ * The layout also gets them all in $settings and the theme's own ones typed in $themeSettings.
+ */
+function ag_setting(string $key, string $default = ''): string
+{
+    return \AgeCMS\Renderer::$settings[$key] ?? $default;
+}
+
 /** Attributes that make a template field editable in place; empty outside edit mode. */
 function ag_edit(string $field, bool $multiline = false): string
 {

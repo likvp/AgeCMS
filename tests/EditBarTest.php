@@ -36,4 +36,18 @@ final class EditBarTest extends TestCase
         $similar = '<html><head></head><body><div class="ag-bar-like"></div></body></html>';
         $this->assertContains('data-ag-bar', $this->decorate($similar, true), 'another class that starts the same is not a strip');
     }
+
+    public function testTheDefaultThemeMarksItsZonesForThePencil(): void
+    {
+        $this->freshSite();
+        $this->createPage('zones', ['title' => 'Зоны', 'blocks' => []]);
+        $html = \AgeCMS\Renderer::renderSlug('zones', true, 'csrf')['html'];
+        foreach (['header', 'menu', 'footer'] as $zone) {
+            $this->assertContains('data-ag-region="' . $zone . '"', $html, $zone);
+        }
+        $this->assertNotContains('class="ag-bar"', $html, 'the theme leaves the strip to the core');
+        $script = (string)file_get_contents(AGECMS_ROOT . '/assets/editor.js');
+        $this->assertContains("'/admin/?s=settings&tab='", $script, 'the pencil of a zone leads to the tab of the settings');
+        $this->assertContains("setProperty('--ag-bar-h'", $script);
+    }
 }

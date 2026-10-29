@@ -361,13 +361,75 @@
         layout();
     }
 
+    // ---------------------------------------------------------------- zones of the theme: header, menu, footer
+
+    // The theme marks them with data-ag-region; they are not blocks of the page but settings of the site, so the pencil
+    // leads to the tab of the settings page. The innermost zone wins: the menu inside the header opens the menus.
+    const REGIONS = {
+        header: { tab: 'header', text: 'Настроить шапку' },
+        menu: { tab: 'menu', text: 'Изменить меню' },
+        footer: { tab: 'footer', text: 'Настроить подвал' }
+    };
+    const regionLine = h('div', { class: 'outline region' });
+    const regionLink = h('a', { class: 'regionbtn', href: '/admin/' }, [icon('edit'), h('span', { class: 't' })]);
+    root.appendChild(regionLine);
+    root.appendChild(regionLink);
+    let region = null;
+
+    function setRegion(el) {
+        if (el === region) { return; }
+        region = el;
+        const spec = el ? REGIONS[el.getAttribute('data-ag-region')] : null;
+        if (!spec) { region = null; regionLine.style.display = 'none'; regionLink.style.display = 'none'; return; }
+        regionLink.href = '/admin/?s=settings&tab=' + encodeURIComponent(spec.tab);
+        regionLink.title = spec.text + ' в настройках сайта';
+        regionLink.querySelector('.t').textContent = spec.text;
+        placeRegion();
+    }
+
+    function placeRegion() {
+        if (!region || !document.contains(region)) { regionLine.style.display = 'none'; regionLink.style.display = 'none'; return; }
+        const r = region.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1 || r.bottom < 0 || r.top > window.innerHeight) { regionLine.style.display = 'none'; regionLink.style.display = 'none'; return; }
+        regionLine.style.display = 'block';
+        regionLine.style.left = Math.round(r.left) + 'px';
+        regionLine.style.top = Math.round(r.top) + 'px';
+        regionLine.style.width = Math.round(r.width) + 'px';
+        regionLine.style.height = Math.round(r.height) + 'px';
+        regionLink.style.display = 'inline-flex';
+        const w = regionLink.offsetWidth;
+        const hgt = regionLink.offsetHeight;
+        // Inside the zone at its right edge; a low zone (a menu line) gets the button just under it.
+        const top = r.height >= hgt + 12 ? r.top + (r.height - hgt) / 2 : r.bottom + 4;
+        place(regionLink, Math.max(8, Math.min(r.right, window.innerWidth) - w - 8), Math.max(top, (parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue('--ag-bar-h')) || 0) + 4));
+    }
+
+    // Leaving the menu for the header around it (on the way to the button under the menu) waits a moment, so the button stays.
+    let regionTimer = 0;
+    function wantRegion(el) {
+        window.clearTimeout(regionTimer);
+        if (el === region) { return; }
+        if (region && (el === null || el.contains(region))) {
+            regionTimer = window.setTimeout(function () { setRegion(el); }, 700);
+            return;
+        }
+        setRegion(el);
+    }
+
+    function regionAt(target) {
+        if (!target || !target.closest || target.closest('[data-ag-wrap]')) { return null; }
+        return target.closest('[data-ag-region]');
+    }
+
     document.addEventListener('mousemove', function (e) {
         if (busy) { return; }
         if (e.target === host) { return; }
         const wrap = e.target && e.target.closest ? e.target.closest('[data-ag-wrap]') : null;
         setCurrent(wrap);
+        wantRegion(regionAt(e.target));
     }, { passive: true });
-    document.addEventListener('mouseleave', function () { if (!busy) { setCurrent(null); } });
+    document.addEventListener('mouseleave', function () { if (!busy) { setCurrent(null); setRegion(null); } });
+    window.addEventListener('scroll', function () { if (region) { window.requestAnimationFrame(placeRegion); } }, { passive: true });
     window.addEventListener('scroll', scheduleLayout, { passive: true });
     window.addEventListener('resize', scheduleLayout);
     if (window.ResizeObserver) { new ResizeObserver(scheduleLayout).observe(document.body); }

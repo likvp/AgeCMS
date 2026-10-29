@@ -2,6 +2,21 @@
     "name": "default",
     "title": "AgeCMS Default (Bento)",
     "version": "1.0.0",
+    "settings": {
+        "header": {
+            "hint": "Шапка: название сайта (вкладка «Главное»), меню (вкладка «Меню») и то, что ниже.",
+            "fields": {
+                "tagline": {"type": "string", "max": 80, "label": "Подпись рядом с названием", "hint": "Короткая строка серым рядом с названием сайта. Пусто: подписи нет."},
+                "show_phone": {"type": "bool", "label": "Показывать телефон в шапке", "default": true, "hint": "Телефон берётся из вкладки «Главное»."}
+            }
+        },
+        "footer": {
+            "fields": {
+                "note": {"type": "text", "max": 300, "label": "Текст в подвале", "hint": "Например, реквизиты или режим работы. Пусто: только название и год."},
+                "show_contacts": {"type": "bool", "label": "Показывать телефон и почту", "default": true}
+            }
+        }
+    },
     "blocks": {
         "hero": {
             "title": "Hero",

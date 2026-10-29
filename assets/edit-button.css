@@ -5,6 +5,8 @@
 .ag-fab { position: fixed; right: 16px; bottom: 16px; z-index: 2147482000; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: #17171a; color: #fff; border: 2px solid #f5b301; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); text-decoration: none; transition: transform .15s ease, background .15s ease; }
 .ag-fab:hover, .ag-fab:focus-visible { background: #f5b301; color: #17171a; transform: scale(1.06); outline: none; }
 .ag-fab svg { display: block; }
+/* On a narrow screen the cookie notice takes the whole bottom: the button stands above it while it is shown. */
+@media (max-width: 760px) { body:has(.ag-cookie:not([hidden])) .ag-fab { bottom: 150px; } }
 
 /* Strip of the editor right after <body>. Its height is in --ag-bar-h on <html> (editor.js keeps it current), so a sticky
    header of the theme can stand under it: .site-header { position: sticky; top: var(--ag-bar-h, 0); }. */

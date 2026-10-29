@@ -9,6 +9,9 @@ final class Renderer
     /** Read by ag_edit() while a block template is being rendered. @var array{editing:bool,slug:string,block:string,csrf:string} */
     public static array $context = ['editing' => false, 'slug' => '', 'block' => '', 'csrf' => ''];
 
+    /** Settings of the page being rendered, for ag_setting() in block templates. @var array<string,string> */
+    public static array $settings = [];
+
     /**
      * Renders a stored page. Returns null when the page does not exist or, outside edit mode and preview, is unpublished.
      *
@@ -33,6 +36,7 @@ final class Renderer
         $themeDir = Theme::dir($theme);
 
         self::$context = ['editing' => $editing, 'slug' => $slug, 'block' => '', 'csrf' => $csrf];
+        self::$settings = Seo::settings();
         $content = '';
         foreach ($doc['blocks'] as $block) {
             $file = "{$themeDir}/blocks/{$block['type']}.php";
@@ -61,7 +65,7 @@ final class Renderer
         }
         $tags = array_values(array_unique($tags));
 
-        $settings = Seo::settings();
+        $settings = self::$settings;
         $html = self::layout($theme, [
             'doc' => $doc,
             'slug' => $slug,
@@ -83,7 +87,7 @@ final class Renderer
     public static function shell(string $title, string $contentHtml, bool $editing = false, ?array $seo = null): string
     {
         $theme = Theme::active();
-        $settings = Seo::settings();
+        $settings = self::$settings = Seo::settings();
         $doc = ['title' => $title, 'meta_title' => '', 'meta_description' => '', 'canonical_url' => '', 'og_image' => '', 'is_noindex' => 1, 'is_published' => 1, 'schema_type' => 'WebPage', 'blocks' => []];
         if ($seo !== null) {
             $doc['is_noindex'] = 0;
@@ -111,10 +115,42 @@ final class Renderer
         return $json === null ? [] : json_decode((string)$json, true, 512, JSON_THROW_ON_ERROR);
     }
 
-    /** @param array<string,mixed> $vars */
+    /**
+     * The theme's layout.php. Besides the page it gets $themeSettings: the values of its own settings (theme.json "settings"),
+     * ['header' => [...], 'footer' => [...]], see Theme::settingValues.
+     *
+     * @param array<string,mixed> $vars
+     */
     private static function layout(string $theme, array $vars): string
     {
-        return self::include(Theme::dir($theme) . '/layout.php', $vars);
+        $vars['themeSettings'] = Theme::settingValues($theme, $vars['settings']);
+        $html = self::include(Theme::dir($theme) . '/layout.php', $vars);
+        return $vars['editing'] ? $html : self::withCookieNotice($html, $vars['settings']);
+    }
+
+    /**
+     * The notice about cookies at the bottom of every page, unless the owner switched it off (tab «Сайт») or the theme shows
+     * its own (an element with data-ag-cookie). It is in the cached page, hidden; assets/cookie.js shows it to whoever has
+     * not closed it yet. No inline script or style: the page policy allows only files of the site.
+     *
+     * @param array<string,string> $settings
+     */
+    public static function withCookieNotice(string $html, array $settings): string
+    {
+        if (!SiteSettings::cookieOn($settings) || str_contains($html, 'data-ag-cookie') || ($body = strripos($html, '</body>')) === false) {
+            return $html;
+        }
+        $text = trim($settings['cookie_text'] ?? '') !== '' ? $settings['cookie_text'] : SiteSettings::COOKIE_TEXT;
+        $policy = trim($settings['cookie_policy_url'] ?? '');
+        $asset = static fn(string $file): string => ag_e($file . '?v=' . (is_file(AGECMS_ROOT . $file) ? filemtime(AGECMS_ROOT . $file) : 1));
+        $notice = '<div class="ag-cookie" data-ag-cookie hidden role="region" aria-label="Файлы cookie"><p>' . ag_e($text)
+            . ($policy !== '' ? ' <a href="' . ag_e($policy) . '">Подробнее</a>' : '') . '</p>'
+            . '<button type="button" data-ag-cookie-ok>Понятно</button></div>'
+            . '<script src="' . $asset('/assets/cookie.js') . '" defer></script>';
+        $html = substr($html, 0, $body) . $notice . "\n" . substr($html, $body);
+        $css = '<link rel="stylesheet" href="' . $asset('/assets/cookie.css') . '">';
+        $head = stripos($html, '</head>');
+        return $head === false ? $html : substr($html, 0, $head) . $css . "\n" . substr($html, $head);
     }
 
     /** @param array<string,mixed> $vars */

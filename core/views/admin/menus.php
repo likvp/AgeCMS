@@ -1,7 +1,10 @@
 <?php
 /**
+ * Header and footer menus. Shown as the tab «Меню» of the settings page ($embedded), the old address ?s=menus leads there.
+ *
  * @var string $csrf
  * @var bool $canWrite
+ * @var bool $embedded
  */
 defined('AGECMS_BOOTED') || exit;
 
@@ -23,10 +26,8 @@ foreach (Pages::listing(true) as $p) {
 }
 $json = json_encode(['mode' => 'menus', 'csrf' => $csrf, 'menus' => $menus, 'known' => $known], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 ?>
-<div class="pagehead"><div class="grow">
-    <h1>Меню</h1>
-    <p>Верхнее и нижнее меню сайта. Ссылка: адрес на сайте (<code>/about</code>), полный адрес <code>https://…</code> или якорь <code>#form</code>. До 30 пунктов.</p>
-</div></div>
+<?php if (empty($embedded)): ?><div class="pagehead"><div class="grow"><h1>Меню</h1></div></div><?php endif; ?>
+<p class="muted">Верхнее и нижнее меню сайта. Ссылка: адрес на сайте (<code>/about</code>), полный адрес <code>https://…</code> или якорь <code>#form</code>. До 30 пунктов.</p>
 <div id="ag-editor"><div class="skel"></div><div class="skel"></div></div>
 <noscript><div class="notice error"><?= icon('warning-circle') ?><div>Редактору нужен JavaScript.</div></div></noscript>
 <script type="application/json" id="ag-editor-data"><?= $json ?></script>

@@ -78,8 +78,20 @@ final class Seo
     {
         $url = self::url($slug);
         $org = ['@type' => 'Organization', '@id' => self::siteUrl() . '/#organization', 'name' => $settings['site_name'] ?? '', 'url' => self::siteUrl() . '/'];
+        if (!empty($settings['org_legal_name'])) {
+            $org['legalName'] = $settings['org_legal_name'];
+        }
+        if (!empty($settings['org_logo'])) {
+            $org['logo'] = self::absolute($settings['org_logo']);
+        }
         if (!empty($settings['org_phone'])) {
             $org['telephone'] = $settings['org_phone'];
+        }
+        if (!empty($settings['org_email'])) {
+            $org['email'] = $settings['org_email'];
+        }
+        if (!empty($settings['org_inn'])) {
+            $org['taxID'] = $settings['org_inn'];
         }
         if (!empty($settings['org_address'])) {
             $org['address'] = ['@type' => 'PostalAddress', 'streetAddress' => $settings['org_address']];
