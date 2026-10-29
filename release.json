@@ -1,26 +1,26 @@
 {
-    "version": "1.3.1",
-    "date": "2026-10-28",
-    "notes": "Админка: блок «Просмотры по дням» на обзоре стоит вровень с «Последними изменениями». Файлы админки подключаются с меткой версии, поэтому после обновления ядра браузер сразу берёт новые стили, а не старые из кэша.",
+    "version": "1.3.2",
+    "date": "2026-10-29",
+    "notes": "Администратор, вошедший в админку, видит сайт как посетитель, а в углу страницы есть кнопка с карандашом: она включает правку на месте, глаз возвращает обычный вид. Страница входа: текст слева стоит по центру, на одной линии с формой. Инструкция для ИИ-агентов, открытая без входа, больше не называет файл базы данных.",
     "url": "",
-    "package": "agecms-1.3.1.json.gz",
-    "sha256": "367b92683f76013dd4a32bd8850d6f442fc56fcca9035809b8b0f3fa7876d958",
-    "size": 430893,
+    "package": "agecms-1.3.2.json.gz",
+    "sha256": "a970e36df5f063f77d01fb7789de4b81889455e58ed5d7ed3039b660a8a34b52",
+    "size": 432941,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "xdy2ST1iSvOrtSmIPIos7v7xYpfQh91kDUiU7azpO5RK/fSE98PamoCyfcoQ3GVKwwsZiM+d9zTGst500t40Cg=="
+        "sig": "cmsp1rPpJbR0EUE1El80WKXjY17cYhTTwSGRQb763YXpny4kX8vQ+gzTQjbtif+yR1fO/SVL81R27RQGMW6VBA=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "xdy2ST1iSvOrtSmIPIos7v7xYpfQh91kDUiU7azpO5RK/fSE98PamoCyfcoQ3GVKwwsZiM+d9zTGst500t40Cg=="
+            "sig": "cmsp1rPpJbR0EUE1El80WKXjY17cYhTTwSGRQb763YXpny4kX8vQ+gzTQjbtif+yR1fO/SVL81R27RQGMW6VBA=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEUCIQD0yiPNkfu4+sY82jSMwldJGsRtFDlJADZKKk0mO3yLCQIgTft7NSPG9vqlq3aeeH/t6KrIcfslnZbLXU69ipNuRrQ="
+            "sig": "MEQCIA3igVO3Q78VUuX+rNNIDLRGvgm0WjUy5Y0izsKg2/SeAiBK4VmooUu392z0aaVnxUdClK6HfDVUzoF0QTVGYlf9qw=="
         }
     ]
 }
