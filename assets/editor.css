@@ -87,7 +87,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f5b301; outline-
 .endbtn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 76px; border: 2px dashed #f5b301; border-radius: 12px; background: rgba(245,179,1,.08); color: inherit; font-weight: 700; font-size: 15px; }
 .endbtn:hover { background: rgba(245,179,1,.2); }
 @media (max-width: 640px) {
-    .panel { bottom: 88px; }
+    .panel { bottom: 88px; flex-wrap: wrap; padding: 8px; }
+    .panel .msg { flex: 1 0 calc(100% - 48px); max-width: none; margin: 0; padding: 2px 4px 6px 8px; }
+    .panel .hide { order: 1; }
+    .panel button:not(.hide) { order: 2; }
     .bar .name { display: none; }
     .bar button .t { display: none; }
     .media { flex-direction: column; }

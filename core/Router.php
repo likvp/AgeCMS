@@ -114,31 +114,63 @@ final class Router
         ]);
     }
 
-    /** Round button in the corner of a page for a signed-in user: the pencil opens the editor, in the editor the eye returns to the plain view. */
+    /**
+     * What a signed-in user gets on top of the page. A round button in the corner: the pencil opens the editor, in the editor the eye
+     * returns to the plain view. In the editor also the black strip "Режим редактирования" right after <body>, unless the theme
+     * draws its own (older themes have a .ag-bar in layout.php). Styles: assets/edit-button.css, loaded in <head>.
+     */
     private static function withEditButton(string $html, bool $editing, string $path): string
     {
         $pos = strripos($html, '</body>');
         if ($pos === false) {
             return $html;
         }
-        $css = '/assets/edit-button.css?v=' . (is_file(AGECMS_ROOT . '/assets/edit-button.css') ? filemtime(AGECMS_ROOT . '/assets/edit-button.css') : 1);
         $label = $editing ? 'Выйти из режима редактирования' : 'Редактировать страницу';
         $icon = $editing
             ? '<path d="M1.5 12s3.8-7 10.5-7 10.5 7 10.5 7-3.8 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3"/>'
             : '<path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m14.5 7.5 3 3"/>';
-        $button = '<link rel="stylesheet" href="' . ag_e($css) . '">'
-            . '<a class="ag-fab" href="/_/edit?to=' . rawurlencode($path) . '" title="' . ag_e($label) . '" aria-label="' . ag_e($label) . '">'
+        $button = '<a class="ag-fab" href="/_/edit?to=' . rawurlencode($path) . '" title="' . ag_e($label) . '" aria-label="' . ag_e($label) . '">'
             . '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $icon . '</svg></a>';
-        return substr($html, 0, $pos) . $button . substr($html, $pos);
+        $html = substr($html, 0, $pos) . $button . substr($html, $pos);
+
+        $css = '<link rel="stylesheet" href="' . ag_e(self::asset('/assets/edit-button.css')) . '">';
+        $head = stripos($html, '</head>');
+        $html = $head === false ? $css . $html : substr($html, 0, $head) . $css . "
+" . substr($html, $head);
+
+        if ($editing && preg_match('/<[a-z][a-z0-9]*\s[^>]*class\s*=\s*["\'][^"\']*(?<![\w-])ag-bar(?![\w-])/i', $html) !== 1
+            && preg_match('/<body\b[^>]*>/i', $html, $m, PREG_OFFSET_CAPTURE) === 1) {
+            $at = $m[0][1] + strlen($m[0][0]);
+            $html = substr($html, 0, $at) . "\n" . self::editBar() . substr($html, $at);
+        }
+        return $html;
     }
 
-    /** Switches the page editor on or off for the signed-in user and goes back to the page they came from. */
+    /** The strip of the page editor: what mode this is, how saving goes and the way back to the admin. editor.js fills #ag-status. */
+    public static function editBar(): string
+    {
+        return '<div class="ag-bar" data-ag-bar role="region" aria-label="Режим редактирования">'
+            . '<strong>Режим редактирования</strong>'
+            . '<span class="ag-bar-tip">Нажмите на текст, чтобы изменить. Наведите курсор на блок, чтобы переместить или изменить его. Правки сохраняются сами.</span>'
+            . '<span class="ag-bar-end"><span id="ag-status" role="status" aria-live="polite"></span>'
+            . '<a class="ag-bar-admin" href="/admin/?s=pages">Админка</a></span></div>';
+    }
+
+    /** Address of a core file with ?v=mtime, so a core update reaches browsers that keep the old file. */
+    private static function asset(string $file): string
+    {
+        return $file . '?v=' . (is_file(AGECMS_ROOT . $file) ? filemtime(AGECMS_ROOT . $file) : 1);
+    }
+
+    /** Switches the page editor on or off for the signed-in user and goes back to the page they came from (?to=). */
     private static function toggleEdit(): never
     {
         if (Auth::user() === null) {
             self::send(302, 'text/plain; charset=utf-8', '', ['Location' => '/admin/', 'Cache-Control' => 'no-store']);
         }
-        $on = ($_COOKIE[self::EDIT_COOKIE] ?? '') !== '1';
+        // ?on=1 and ?on=0 (links from the admin) set the mode, without it the pencil button switches it.
+        $wanted = (string)($_GET['on'] ?? '');
+        $on = $wanted === '1' || ($wanted !== '0' && ($_COOKIE[self::EDIT_COOKIE] ?? '') !== '1');
         $secure = str_starts_with((string)Config::get('site_url', ''), 'https://') || (($_SERVER['HTTPS'] ?? '') !== '' && $_SERVER['HTTPS'] !== 'off');
         setcookie(self::EDIT_COOKIE, $on ? '1' : '', ['expires' => $on ? 0 : 1, 'path' => '/', 'secure' => $secure, 'httponly' => true, 'samesite' => 'Lax']);
         $to = (string)($_GET['to'] ?? '/');

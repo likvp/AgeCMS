@@ -12,7 +12,7 @@ $pages = Pages::listing();
 <div class="pagehead">
     <div class="grow">
         <h1>Страницы</h1>
-        <p>Текст можно править прямо на сайте, нажав на него, или здесь: вместе с блоками и параметрами SEO.</p>
+        <p>Нажмите на название, чтобы открыть страницу на сайте и править её на месте. Карандаш открывает блоки и параметры SEO здесь, в админке.</p>
     </div>
     <?php if ($canWrite): ?><a class="btn" href="<?= h(admin_url('trash')) ?>"><?= icon('trash') ?>Корзина</a><a class="btn primary" href="#new"><?= icon('plus') ?>Новая страница</a><?php endif; ?>
 </div>
@@ -29,7 +29,7 @@ $pages = Pages::listing();
         <?php foreach ($pages as $p):
             $url = '/' . ($p['slug'] === 'index' ? '' : $p['slug']); ?>
             <tr>
-                <td><a class="cell-title" href="<?= h(admin_url('edit', ['slug' => $p['slug']])) ?>"><?= h($p['title']) ?></a><span class="cell-sub"><?= h($url) ?></span></td>
+                <td><a class="cell-title" href="/_/edit?on=1&amp;to=<?= h(rawurlencode($url)) ?>" title="Открыть страницу на сайте и править её на месте"><?= h($p['title']) ?></a><span class="cell-sub"><?= h($url) ?></span></td>
                 <td><span class="tag plain"><?= h($p['schema_type']) ?></span></td>
                 <td>
                     <?php if ((int)$p['is_published'] === 1): ?><span class="tag ok">опубликована</span><?php else: ?><span class="tag warn">скрыта</span><?php endif; ?>
@@ -37,8 +37,8 @@ $pages = Pages::listing();
                 </td>
                 <td class="num muted"><?= admin_date($p['updated_at']) ?></td>
                 <td class="r"><div class="actions">
-                    <a class="ib" href="<?= h(admin_url('edit', ['slug' => $p['slug']])) ?>" title="Править" aria-label="Править"><?= icon('file-text') ?></a>
-                    <a class="ib" href="<?= h($url) ?>" target="_blank" rel="noopener" title="Открыть на сайте" aria-label="Открыть на сайте"><?= icon('eye') ?></a>
+                    <a class="ib" href="<?= h(admin_url('edit', ['slug' => $p['slug']])) ?>" title="Блоки и SEO страницы" aria-label="Блоки и SEO страницы"><?= icon('pencil-simple') ?></a>
+                    <a class="ib" href="/_/edit?on=0&amp;to=<?= h(rawurlencode($url)) ?>" target="_blank" rel="noopener" title="Открыть как посетитель" aria-label="Открыть как посетитель"><?= icon('eye') ?></a>
                     <a class="ib" href="<?= h(admin_url('history', ['slug' => $p['slug']])) ?>" title="История" aria-label="История"><?= icon('clock-counter-clockwise') ?></a>
                     <?php if ($canWrite && $p['slug'] !== 'index'): ?>
                     <form method="post" class="inline" data-confirm="Удалить страницу «<?= h($p['title']) ?>»?" data-confirm-text="Она пропадёт с сайта. Она попадёт в корзину, откуда её можно вернуть." data-confirm-ok="Удалить" data-danger>

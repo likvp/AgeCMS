@@ -82,6 +82,14 @@ final class HttpIntegrationTest extends HttpCase
         $this->assertContains('data-ag-field="h1"', $page['body'], 'editing markup after the pencil');
         $this->assertContains('Выйти из режима редактирования', $page['body']);
         $this->assertSame('private, no-store', $page['headers']['cache-control']);
+        $this->assertSame(1, substr_count($page['body'], 'class="ag-bar"'), 'one editing strip, drawn by the core');
+        $this->assertTrue(preg_match('~<body[^>]*>\s*<div class="ag-bar" data-ag-bar~', $page['body']) === 1, 'right after <body>');
+        $this->assertContains('class="ag-bar-admin" href="/admin/?s=pages"', $page['body']);
+        $this->assertTrue(preg_match('~edit-button\.css\?v=\d+">\s*</head>~', $page['body']) === 1, 'its styles are in <head>');
+        $this->assertSame(1, substr_count($this->http('GET', '/', null, [], true)['body'], 'edit-button.css'));
+        $this->http('GET', '/_/edit?on=1&to=%2F', null, [], true);
+        $this->assertContains('data-ag-bar', $this->http('GET', '/', null, [], true)['body'], '?on=1 keeps the editor on instead of switching it');
+        $this->assertNotContains('data-ag-bar', $this->http('GET', '/', null, [], false)['body']);
         preg_match('/name="ag-csrf" content="([^"]+)"/', $page['body'], $m);
         $csrf = $m[1] ?? '';
         $this->assertTrue($csrf !== '');
@@ -244,6 +252,11 @@ final class HttpIntegrationTest extends HttpCase
             $this->assertSame(200, $r['status'], $section);
             $this->assertContains($marker, $r['body'], $section);
         }
+        $list = $this->http('GET', '/admin/?s=pages', null, [], true)['body'];
+        $this->assertContains('href="/_/edit?on=1&amp;to=%2Fabout"', $list, 'the title opens the page in the editor on the site');
+        $this->assertContains('#pencil-simple', $list, 'the pencil leads to the form of blocks');
+        $this->assertContains('href="/admin/?s=edit&amp;slug=about"', $list);
+        $this->assertContains('Открыть как посетитель', $list);
         $edit = $this->http('GET', '/admin/?s=edit&slug=about', null, [], true);
         $this->assertContains('"slug":"about"', $edit['body']);
         $this->assertContains('/assets/admin/editor.js', $edit['body']);

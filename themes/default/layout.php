@@ -27,9 +27,6 @@ $site = $settings['site_name'] ?? '';
     <script src="<?= ag_e($asset('/assets/app.js')) ?>" defer></script>
 </head>
 <body<?= $editing ? ' class="is-editing"' : '' ?>>
-<?php if ($editing): ?>
-    <div class="ag-bar"><strong>Режим редактирования</strong> <span>Нажмите на текст, чтобы изменить. Наведите курсор на блок, чтобы переместить, изменить или удалить его. Правки сохраняются сами.</span> <span id="ag-status" role="status"></span> <a href="/admin/">Админка</a></div>
-<?php endif; ?>
     <header class="site-header">
         <div class="container bar">
             <a class="brand" href="/"><?= ag_e($site) ?></a>

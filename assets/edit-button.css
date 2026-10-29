@@ -1,5 +1,26 @@
-/* Round button for a signed-in user in the corner of the public page: pencil opens the page editor, eye leaves it. */
+/* What a signed-in user sees on top of the public page (Router::withEditButton). The theme's styles are not trusted here:
+   every rule names its own font, colours and sizes. */
+
+/* Round button in the corner: pencil opens the page editor, eye leaves it. */
 .ag-fab { position: fixed; right: 16px; bottom: 16px; z-index: 2147482000; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: #17171a; color: #fff; border: 2px solid #f5b301; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); text-decoration: none; transition: transform .15s ease, background .15s ease; }
 .ag-fab:hover, .ag-fab:focus-visible { background: #f5b301; color: #17171a; transform: scale(1.06); outline: none; }
 .ag-fab svg { display: block; }
-@media print { .ag-fab { display: none; } }
+
+/* Strip of the editor right after <body>. Its height is in --ag-bar-h on <html> (editor.js keeps it current), so a sticky
+   header of the theme can stand under it: .site-header { position: sticky; top: var(--ag-bar-h, 0); }. */
+html:has(> body > .ag-bar[data-ag-bar]) { --ag-bar-h: 48px; }
+.ag-bar[data-ag-bar] { position: sticky; top: 0; z-index: 2147481000; box-sizing: border-box; display: flex; align-items: center; gap: 14px; min-height: 48px; margin: 0; padding: 7px 10px 7px 16px; background: #17171a; color: #fff; font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: normal; text-align: left; text-transform: none; box-shadow: 0 1px 0 rgba(255, 255, 255, .08); }
+.ag-bar[data-ag-bar] * { box-sizing: border-box; }
+.ag-bar[data-ag-bar] strong { flex: none; font-weight: 700; font-size: 13px; color: #fff; white-space: nowrap; }
+.ag-bar[data-ag-bar] .ag-bar-tip { min-width: 0; overflow: hidden; color: #b9b9c2; white-space: nowrap; text-overflow: ellipsis; }
+.ag-bar[data-ag-bar] .ag-bar-end { display: flex; align-items: center; gap: 12px; margin-left: auto; flex: none; }
+.ag-bar[data-ag-bar] #ag-status { color: #b9b9c2; white-space: nowrap; }
+.ag-bar[data-ag-bar] #ag-status:empty { display: none; }
+/* The accent button of the admin (admin.css --accent), so the way back looks like the admin itself. */
+.ag-bar[data-ag-bar] .ag-bar-admin { display: inline-flex; align-items: center; height: 34px; padding: 0 16px; border-radius: 10px; background: #cf4a17; color: #fff; font: 600 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-decoration: none; white-space: nowrap; transition: background .15s ease; }
+.ag-bar[data-ag-bar] .ag-bar-admin:hover, .ag-bar[data-ag-bar] .ag-bar-admin:focus-visible { background: #b13e12; color: #fff; outline: none; }
+.ag-bar[data-ag-bar] .ag-bar-admin:focus-visible { box-shadow: 0 0 0 3px rgba(207, 74, 23, .45); }
+@media (max-width: 760px) {
+    .ag-bar[data-ag-bar] .ag-bar-tip { display: none; }
+}
+@media print { .ag-fab, .ag-bar[data-ag-bar] { display: none; } }

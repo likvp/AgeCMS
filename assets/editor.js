@@ -17,6 +17,15 @@
     const csrf = metaCsrf || (editorData && editorData.csrf) || '';
     const slug = editorData ? editorData.slug : '';
     const statusEl = document.getElementById('ag-status');
+    // The strip "Режим редактирования" (the core puts it right after <body>, an older theme may draw its own). Its height goes to
+    // --ag-bar-h on <html>, so the theme's sticky header stands under it: top: var(--ag-bar-h, 0). Without the strip it is 0.
+    const editBar = document.querySelector('.ag-bar');
+    function syncBarHeight() {
+        const height = editBar ? Math.round(editBar.getBoundingClientRect().height) : 0;
+        document.documentElement.style.setProperty('--ag-bar-h', height + 'px');
+    }
+    syncBarHeight();
+    if (editBar && window.ResizeObserver) { new ResizeObserver(syncBarHeight).observe(editBar); }
 
     // ---------------------------------------------------------------- helpers
 
@@ -56,8 +65,13 @@
         return wrap;
     }
 
+    let sayTimer = 0;
+    /** Short state of saving in the strip ("Сохранение...", "Сохранено"); it goes away by itself. Messages go to notify(). */
     function say(text) {
-        if (statusEl) { statusEl.textContent = text; }
+        if (!statusEl) { return; }
+        statusEl.textContent = text;
+        window.clearTimeout(sayTimer);
+        if (text && !/\.\.\.$/.test(text)) { sayTimer = window.setTimeout(function () { statusEl.textContent = ''; }, 3000); }
     }
 
     /** Server messages are English and technical; the editor shows plain Russian. */
@@ -244,7 +258,7 @@
 
     /** Lower edge of what the theme pins to the top of the screen (its header, the black editing strip). */
     function safeTop() {
-        let y = 0;
+        let y = parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue('--ag-bar-h')) || 0;
         document.querySelectorAll('.ag-bar, header, [role=banner]').forEach(function (el) {
             const pos = window.getComputedStyle(el).position;
             if (pos === 'fixed' || pos === 'sticky') { y = Math.max(y, el.getBoundingClientRect().bottom); }
@@ -930,7 +944,6 @@
     let notifyTimer = 0;
 
     function notify(text, kind) {
-        say(text);
         if (!text) { return; }
         panelMsg.textContent = text;
         panelMsg.className = 'msg' + (kind === 'error' ? ' error' : '');
@@ -998,11 +1011,12 @@
                 el.dataset.agSaved = value;
                 const known = blockData[el.dataset.agBlock];
                 if (known) { setPath(known.data, el.dataset.agField, value); }
-                if (result.changed) { remember(result, 'Сохранено'); } else { say('Без изменений'); }
+                if (result.changed) { remember(result, ''); say('Сохранено'); } else { say('Без изменений'); }
             })
             .catch(function (e) {
                 el.classList.remove('ag-saving');
                 el.classList.add('ag-error');
+                say('');
                 notify(e.message, 'error');
             });
     }
@@ -1051,10 +1065,13 @@
         if (after && after.message) { notify(after.message); }
         if (after && after.flash) { window.setTimeout(function () { flashBlock(after.flash); }, 60); }
         if (after && after.edit) { window.setTimeout(function () { openForm(after.edit); }, 400); }
+        // One hint at a time: the strip carries it; where the strip has no room for it (a phone), it is said once at the bottom.
+        const tip = editBar && (editBar.hasAttribute('data-ag-bar') ? editBar.querySelector('.ag-bar-tip') : editBar);
+        const tipShown = !!tip && tip.getClientRects().length > 0;
         let seen = false;
-        try { seen = window.localStorage.getItem('agx-hint') === '1'; window.localStorage.setItem('agx-hint', '1'); } catch (e) { /* storage is off */ }
-        if (!seen && !(after && after.message)) {
-            notify('Наведите курсор на блок: появится панель. Потяните за значок из точек, чтобы переместить блок. Текст меняется кликом.');
+        try { seen = window.localStorage.getItem('agx-hint') === '1'; if (!tipShown) { window.localStorage.setItem('agx-hint', '1'); } } catch (e) { /* storage is off */ }
+        if (!seen && !tipShown && !(after && after.message)) {
+            notify('Нажмите на текст, чтобы изменить его. Нажмите на блок: появится панель, чтобы переместить или изменить блок.');
             window.clearTimeout(notifyTimer);
             notifyTimer = window.setTimeout(function () { panelMsg.textContent = ''; panelMsg.style.display = 'none'; hideBtn.style.display = 'none'; }, 15000);
         } else if (!after || !after.message) {
