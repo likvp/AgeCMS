@@ -20,6 +20,7 @@
     "blocks": {
         "hero": {
             "title": "Hero",
+            "preview": "previews/hero.svg",
             "fields": {
                 "h1": {"type": "string", "max": 200, "required": true},
                 "subtitle": {"type": "text", "max": 500},
@@ -29,6 +30,7 @@
         },
         "text": {
             "title": "Text",
+            "preview": "previews/text.svg",
             "fields": {
                 "heading": {"type": "string", "max": 200},
                 "body": {"type": "text", "max": 8000, "required": true}
@@ -36,6 +38,7 @@
         },
         "features": {
             "title": "Bento features",
+            "preview": "previews/features.svg",
             "fields": {
                 "heading": {"type": "string", "max": 200},
                 "items": {
@@ -51,6 +54,7 @@
         },
         "image": {
             "title": "Image",
+            "preview": "previews/image.svg",
             "fields": {
                 "src": {"type": "url", "media": true, "required": true},
                 "alt": {"type": "string", "max": 200, "required": true},
@@ -60,6 +64,7 @@
         },
         "faq": {
             "title": "FAQ",
+            "preview": "previews/faq.svg",
             "fields": {
                 "heading": {"type": "string", "max": 200},
                 "items": {
@@ -74,6 +79,7 @@
         },
         "lead_form": {
             "title": "Lead form",
+            "preview": "previews/lead_form.svg",
             "fields": {
                 "heading": {"type": "string", "max": 200},
                 "subtitle": {"type": "text", "max": 300},

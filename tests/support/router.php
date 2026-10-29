@@ -22,5 +22,9 @@ if ($uploads !== false && $uploads !== '' && preg_match('~^/assets/uploads/([a-f
 if (preg_match('~^/assets/(?!cache/)[A-Za-z0-9_./-]+$~', $path) === 1 && !str_contains($path, '..') && is_file($root . $path)) {
     return false;
 }
+// Pictures, styles and scripts of themes are plain files for the web server too (PHP of a theme never runs directly).
+if (preg_match('~^/themes/[a-z0-9_]{1,40}/[A-Za-z0-9_./-]+\.(png|jpe?g|webp|avif|gif|svg|css|js|woff2?)$~', $path) === 1 && !str_contains($path, '..') && is_file($root . $path)) {
+    return false;
+}
 require $root . '/index.php';
 return true;

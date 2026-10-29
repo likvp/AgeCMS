@@ -123,4 +123,16 @@ final class BlockEditorTest extends TestCase
         $this->assertNotContains('<b>', $json);
         $this->assertContains('\\' . 'u003C', $json);
     }
+
+    public function testABlockMayHaveAPictureForTheAddBlockWindow(): void
+    {
+        $this->freshSite();
+        $types = array_column(\AgeCMS\BlockEditor::types('default'), null, 'type');
+        $this->assertTrue(preg_match('~^/themes/default/previews/hero\.svg\?v=\d+$~', $types['hero']['preview'] ?? '') === 1, 'the file of the theme with ?v=');
+        foreach (['../../core/agent.md', '/etc/passwd.png', 'previews/../layout.php', 'previews/none.webp', 'previews/hero.php', 42] as $bad) {
+            $this->assertSame(null, \AgeCMS\BlockEditor::preview('default', $bad), 'no picture for ' . var_export($bad, true));
+        }
+        $script = (string)file_get_contents(AGECMS_ROOT . '/assets/editor.js');
+        $this->assertContains("t.preview ? h('img'", $script, 'the card shows the picture, a block without one stays as it was');
+    }
 }

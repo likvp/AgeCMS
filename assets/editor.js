@@ -664,7 +664,9 @@
         const dlg = openDialog('Добавить блок', 'Блок встанет ' + where + '. Потом его можно перетащить.', { wide: true });
         const grid = h('div', { class: 'types' });
         editorData.types.forEach(function (t) {
-            grid.appendChild(h('button', { class: 'type', type: 'button', onclick: function () { addBlock(t.type, after, dlg); } }, [
+            // A theme may give a block a picture ("preview" in theme.json): the card shows it, like in the block libraries of builders.
+            grid.appendChild(h('button', { class: 'type' + (t.preview ? ' has-pic' : ''), type: 'button', onclick: function () { addBlock(t.type, after, dlg); } }, [
+                t.preview ? h('img', { class: 'pic', src: t.preview, alt: '', loading: 'lazy', decoding: 'async' }) : null,
                 h('b', { text: t.title }),
                 t.hint ? h('span', { text: t.hint }) : null
             ]));

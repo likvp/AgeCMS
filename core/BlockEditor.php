@@ -58,9 +58,27 @@ final class BlockEditor
                 $hint = trim(substr($title, $colon + 1));
                 $title = trim(substr($title, 0, $colon));
             }
-            $out[] = ['type' => $type, 'title' => $title, 'hint' => $hint, 'fields' => self::fields($schema['fields'] ?? [])];
+            $item = ['type' => $type, 'title' => $title, 'hint' => $hint, 'fields' => self::fields($schema['fields'] ?? [])];
+            $preview = self::preview($theme, $schema['preview'] ?? null);
+            if ($preview !== null) {
+                $item['preview'] = $preview;
+            }
+            $out[] = $item;
         }
         return $out;
+    }
+
+    /**
+     * Address of the picture of a block for the "add block" window: "preview" in theme.json is a file inside the theme folder
+     * (previews/hero.webp). Only an image that is really there counts, otherwise the card stays without a picture.
+     */
+    public static function preview(string $theme, mixed $file): ?string
+    {
+        if (!is_string($file) || preg_match('~^(?!/)(?!.*\.\.)[A-Za-z0-9_./-]{1,120}\.(png|jpe?g|webp|avif|gif|svg)$~', $file) !== 1) {
+            return null;
+        }
+        $path = Theme::dir($theme) . '/' . $file;
+        return is_file($path) ? '/themes/' . $theme . '/' . $file . '?v=' . filemtime($path) : null;
     }
 
     /**
