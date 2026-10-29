@@ -14,6 +14,10 @@ AddDefaultCharset UTF-8
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # PHP behind CGI/FastCGI does not see the Authorization header: pass it on for Bearer tokens (Http::bearer).
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
     # 1. Internals are never served.
     RewriteRule ^(data|core|bin|tests|bench|docs)(/|$) - [R=404,L]
     RewriteRule ^modules/ - [R=404,L]
