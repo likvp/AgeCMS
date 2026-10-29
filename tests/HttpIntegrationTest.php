@@ -67,8 +67,20 @@ final class HttpIntegrationTest extends HttpCase
         $login = $this->http('POST', '/admin/index.php', http_build_query(['action' => 'login', 'username' => 'admin', 'password' => 'Passw0rd-test-1']), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
         $this->assertSame(302, $login['status']);
 
+        $view = $this->http('GET', '/', null, [], true);
+        $this->assertNotContains('data-ag-field', $view['body'], 'a signed-in user first sees the plain page');
+        $this->assertContains('class="ag-fab"', $view['body'], 'with the pencil button');
+        $this->assertContains('/_/edit?to=%2F', $view['body']);
+        $this->assertSame('private, no-store', $view['headers']['cache-control']);
+        $this->assertNotContains('ag-fab', $this->http('GET', '/')['body'], 'visitors never get the button');
+        $this->assertSame('hit', $this->http('GET', '/')['headers']['x-agecms-cache'], 'and the cached page stays clean');
+
+        $toggle = $this->http('GET', '/_/edit?to=%2F', null, [], true);
+        $this->assertSame(302, $toggle['status']);
+        $this->assertSame('/', $toggle['headers']['location']);
         $page = $this->http('GET', '/', null, [], true);
-        $this->assertContains('data-ag-field="h1"', $page['body'], 'editing markup for signed-in users');
+        $this->assertContains('data-ag-field="h1"', $page['body'], 'editing markup after the pencil');
+        $this->assertContains('Выйти из режима редактирования', $page['body']);
         $this->assertSame('private, no-store', $page['headers']['cache-control']);
         preg_match('/name="ag-csrf" content="([^"]+)"/', $page['body'], $m);
         $csrf = $m[1] ?? '';

@@ -335,6 +335,7 @@ final class Auth
         session_destroy();
         setcookie(self::SESSION_NAME, '', ['expires' => 1, 'path' => '/']);
         setcookie(self::MARKER_COOKIE, '', ['expires' => 1, 'path' => '/']);
+        setcookie('agecms_edit', '', ['expires' => 1, 'path' => '/']);
     }
 
     public static function csrf(): string

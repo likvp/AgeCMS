@@ -1,0 +1,5 @@
+/* Round button for a signed-in user in the corner of the public page: pencil opens the page editor, eye leaves it. */
+.ag-fab { position: fixed; right: 16px; bottom: 16px; z-index: 2147482000; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: #17171a; color: #fff; border: 2px solid #f5b301; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); text-decoration: none; transition: transform .15s ease, background .15s ease; }
+.ag-fab:hover, .ag-fab:focus-visible { background: #f5b301; color: #17171a; transform: scale(1.06); outline: none; }
+.ag-fab svg { display: block; }
+@media print { .ag-fab { display: none; } }

@@ -10,14 +10,14 @@ final class Renderer
     public static array $context = ['editing' => false, 'slug' => '', 'block' => '', 'csrf' => ''];
 
     /**
-     * Renders a stored page. Returns null when the page does not exist or, outside edit mode, is unpublished.
+     * Renders a stored page. Returns null when the page does not exist or, outside edit mode and preview, is unpublished.
      *
      * @return array{status:int,html:string,tags:list<string>}|null
      */
-    public static function renderSlug(string $slug, bool $editing, string $csrf = ''): ?array
+    public static function renderSlug(string $slug, bool $editing, string $csrf = '', bool $preview = false): ?array
     {
         $row = Pages::row($slug);
-        if ($row === null || ((int)$row['is_published'] !== 1 && !$editing)) {
+        if ($row === null || ((int)$row['is_published'] !== 1 && !$editing && !$preview)) {
             return null;
         }
         return self::renderDoc($slug, Pages::toDoc($row), $editing, $csrf);

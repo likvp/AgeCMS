@@ -9,6 +9,8 @@ use Throwable;
 /** Front controller: system routes, form and beacon endpoints, then pages from the database. */
 final class Router
 {
+    public const EDIT_COOKIE = 'agecms_edit';
+
     public static function handle(): void
     {
         // Leftover jobs, pings and re-renders are finished after a visit is answered, at most every 30 seconds.
@@ -65,6 +67,8 @@ final class Router
                 self::send(200, 'text/plain; charset=utf-8', $indexNowKey);
             case $path === '/_/token':
                 self::send(200, 'application/json', json_encode(['token' => AntiSpam::issueToken()]), ['Cache-Control' => 'no-store']);
+            case $path === '/_/edit':
+                self::toggleEdit();
             case $path === '/search':
                 self::search();
         }
@@ -85,9 +89,11 @@ final class Router
             self::notFound();
         }
 
-        $editing = Auth::user() !== null;
+        // A signed-in user sees the site as visitors do (drafts included) and switches to the editor with the pencil.
+        $signedIn = Auth::user() !== null;
+        $editing = $signedIn && ($_COOKIE[self::EDIT_COOKIE] ?? '') === '1';
         $generation = Cache::generation();
-        $page = Renderer::renderSlug($slug, $editing, $editing ? Auth::csrf() : '');
+        $page = Renderer::renderSlug($slug, $editing, $editing ? Auth::csrf() : '', $signedIn);
         if ($page === null) {
             // A page that moved leaves a permanent redirect at its old address.
             $to = Pages::redirectFor($slug);
@@ -97,14 +103,49 @@ final class Router
             }
             self::notFound();
         }
-        $cacheable = !$editing && $method === 'GET' && ($_SERVER['QUERY_STRING'] ?? '') === '';
+        $cacheable = !$signedIn && $method === 'GET' && ($_SERVER['QUERY_STRING'] ?? '') === '';
         if ($cacheable) {
             Cache::store($slug, $page['html'], $page['tags'], $generation);
         }
-        self::send(200, 'text/html; charset=utf-8', $page['html'], [
-            'Cache-Control' => $editing ? 'private, no-store' : 'public, max-age=0, must-revalidate',
+        $html = $signedIn ? self::withEditButton($page['html'], $editing, $path) : $page['html'];
+        self::send(200, 'text/html; charset=utf-8', $html, [
+            'Cache-Control' => $signedIn ? 'private, no-store' : 'public, max-age=0, must-revalidate',
             'X-AgeCMS-Cache' => 'miss',
         ]);
+    }
+
+    /** Round button in the corner of a page for a signed-in user: the pencil opens the editor, in the editor the eye returns to the plain view. */
+    private static function withEditButton(string $html, bool $editing, string $path): string
+    {
+        $pos = strripos($html, '</body>');
+        if ($pos === false) {
+            return $html;
+        }
+        $css = '/assets/edit-button.css?v=' . (is_file(AGECMS_ROOT . '/assets/edit-button.css') ? filemtime(AGECMS_ROOT . '/assets/edit-button.css') : 1);
+        $label = $editing ? 'Выйти из режима редактирования' : 'Редактировать страницу';
+        $icon = $editing
+            ? '<path d="M1.5 12s3.8-7 10.5-7 10.5 7 10.5 7-3.8 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3"/>'
+            : '<path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m14.5 7.5 3 3"/>';
+        $button = '<link rel="stylesheet" href="' . ag_e($css) . '">'
+            . '<a class="ag-fab" href="/_/edit?to=' . rawurlencode($path) . '" title="' . ag_e($label) . '" aria-label="' . ag_e($label) . '">'
+            . '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $icon . '</svg></a>';
+        return substr($html, 0, $pos) . $button . substr($html, $pos);
+    }
+
+    /** Switches the page editor on or off for the signed-in user and goes back to the page they came from. */
+    private static function toggleEdit(): never
+    {
+        if (Auth::user() === null) {
+            self::send(302, 'text/plain; charset=utf-8', '', ['Location' => '/admin/', 'Cache-Control' => 'no-store']);
+        }
+        $on = ($_COOKIE[self::EDIT_COOKIE] ?? '') !== '1';
+        $secure = str_starts_with((string)Config::get('site_url', ''), 'https://') || (($_SERVER['HTTPS'] ?? '') !== '' && $_SERVER['HTTPS'] !== 'off');
+        setcookie(self::EDIT_COOKIE, $on ? '1' : '', ['expires' => $on ? 0 : 1, 'path' => '/', 'secure' => $secure, 'httponly' => true, 'samesite' => 'Lax']);
+        $to = (string)($_GET['to'] ?? '/');
+        if ($to === '' || $to[0] !== '/' || str_starts_with($to, '//') || str_contains($to, '\\') || preg_match('/[\x00-\x1f]/', $to) === 1) {
+            $to = '/';
+        }
+        self::send(302, 'text/plain; charset=utf-8', '', ['Location' => $to, 'Cache-Control' => 'no-store']);
     }
 
     private static function moduleOr405(string $method, string $path): never
