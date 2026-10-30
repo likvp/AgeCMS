@@ -12,7 +12,7 @@ PHP 8.1+ и SQLite, без зависимостей, без cron, без сбо�
 [![MCP](https://img.shields.io/badge/MCP-JSON--RPC%202.0-8b5cf6)](#-подключить-ии-агента)
 [![Tests](https://img.shields.io/badge/tests-passing-16a34a)](#-тесты-и-замеры)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a)](#-как-это-устроено)
-[![License](https://img.shields.io/badge/license-Proprietary-lightgrey)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 [Быстрый старт](#-быстрый-старт) · [Возможности](#-возможности) · [Агенты](#-подключить-ии-агента) · [Замеры](#-тесты-и-замеры) · [Команды](#-команды) · [Документы](#-документы)
 
@@ -278,7 +278,7 @@ php bench/shadow_cache_bench.php     # замер на своей машине
 
 <div align="center">
 
-**Лицензия:** Proprietary, все права принадлежат Tabson.ru Studio, см. [LICENSE](LICENSE).
+**Лицензия:** Apache 2.0, © 2026 Tabson.ru Studio, см. [LICENSE](LICENSE) и [NOTICE](NOTICE). Использовать, менять и распространять можно свободно, при условии сохранить упоминание автора.
 
 Если AgeCMS вам пригодилась, поставьте ⭐: так проект увидят другие.
 
