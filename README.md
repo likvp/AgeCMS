@@ -245,7 +245,8 @@ php bench/shadow_cache_bench.php     # замер на своей машине
 | Команда | Что делает |
 | --- | --- |
 | `php bin/release.php --version=x.y.z --key=<файл>` | собрать подписанный пакет новой версии в `dist/` |
-| `bin/publish-release.sh` | выложить собранную версию в ветку `releases`, откуда сайты её берут |
+| `bin/publish-release.sh` | выложить собранную версию в ветку `releases`, откуда сайты её берут, и в «Releases» на GitHub (тег `vX.Y.Z`, описание, пакет) |
+| `bin/github-release.sh x.y.z` | только страница «Releases» на GitHub, если версию надо добавить отдельно |
 
 </details>
 

@@ -3,6 +3,8 @@
 # "releases" branch of the repository and pushes it. Sites read
 # https://raw.githubusercontent.com/likvp/AgeCMS/releases/release.json (the default updates.url).
 # Older packages stay in the branch, so a site that missed a version can still download the newest one.
+# Every published version also goes to the GitHub "Releases" page (bin/github-release.sh: tag vX.Y.Z, notes, package).
+# The tag points at HEAD, so commit core/release.json and push main before running this script.
 #   bin/publish-release.sh [dist]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,3 +31,4 @@ git -C "$WORK" add README.md release.json "agecms-$VERSION.json.gz"
 git -C "$WORK" commit -q -m "версия $VERSION"
 git -C "$WORK" push -q origin HEAD:refs/heads/releases
 echo "Published $VERSION: https://raw.githubusercontent.com/likvp/AgeCMS/releases/release.json"
+bin/github-release.sh "$VERSION" HEAD "$DIST" "$DIST/release.json" || echo "The GitHub release of $VERSION was not created: push main, then run bin/github-release.sh $VERSION HEAD $DIST" >&2
