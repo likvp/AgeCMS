@@ -1,0 +1,32 @@
+[
+  {
+    "id": 2, "date": "2023-01-10T10:00:00", "slug": "o-kompanii", "status": "publish", "type": "page",
+    "link": "https://wp.example.com/o-kompanii/", "parent": 0,
+    "guid": {"rendered": "https://wp.example.com/?page_id=2"},
+    "title": {"rendered": "О компании"},
+    "content": {"rendered": "\n<div class=\"wp-block-cover\"><img class=\"wp-block-cover__image-background\" src=\"https://wp.example.com/wp-content/uploads/2023/01/cover.jpg\" alt=\"\"><div class=\"wp-block-cover__inner-container\"><h1 class=\"wp-block-heading\">Строим с 2005 года</h1><p>Более 500 квартир под ключ</p><div class=\"wp-block-buttons\"><div class=\"wp-block-button\"><a class=\"wp-block-button__link\" href=\"https://wp.example.com/kontakty/\">Оставить заявку</a></div></div></div></div>\n<h2 class=\"wp-block-heading\">Почему мы</h2>\n<p>Мы делаем <strong>честный</strong> ремонт. Смотрите <a href=\"https://wp.example.com/uslugi/\">услуги</a>.</p>\n<ul><li>Гарантия 5 лет</li><li>Смета не меняется</li></ul>\n<figure class=\"wp-block-image size-large\"><img src=\"https://wp.example.com/wp-content/uploads/2023/01/team-1024x683.jpg\" srcset=\"https://wp.example.com/wp-content/uploads/2023/01/team-300x200.jpg 300w, https://wp.example.com/wp-content/uploads/2023/01/team.jpg 2000w\" alt=\"Наша команда\"><figcaption>Команда на объекте</figcaption></figure>\n<p>После картинки снова текст.</p>\n<figure class=\"wp-block-gallery has-nested-images columns-3\"><figure class=\"wp-block-image\"><img src=\"https://wp.example.com/wp-content/uploads/2023/01/g1.jpg\" alt=\"Кухня\"></figure><figure class=\"wp-block-image\"><img src=\"https://wp.example.com/wp-content/uploads/2023/01/g2.jpg\" alt=\"Ванная\"></figure></figure>\n<div class=\"schema-faq wp-block-yoast-faq-block\"><div class=\"schema-faq-section\"><strong class=\"schema-faq-question\">Сколько стоит ремонт?</strong> <p class=\"schema-faq-answer\">От 8000 рублей за метр.</p></div><div class=\"schema-faq-section\"><strong class=\"schema-faq-question\">Есть ли гарантия?</strong> <p class=\"schema-faq-answer\">Да, 5 лет.</p></div></div>\n<figure class=\"wp-block-embed is-type-video is-provider-youtube\"><div class=\"wp-block-embed__wrapper\">\nhttps://www.youtube.com/watch?v=abc123\n</div></figure>\n"},
+    "excerpt": {"rendered": "<p>Строим с 2005 года [&hellip;]</p>"},
+    "yoast_head_json": {"title": "О компании Строй-Мастер - ремонт с 2005 года", "description": "Компания Строй-Мастер: ремонт квартир под ключ с гарантией.", "canonical": "https://wp.example.com/o-kompanii/", "robots": {"index": "index", "follow": "follow"}, "og_image": [{"url": "https://wp.example.com/wp-content/uploads/2023/01/cover.jpg"}]}
+  },
+  {
+    "id": 3, "date": "2023-01-11T10:00:00", "slug": "komanda", "status": "publish", "type": "page",
+    "link": "https://wp.example.com/o-kompanii/komanda/", "parent": 2,
+    "title": {"rendered": "Команда"},
+    "content": {"rendered": "<p>Наши мастера.</p>"},
+    "excerpt": {"rendered": ""}
+  },
+  {
+    "id": 4, "date": "2023-01-12T10:00:00", "slug": "uslugi", "status": "publish", "type": "page",
+    "link": "https://wp.example.com/uslugi/", "parent": 0,
+    "title": {"rendered": "Услуги &#038; цены"},
+    "content": {"rendered": "<div data-elementor-type=\"wp-page\" class=\"elementor elementor-4\"><div class=\"elementor-widget-text-editor\"><p>Сырой контент конструктора</p></div></div>"},
+    "excerpt": {"rendered": ""}
+  },
+  {
+    "id": 5, "date": "2023-01-12T10:00:00", "slug": "glavnaya", "status": "publish", "type": "page",
+    "link": "https://wp.example.com/", "parent": 0,
+    "title": {"rendered": "Главная"},
+    "content": {"rendered": "<p>Добро пожаловать.</p>"},
+    "excerpt": {"rendered": ""}
+  }
+]

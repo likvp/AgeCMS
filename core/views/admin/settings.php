@@ -6,12 +6,12 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{AdminTabs, BlockEditor, Config, Mailer, Seo, SiteSettings, Theme};
+use AgeCMS\{AdminTabs, BlockEditor, Config, Mailer, Redirects, Seo, SiteSettings, Theme};
 
 $settings = Seo::settings();
 // Everything here is the administrator's except the menus, which an editor changes too.
-$all = ['main' => 'Главное', 'menu' => 'Меню', 'header' => 'Шапка', 'footer' => 'Подвал', 'mail' => 'Почта', 'analytics' => 'Аналитика', 'site' => 'Сайт'];
-$tabs = $isAdmin ? $all : ['menu' => 'Меню'];
+$all = ['main' => 'Главное', 'menu' => 'Меню', 'header' => 'Шапка', 'footer' => 'Подвал', 'mail' => 'Почта', 'analytics' => 'Аналитика', 'site' => 'Сайт', 'redirects' => 'Редиректы'];
+$tabs = $isAdmin ? $all : ['menu' => 'Меню', 'redirects' => 'Редиректы'];
 $asked = (string)($_GET['tab'] ?? '');
 $tab = AdminTabs::current($tabs, $asked);
 $theme = Theme::active();
@@ -184,5 +184,45 @@ $ymOn = array_filter(explode(',', $settings['yandex_metrika_options'] ?? ($ymId 
         <p class="muted">От адреса зависят canonical, sitemap и cookie, поэтому он меняется только из консоли:</p>
         <code class="cmd">php bin/config.php set site_url https://example.com</code>
     </div>
+</section>
+<?php elseif ($tab === 'redirects'): ?>
+<?php
+$search = trim((string)($_GET['q'] ?? ''));
+$redirects = Redirects::listing(500, 0, $search);
+$total = Redirects::count();
+?>
+<section class="panel">
+    <div class="panel-h"><h2>Добавить редирект</h2></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'redirect_add') . AdminTabs::field($tab) ?>
+        <p class="muted">Постоянный переход (301) со старого адреса на страницу сайта. Нужен после переезда с другой CMS: ссылки на старые адреса в поисковиках и чужих сайтах продолжают работать. Адрес страницы, которая есть на сайте, занять нельзя.</p>
+        <label class="f"><span>Старый адрес</span><input class="in" type="text" name="from" required maxlength="2000" placeholder="/old/post/?p=12" autocapitalize="none" spellcheck="false"><small class="hint">Путь, можно с ?параметрами. Полный адрес старого сайта тоже подойдёт: от него останется путь.</small></label>
+        <label class="f"><span>Куда вести</span><input class="in" type="text" name="to" required maxlength="2000" placeholder="/blog/post" autocapitalize="none" spellcheck="false"><small class="hint">Адрес страницы этого сайта или полный https-адрес другого сайта.</small></label>
+        <button class="btn primary" type="submit">Добавить</button>
+    </form>
+</section>
+<section class="panel">
+    <div class="panel-h"><h2>Редиректы</h2><span class="muted"><?= $total ?> шт.</span></div>
+    <form method="get" class="panel-b actions-row">
+        <input type="hidden" name="s" value="settings"><input type="hidden" name="tab" value="redirects">
+        <input class="in" type="search" name="q" value="<?= h($search) ?>" placeholder="Найти по адресу" maxlength="200">
+        <button class="btn" type="submit">Найти</button>
+    </form>
+<?php if ($redirects === []): ?>
+    <div class="empty"><?= icon('link-simple') ?><b><?= $search === '' ? 'Редиректов нет' : 'Ничего не найдено' ?></b><span>Здесь появятся переходы со старых адресов: после смены адреса страницы и после переноса сайта с другой CMS.</span></div>
+<?php else: ?>
+    <div class="tbl-scroll"><table class="tbl"><tbody>
+<?php foreach ($redirects as $r): ?>
+        <tr>
+            <td class="redir-from"><span class="mono"><?= h($r['from']) ?></span><span class="cell-sub"><?= $r['kind'] === 'rename' ? 'адрес страницы изменён' : 'перенос с другого сайта' ?>, <?= admin_date($r['created_at']) ?></span></td>
+            <td class="redir-from"><span class="mono"><?= h($r['to']) ?></span></td>
+            <td class="r"><form method="post" class="inline" data-confirm="Удалить редирект с <?= h($r['from']) ?>?" data-confirm-text="Старый адрес начнёт отвечать «страница не найдена»." data-confirm-ok="Удалить" data-danger><?= admin_post_fields($csrf, 'redirect_remove') . AdminTabs::field($tab) ?><input type="hidden" name="from" value="<?= h($r['from']) ?>"><button class="ib danger" type="submit" title="Удалить" aria-label="Удалить редирект"><?= icon('trash') ?></button></form></td>
+        </tr>
+<?php endforeach; ?>
+    </tbody></table></div>
+<?php if ($total > count($redirects) && $search === ''): ?>
+    <p class="panel-b muted">Показаны последние <?= count($redirects) ?>. Остальные найдутся поиском по адресу.</p>
+<?php endif; ?>
+<?php endif; ?>
 </section>
 <?php endif; ?>

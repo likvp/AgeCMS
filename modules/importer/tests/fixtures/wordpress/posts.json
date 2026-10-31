@@ -1,0 +1,12 @@
+[
+  {
+    "id": 12, "date": "2024-03-05T09:30:00", "slug": "kak-vybrat-plitku", "status": "publish", "type": "post",
+    "link": "https://wp.example.com/2024/03/kak-vybrat-plitku/",
+    "guid": {"rendered": "https://wp.example.com/?p=12"},
+    "title": {"rendered": "Как выбрать плитку"},
+    "content": {"rendered": "<p>Плитка бывает разной.</p><h2>Размер</h2><p>Большая плитка смотрится дороже.</p>"},
+    "excerpt": {"rendered": "<p>Плитка бывает разной.</p>"},
+    "_embedded": {"wp:featuredmedia": [{"source_url": "https://wp.example.com/wp-content/uploads/2024/03/tile.jpg", "alt_text": "Плитка"}]},
+    "yoast_head_json": {"title": "Как выбрать плитку для ванной", "description": "Советы по выбору плитки.", "robots": {"index": "noindex"}}
+  }
+]

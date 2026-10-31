@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0" xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wfw="http://wellformedweb.org/CommentAPI/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:wp="http://wordpress.org/export/1.2/">
+<channel>
+	<title>Ремонт Лаб</title>
+	<link>https://remont.example.ru</link>
+	<wp:wxr_version>1.2</wp:wxr_version>
+	<wp:base_site_url>https://remont.example.ru</wp:base_site_url>
+	<wp:base_blog_url>https://remont.example.ru</wp:base_blog_url>
+	<item>
+		<title><![CDATA[Услуги]]></title>
+		<link>https://remont.example.ru/uslugi/</link>
+		<guid isPermaLink="false">https://remont.example.ru/?page_id=30</guid>
+		<content:encoded><![CDATA[<!-- wp:paragraph -->
+<p>Все наши услуги:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:page-list {"parentPageID":30} /-->
+
+<!-- wp:social-links -->
+<ul class="wp-block-social-links"><!-- wp:social-link {"url":"https://vk.com/remontlab","service":"vk"} /--><!-- wp:social-link {"url":"https://t.me/remontlab","service":"telegram","label":"Наш Telegram"} /--></ul>
+<!-- /wp:social-links -->
+
+<!-- wp:paragraph -->
+<p>Подробнее в примечании<sup data-fn="f1" class="fn"><a href="#f1" id="f1-link">1</a></sup>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:footnotes /-->
+
+<!-- wp:buttons -->
+<div class="wp-block-buttons"><!-- wp:button -->
+<div class="wp-block-button"><a class="wp-block-button__link wp-element-button">Кнопка без ссылки</a></div>
+<!-- /wp:button --></div>
+<!-- /wp:buttons -->]]></content:encoded>
+		<excerpt:encoded><![CDATA[]]></excerpt:encoded>
+		<wp:post_id>30</wp:post_id>
+		<wp:post_date><![CDATA[2024-01-10 10:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[uslugi]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[page]]></wp:post_type>
+		<wp:post_password><![CDATA[]]></wp:post_password>
+		<wp:postmeta>
+			<wp:meta_key><![CDATA[footnotes]]></wp:meta_key>
+			<wp:meta_value><![CDATA[[{"content":"Выезд мастера бесплатный в пределах города.","id":"f1"}]]]></wp:meta_value>
+		</wp:postmeta>
+	</item>
+	<item>
+		<title><![CDATA[Ремонт кухни]]></title>
+		<link>https://remont.example.ru/uslugi/kuhnya/</link>
+		<guid isPermaLink="false">https://remont.example.ru/?page_id=31</guid>
+		<content:encoded><![CDATA[Ремонт кухни под ключ.]]></content:encoded>
+		<excerpt:encoded><![CDATA[]]></excerpt:encoded>
+		<wp:post_id>31</wp:post_id>
+		<wp:post_name><![CDATA[kuhnya]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>30</wp:post_parent>
+		<wp:menu_order>2</wp:menu_order>
+		<wp:post_type><![CDATA[page]]></wp:post_type>
+		<wp:post_password><![CDATA[]]></wp:post_password>
+	</item>
+	<item>
+		<title><![CDATA[Ремонт ванной]]></title>
+		<link>https://remont.example.ru/uslugi/vannaya/</link>
+		<guid isPermaLink="false">https://remont.example.ru/?page_id=32</guid>
+		<content:encoded><![CDATA[Ремонт ванной под ключ.]]></content:encoded>
+		<excerpt:encoded><![CDATA[]]></excerpt:encoded>
+		<wp:post_id>32</wp:post_id>
+		<wp:post_name><![CDATA[vannaya]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>30</wp:post_parent>
+		<wp:menu_order>1</wp:menu_order>
+		<wp:post_type><![CDATA[page]]></wp:post_type>
+		<wp:post_password><![CDATA[]]></wp:post_password>
+	</item>
+	<item>
+		<title><![CDATA[Наши работы]]></title>
+		<link>https://remont.example.ru/2024/03/nashi-raboty/</link>
+		<guid isPermaLink="false">https://remont.example.ru/?p=40</guid>
+		<content:encoded><![CDATA[Фото с объекта на улице Ленина.
+
+[caption id="attachment_41" align="aligncenter" width="640" caption="Кухня после ремонта"]<a href="https://remont.example.ru/wp-content/uploads/2024/03/kitchen.jpg"><img src="https://remont.example.ru/wp-content/uploads/2024/03/kitchen-640x480.jpg" alt="Кухня" width="640" height="480" class="size-large wp-image-41" /></a>[/caption]
+
+[gallery columns="3" exclude="43"]
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+[audio https://remont.example.ru/wp-content/uploads/2024/03/rasskaz.mp3]
+
+Обычная ссылка https://example.org/ в тексте.]]></content:encoded>
+		<excerpt:encoded><![CDATA[]]></excerpt:encoded>
+		<wp:post_id>40</wp:post_id>
+		<wp:post_date><![CDATA[2024-03-15 12:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[nashi-raboty]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[post]]></wp:post_type>
+		<wp:post_password><![CDATA[]]></wp:post_password>
+		<wp:postmeta>
+			<wp:meta_key><![CDATA[_thumbnail_id]]></wp:meta_key>
+			<wp:meta_value><![CDATA[41]]></wp:meta_value>
+		</wp:postmeta>
+	</item>
+	<item>
+		<title><![CDATA[kitchen]]></title>
+		<link>https://remont.example.ru/kitchen/</link>
+		<wp:post_id>41</wp:post_id>
+		<wp:status><![CDATA[inherit]]></wp:status>
+		<wp:post_parent>40</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[attachment]]></wp:post_type>
+		<wp:attachment_url><![CDATA[https://remont.example.ru/wp-content/uploads/2024/03/kitchen.jpg]]></wp:attachment_url>
+		<wp:postmeta>
+			<wp:meta_key><![CDATA[_wp_attachment_image_alt]]></wp:meta_key>
+			<wp:meta_value><![CDATA[Кухня после ремонта]]></wp:meta_value>
+		</wp:postmeta>
+	</item>
+	<item>
+		<title><![CDATA[bath]]></title>
+		<link>https://remont.example.ru/bath/</link>
+		<wp:post_id>42</wp:post_id>
+		<wp:status><![CDATA[inherit]]></wp:status>
+		<wp:post_parent>40</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[attachment]]></wp:post_type>
+		<wp:attachment_url><![CDATA[https://remont.example.ru/wp-content/uploads/2024/03/bath.jpg]]></wp:attachment_url>
+	</item>
+	<item>
+		<title><![CDATA[plan]]></title>
+		<link>https://remont.example.ru/plan/</link>
+		<wp:post_id>43</wp:post_id>
+		<wp:status><![CDATA[inherit]]></wp:status>
+		<wp:post_parent>40</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[attachment]]></wp:post_type>
+		<wp:attachment_url><![CDATA[https://remont.example.ru/wp-content/uploads/2024/03/plan.png]]></wp:attachment_url>
+	</item>
+	<item>
+		<title><![CDATA[Закрытая запись]]></title>
+		<link>https://remont.example.ru/2024/03/zakrytaya/</link>
+		<guid isPermaLink="false">https://remont.example.ru/?p=50</guid>
+		<content:encoded><![CDATA[Секретный текст для своих.]]></content:encoded>
+		<excerpt:encoded><![CDATA[Секретный анонс.]]></excerpt:encoded>
+		<wp:post_id>50</wp:post_id>
+		<wp:post_date><![CDATA[2024-03-20 12:00:00]]></wp:post_date>
+		<wp:post_name><![CDATA[zakrytaya]]></wp:post_name>
+		<wp:status><![CDATA[publish]]></wp:status>
+		<wp:post_parent>0</wp:post_parent>
+		<wp:menu_order>0</wp:menu_order>
+		<wp:post_type><![CDATA[post]]></wp:post_type>
+		<wp:post_password><![CDATA[secret]]></wp:post_password>
+	</item>
+</channel>
+</rss>

@@ -21,6 +21,7 @@ final class ServerSetup
         'gd с WebP' => ['gd', 'gd', 'php-gd', 'gd'],
         'curl' => ['curl', 'curl', 'php-common', 'curl'],
         'zip' => ['zip', 'zip', 'php-zip', 'zip'],
+        'dom' => ['dom', 'xml', 'php-xml', 'dom'],
     ];
 
     /** Checks that a package can fix; the rest (PHP version, FTS5, file rights) is a hosting or ownership matter. */

@@ -12,6 +12,8 @@ final class ModuleRequest
      * @param array<string,mixed> $body POST fields without the form token fields; empty for GET
      * @param array<string,string> $cookies cookies of this module (names without the module prefix)
      * @param list<ModuleUpload> $files checked uploads of an admin page that declared "upload"; empty everywhere else
+     * @param bool $poll an admin page asked by data-ag-poll / data-ag-step of admin.js: the core sends an HTML answer as a bare
+     *                   fragment (no admin menu around it), so the module may answer with just the part that changes
      */
     public function __construct(
         public readonly string $module,
@@ -23,6 +25,7 @@ final class ModuleRequest
         public readonly string $ip,
         public readonly array $cookies,
         public readonly array $files = [],
+        public readonly bool $poll = false,
     ) {
     }
 

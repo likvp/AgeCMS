@@ -1,0 +1,8 @@
+User-agent: Yandex
+Disallow: /
+
+User-agent: *
+Disallow: /private/
+Allow: /
+
+Sitemap: https://bread.example.net/sitemap.xml

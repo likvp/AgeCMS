@@ -77,6 +77,22 @@
                 }
             }
         },
+        "article": {
+            "title": "Article: статья или запись блога с форматированием",
+            "preview": "previews/article.svg",
+            "fields": {
+                "heading": {"type": "string", "max": 200},
+                "body": {"type": "richtext", "max": 200000, "required": true}
+            }
+        },
+        "child_pages": {
+            "title": "Child pages: карточки вложенных страниц",
+            "preview": "previews/child_pages.svg",
+            "fields": {
+                "heading": {"type": "string", "max": 200},
+                "parent": {"type": "string", "max": 120, "label": "Чьи вложенные страницы", "hint": "Адрес страницы, например blog. Пусто: страницы, вложенные в эту."}
+            }
+        },
         "lead_form": {
             "title": "Lead form",
             "preview": "previews/lead_form.svg",

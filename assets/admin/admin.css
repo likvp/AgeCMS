@@ -411,3 +411,20 @@ details.rename[open] > summary { border-bottom: 1px solid var(--line, #e4e4e8); 
 
 .agent-text { margin: 8px 0; padding: 10px 12px; background: var(--hover); border-radius: var(--r-sm); font-family: var(--mono); font-size: 0.86em; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 .tag.blocked { background: var(--err-soft); color: var(--err); }
+
+/* Formatted text (richtext fields), see assets/rich.js */
+.rich-box { border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); overflow: hidden; }
+.rich-box:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
+.rich-bar { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.rich-bar button { height: 28px; padding: 0 9px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); font: 600 0.82rem var(--font); cursor: pointer; white-space: nowrap; }
+.rich-bar button:hover { background: var(--hover); }
+.rich-bar button[data-cmd=bold] { font-weight: 800; }
+.rich-bar button[data-cmd=italic] { font-style: italic; }
+.rich-ed { min-height: 160px; max-height: 60vh; overflow: auto; padding: 10px 14px; color: var(--text); font: 450 0.95rem/1.6 var(--font); outline: none; }
+.rich-ed > :first-child { margin-top: 0; }
+.rich-ed h2 { font-size: 1.3rem; margin: 1em 0 0.4em; }
+.rich-ed h3 { font-size: 1.1rem; margin: 1em 0 0.4em; }
+.rich-ed blockquote { margin: 0.6em 0; padding-left: 12px; border-left: 3px solid var(--accent); color: var(--muted); }
+.rich-ed img { max-width: 100%; height: auto; }
+.rich-ed a { color: var(--accent); }
+.redir-from { word-break: break-all; }

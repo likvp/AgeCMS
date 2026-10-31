@@ -75,12 +75,15 @@ final class ModuleAdmin
             if (isset($page['upload'])) {
                 $u = $page['upload'];
                 $kinds = is_array($u) ? ($u['kinds'] ?? null) : null;
-                $maxKb = is_array($u) ? ($u['max_kb'] ?? 2048) : null;
+                // Export files (xml, zip) are big: such a page may go up to EXPORT_MAX_KB and takes 50 MB unless it says otherwise.
+                $export = is_array($kinds) && array_intersect($kinds, ModuleUpload::EXPORT_KINDS) !== [];
+                $maxKb = is_array($u) ? ($u['max_kb'] ?? ($export ? ModuleUpload::EXPORT_DEFAULT_KB : 2048)) : null;
+                $ceiling = $export ? ModuleUpload::EXPORT_MAX_KB : ModuleUpload::SMALL_MAX_KB;
                 $maxFiles = is_array($u) ? ($u['max_files'] ?? 1) : null;
                 if (!is_array($u) || array_diff(array_keys($u), ['kinds', 'max_kb', 'max_files']) !== [] || $methods !== ['POST']
                     || !is_array($kinds) || $kinds === [] || !array_is_list($kinds) || array_diff($kinds, array_keys(ModuleUpload::KINDS)) !== [] || count(array_unique($kinds)) !== count($kinds)
-                    || !is_int($maxKb) || $maxKb < 1 || $maxKb > 10240 || !is_int($maxFiles) || $maxFiles < 1 || $maxFiles > 10) {
-                    throw new AgeCMSException("admin[{$i}]: upload goes only with a POST-only page and needs kinds (" . implode(', ', array_keys(ModuleUpload::KINDS)) . '), max_kb 1..10240, max_files 1..10');
+                    || !is_int($maxKb) || $maxKb < 1 || $maxKb > $ceiling || !is_int($maxFiles) || $maxFiles < 1 || $maxFiles > 10) {
+                    throw new AgeCMSException("admin[{$i}]: upload goes only with a POST-only page and needs kinds (" . implode(', ', array_keys(ModuleUpload::KINDS)) . '), max_kb 1..' . ModuleUpload::SMALL_MAX_KB . ' (1..' . ModuleUpload::EXPORT_MAX_KB . ' with xml or zip), max_files 1..10');
                 }
                 $upload = ['kinds' => array_values($kinds), 'max_kb' => $maxKb, 'max_files' => $maxFiles];
             }
@@ -177,15 +180,17 @@ final class ModuleAdmin
      * @param array{page:array<string,mixed>,params:array<string,string>} $hit
      * @param array<string,mixed> $input POST fields without the CSRF field
      * @param array<string,mixed> $files $_FILES; looked at only when the page declared "upload"
+     * @param bool $poll the request came from data-ag-poll or data-ag-step of admin.js (header X-AgeCMS-Poll): an HTML answer
+     *                   is sent as a bare fragment, without the admin around it (see ModuleRequest::$poll)
      */
-    public static function run(array $hit, string $method, string $path, array $query, array $input, Actor $actor, array $files = []): ModuleResponse
+    public static function run(array $hit, string $method, string $path, array $query, array $input, Actor $actor, array $files = [], bool $poll = false): ModuleResponse
     {
         $name = (string)$hit['page']['module'];
         try {
             Security::requirePermission($actor, (string)$hit['page']['permission']);
             $module = SkillRegistry::admin($name);
             $uploads = $hit['page']['upload'] !== null && $method === 'POST' ? ModuleUpload::collect($name, $hit['page']['upload'], $files) : [];
-            $request = new ModuleRequest($name, $method === 'HEAD' ? 'GET' : $method, $path, $hit['params'], $query, $input, Http::clientIp(), [], $uploads);
+            $request = new ModuleRequest($name, $method === 'HEAD' ? 'GET' : $method, $path, $hit['params'], $query, $input, Http::clientIp(), [], $uploads, $poll);
             $response = $module->handleAdmin($request, $actor);
         } catch (ForbiddenException $e) {
             return ModuleResponse::html('Нет доступа', '<div class="notice error">' . ag_e($e->getMessage()) . '</div>', 403);

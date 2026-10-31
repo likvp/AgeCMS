@@ -107,3 +107,15 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f5b301; outline-
     .type b { font-size: 13px; }
 }
 .addrow { margin-top: 8px; }
+.richbar { position: fixed; display: none; flex-wrap: wrap; gap: 2px; padding: 4px; background: #17171a; border-radius: 10px; box-shadow: 0 6px 22px rgba(0,0,0,.35); max-width: calc(100vw - 16px); }
+.richbar button { height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.richbar button:hover { background: rgba(255,255,255,.16); }
+.richbar button[data-cmd=bold] { font-weight: 800; }
+.richbar button[data-cmd=italic] { font-style: italic; }
+.richbox { border-radius: 8px; }
+.richtools { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border: 1px solid #cfcfd6; border-radius: 8px 8px 0 0; background: #f4f4f7; }
+.richtools button { height: 30px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #1b1b1f; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.richtools button:hover { background: #e4e4ea; }
+.richtools button[data-cmd=bold] { font-weight: 800; }
+.richtools button[data-cmd=italic] { font-style: italic; }
+.bad .richtools { border-color: #c0392b; }

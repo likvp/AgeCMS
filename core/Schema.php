@@ -243,6 +243,42 @@ CREATE TABLE totp_recovery (
 CREATE INDEX totp_recovery_user ON totp_recovery (user_id);
 SQL);
             },
+            // Moving a site from another CMS: the date of a post, a raised limit of new pages for one session started by a person,
+            // and the source hash of every stored image, so the same picture is stored once. Redirects of imported addresses
+            // share the table `redirects`: their from_slug is a path that starts with "/" and may carry "?query".
+            // Each part checks what is already there, so the step is safe on a database that has some of it.
+            6 => static function (PDO $pdo): void {
+                $has = static fn(string $table, string $column): bool => in_array($column, array_column($pdo->query("PRAGMA table_info({$table})")->fetchAll(PDO::FETCH_ASSOC), 'name'), true);
+                if (!$has('pages', 'published_at')) {
+                    $pdo->exec("ALTER TABLE pages ADD COLUMN published_at TEXT NOT NULL DEFAULT ''");
+                }
+                if (!$has('agent_sessions', 'creates_limit')) {
+                    $pdo->exec('ALTER TABLE agent_sessions ADD COLUMN creates_limit INTEGER NOT NULL DEFAULT 0');
+                }
+                $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS media_hashes (
+    sha256 TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    created_at TEXT NOT NULL
+) WITHOUT ROWID;
+SQL);
+            },
+            // Who started a long working session (an import written in portions) and whether its undo was allowed
+            // (CircuitBreaker::claimSession, allowRollback). Kept apart from agent_sessions, which forget a session after a day.
+            7 => static function (PDO $pdo): void {
+                $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS session_owners (
+    session_id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    actor_type TEXT NOT NULL,
+    actor_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    rollback_by TEXT NOT NULL DEFAULT '',
+    rollback_at TEXT NOT NULL DEFAULT '',
+    rollback_reason TEXT NOT NULL DEFAULT ''
+) WITHOUT ROWID;
+SQL);
+            },
         ];
     }
 }

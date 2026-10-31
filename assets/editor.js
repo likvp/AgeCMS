@@ -635,6 +635,8 @@
         if (!dialog) { return; }
         dialog.backdrop.remove();
         dialog = null;
+        // Formatted text boxes of the form live in the page itself (see buildRich) and leave with the dialog.
+        while (host.firstChild) { host.removeChild(host.firstChild); }
         if (!quiet) { busy = false; renderBar(); layout(); }
     }
 
@@ -710,6 +712,7 @@
     /** Builds the input of one field. Returns {el, get(), check()}. */
     function buildField(f, value) {
         if (f.type === 'list') { return buildList(f, value); }
+        if (f.type === 'richtext') { return buildRich(f, value); }
         if (f.type === 'bool') {
             const box = h('input', { type: 'checkbox' });
             box.checked = value === true;
@@ -758,6 +761,44 @@
             el: fld, get: get,
             check: function () {
                 if (f.required && empty()) { fld.classList.add('bad'); input.focus(); return false; }
+                return true;
+            }
+        };
+    }
+
+    let richSeq = 0;
+    /**
+     * A formatted text field. The editable box is an element of the page shown inside the dialog through a <slot>: selection
+     * and editing commands work the same in every browser there, while the buttons stay in the shadow root with the dialog.
+     */
+    function buildRich(f, value) {
+        const R = window.AgeRich;
+        const fld = h('div', { class: 'fld' }, [h('label', { class: 'lab' }, [f.label, f.required ? h('span', { class: 'req', text: ' *' }) : null])]);
+        if (!R) {
+            // Without the visual editor the HTML is edited as text; the server cleans it anyway.
+            const area = h('textarea', { spellcheck: 'false' });
+            area.value = value == null ? '' : String(value);
+            fld.appendChild(area);
+            return {
+                el: fld, get: function () { return area.value; },
+                check: function () { if (f.required && !area.value.trim()) { fld.classList.add('bad'); return false; } return true; }
+            };
+        }
+        const name = 'agx-rich-' + (++richSeq);
+        const box = document.createElement('div');
+        box.setAttribute('slot', name);
+        box.innerHTML = R.clean(value == null ? '' : String(value));
+        box.style.cssText = 'display:block;min-height:180px;max-height:55vh;overflow:auto;margin:0;padding:10px 14px;border:1px solid #cfcfd6;border-top:0;border-radius:0 0 8px 8px;background:#fff;color:#1b1b1f;font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left;outline:none';
+        host.appendChild(box);
+        R.attach(box);
+        box.addEventListener('input', function () { fld.classList.remove('bad'); });
+        fld.appendChild(h('div', { class: 'richbox' }, [R.toolbar(document, 'richtools', function () { return box; }), h('slot', { name: name })]));
+        if (f.hint) { fld.appendChild(h('p', { class: 'hint', text: f.hint })); }
+        return {
+            el: fld,
+            get: function () { return R.clean(box.innerHTML); },
+            check: function () {
+                if (f.required && !R.textOf(box.innerHTML)) { fld.classList.add('bad'); box.focus(); return false; }
                 return true;
             }
         };
@@ -838,6 +879,10 @@
                     if (parts[i].f.type === 'string' || parts[i].f.type === 'text') {
                         const v = parts[i].part.get();
                         if (v) { return String(v).split('\n')[0]; }
+                    }
+                    if (parts[i].f.type === 'richtext' && window.AgeRich) {
+                        const t = window.AgeRich.textOf(parts[i].part.get());
+                        if (t) { return t.slice(0, 120); }
                     }
                 }
                 return '';
@@ -962,6 +1007,7 @@
         const block = blockData[id];
         const type = block ? types[block.type] : null;
         if (!block || !type) { notify('Этот блок нельзя изменить мышью.', 'error'); return; }
+        if (!window.AgeRich && hasRich(type.fields) && !richTried) { loadRich().then(function () { openForm(id); }); return; }
         let dirty = false;
         let saving = false;
         const dlg = openDialog('Изменить: ' + type.title, type.hint, {
@@ -1085,7 +1131,89 @@
             });
     }
 
+    // ---------------------------------------------------------------- formatted text (richtext fields)
+
+    let richReady = null;
+    let richTried = false;
+    /** assets/rich.js, the visual editor of formatted text, is loaded only on pages that need it. */
+    function loadRich() {
+        if (window.AgeRich) { return Promise.resolve(window.AgeRich); }
+        if (!richReady) {
+            richReady = new Promise(function (resolve) {
+                const s = document.createElement('script');
+                s.src = scriptSrc.replace(/editor\.js(\?|$)/, 'rich.js$1');
+                s.onload = function () { richTried = true; resolve(window.AgeRich || null); };
+                s.onerror = function () { richTried = true; resolve(null); };
+                document.head.appendChild(s);
+            });
+        }
+        return richReady;
+    }
+
+    function hasRich(fields) {
+        return (fields || []).some(function (f) { return f.type === 'richtext' || (f.type === 'list' && hasRich(f.of)); });
+    }
+
+    let richBar = null;
+    let richTarget = null;
+    /** The buttons float over the formatted text being edited on the page. */
+    function placeRichBar() {
+        if (!richBar || !richTarget) { return; }
+        const r = richTarget.getBoundingClientRect();
+        const top = r.top - richBar.offsetHeight - 8 < safeTop() ? Math.min(r.bottom + 8, window.innerHeight - richBar.offsetHeight - 8) : r.top - richBar.offsetHeight - 8;
+        richBar.style.top = Math.max(8, top) + 'px';
+        richBar.style.left = Math.max(8, Math.min(r.left, window.innerWidth - richBar.offsetWidth - 8)) + 'px';
+    }
+
+    function setupRich(el, R) {
+        R.attach(el);
+        el.setAttribute('spellcheck', 'true');
+        const read = function () { return R.clean(el.innerHTML); };
+        el.dataset.agSaved = read();
+        let timer = null;
+        const flush = function () {
+            clearTimeout(timer);
+            const value = read();
+            if (value !== el.dataset.agSaved) { saveText(el, value); }
+        };
+        if (!richBar) {
+            richBar = R.toolbar(document, 'richbar', function () { return richTarget; });
+            root.appendChild(richBar);
+            window.addEventListener('scroll', function () { if (richTarget) { window.requestAnimationFrame(placeRichBar); } }, { passive: true });
+            window.addEventListener('resize', placeRichBar);
+        }
+        el.addEventListener('focus', function () {
+            richTarget = el;
+            richBar.style.display = 'flex';
+            placeRichBar();
+        });
+        el.addEventListener('blur', function () {
+            flush();
+            window.setTimeout(function () {
+                if (richTarget === el && document.activeElement !== el) { richTarget = null; richBar.style.display = 'none'; }
+            }, 150);
+        });
+        el.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { e.stopPropagation(); el.innerHTML = el.dataset.agSaved; el.blur(); }
+        });
+        el.addEventListener('input', function () {
+            placeRichBar();
+            clearTimeout(timer);
+            timer = setTimeout(flush, 1500);
+        });
+    }
+
+    const richFields = Array.prototype.slice.call(document.querySelectorAll('[data-ag-field][data-ag-rich]'));
+    if (richFields.length || (editorData && editorData.types.some(function (t) { return hasRich(t.fields); }))) {
+        loadRich().then(function (R) {
+            richFields.forEach(function (el) {
+                if (R) { setupRich(el, R); } else { el.removeAttribute('data-ag-field'); }
+            });
+        });
+    }
+
     document.querySelectorAll('[data-ag-field]').forEach(function (el) {
+        if (el.hasAttribute('data-ag-rich')) { return; }
         const multi = el.hasAttribute('data-ag-multi');
         el.setAttribute('contenteditable', 'true');
         el.setAttribute('spellcheck', 'true');

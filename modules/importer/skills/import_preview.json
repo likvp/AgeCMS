@@ -1,0 +1,20 @@
+{
+    "name": "import_preview",
+    "description": "Start importing a site into this one and get the plan without changing anything: pages found, old address -> new address, blocks of each page, what is lost (Zero Block, embeds, forms), redirects and menus. Source: url of a live site, or file_base64 with type wxr (WordPress Tools > Export XML) or tilda_zip (Tilda project export), up to 50 MB. Returns job_id; while status is analyzing call import_status again. Show the plan to the owner before import_apply. Design is not moved, only content. Administrators only.",
+    "permission": "system.manage",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "Site address, https://old-site.ru"},
+            "file_base64": {"type": "string", "description": "Export file in base64 instead of url"},
+            "type": {"type": "string", "enum": ["wxr", "tilda_zip", "html"], "description": "Kind of file_base64"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 2000, "description": "Most pages to take, default from the module settings (200)"},
+            "conflict": {"type": "string", "enum": ["suffix", "skip"], "description": "When an address is taken on this site: suffix adds -2, skip leaves the page out. Default suffix"},
+            "replace_home": {"type": "boolean", "description": "Replace the content of the existing home page with the imported one. Default false"},
+            "menus": {"type": "boolean", "description": "Replace header and footer menus with the imported ones. Default true"},
+            "section": {"type": "string", "description": "Address of the section for blog posts, e.g. blog. Default: as at the source, or blog"},
+            "details": {"type": "boolean", "description": "Full blocks of every page in the answer"}
+        },
+        "additionalProperties": false
+    }
+}

@@ -1,0 +1,72 @@
+[
+ {
+  "id": 10,
+  "date": "2024-01-10T10:00:00",
+  "slug": "glavnaya",
+  "status": "publish",
+  "type": "page",
+  "link": "https://smile.example.ru/",
+  "parent": 0,
+  "template": "",
+  "guid": {
+   "rendered": "https://smile.example.ru/?page_id=10"
+  },
+  "title": {
+   "rendered": "Главная"
+  },
+  "excerpt": {
+   "rendered": ""
+  },
+  "content": {
+   "protected": false,
+   "rendered": "<div class=\"wp-block-cover alignfull\"><img class=\"wp-block-cover__image-background wp-image-5\" alt=\"Кресло у окна\" src=\"https://smile.example.ru/wp-content/uploads/2024/01/hall.jpg\"><div class=\"wp-block-cover__inner-container\"><h1 class=\"wp-block-heading\">Стоматология «Улыбка»</h1><p>Лечим без боли с 2010 года.</p><div class=\"wp-block-buttons\"><div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\" href=\"/kontakty/\">Записаться</a></div><div class=\"wp-block-button is-style-outline\"><a class=\"wp-block-button__link wp-element-button\" href=\"/tseny/\">Цены</a></div></div></div></div>\n<p><figure id=\"attachment_7\" aria-describedby=\"caption-attachment-7\" class=\"wp-caption aligncenter\"><a href=\"https://smile.example.ru/wp-content/uploads/2024/01/doctor.jpg\"><img src=\"https://smile.example.ru/wp-content/uploads/2024/01/doctor-300x200.jpg\" alt=\"Главный врач\" class=\"size-medium wp-image-7\"></a><figcaption id=\"caption-attachment-7\" class=\"wp-caption-text\">Главный врач Ольга Петрова</figcaption></figure></p>\n<p>Видео о клинике:</p>\n<p><iframe src=\"https://rutube.ru/play/embed/abc123/\" width=\"720\" height=\"405\"></iframe></p>\n<figure class=\"wp-block-embed is-type-rich is-provider-twitter wp-block-embed-twitter\"><div class=\"wp-block-embed__wrapper\"><blockquote class=\"twitter-tweet\"><p lang=\"ru\">Открыли второй кабинет <a href=\"https://t.co/xyz\">https://t.co/xyz</a></p>&mdash; Улыбка (@smile) <a href=\"https://x.com/smile/status/123456789\">1 марта 2024</a></blockquote><script async src=\"https://platform.x.com/widgets.js\"></script></div></figure>\n<h2 class=\"wp-block-heading\">Новости</h2>\n<ul class=\"wp-block-latest-posts__list wp-block-latest-posts\"><li><a class=\"wp-block-latest-posts__post-title\" href=\"https://smile.example.ru/blog/news-1/\">Новость 1</a></li></ul>\n<form role=\"search\" method=\"get\" action=\"https://smile.example.ru/\" class=\"wp-block-search\"><label class=\"wp-block-search__label\" for=\"s1\">Поиск</label><input type=\"search\" id=\"s1\" name=\"s\"><button type=\"submit\">Найти</button></form>\n<figure class=\"wp-block-audio\"><audio controls src=\"https://smile.example.ru/wp-content/uploads/2024/01/intro.mp3\"></audio><figcaption>Голосовое приветствие</figcaption></figure>"
+  }
+ },
+ {
+  "id": 12,
+  "date": "2024-01-11T10:00:00",
+  "slug": "tseny",
+  "status": "publish",
+  "type": "page",
+  "link": "https://smile.example.ru/tseny/",
+  "parent": 0,
+  "template": "page-prices.php",
+  "guid": {
+   "rendered": "https://smile.example.ru/?page_id=12"
+  },
+  "title": {
+   "rendered": "Цены"
+  },
+  "excerpt": {
+   "rendered": ""
+  },
+  "content": {
+   "protected": false,
+   "rendered": ""
+  }
+ },
+ {
+  "id": 14,
+  "date": "2024-01-12T10:00:00",
+  "slug": "dlya-vrachey",
+  "status": "publish",
+  "type": "page",
+  "link": "https://smile.example.ru/dlya-vrachey/",
+  "parent": 0,
+  "template": "",
+  "guid": {
+   "rendered": "https://smile.example.ru/?page_id=14"
+  },
+  "title": {
+   "rendered": "Защищено: Для врачей"
+  },
+  "excerpt": {
+   "protected": true,
+   "rendered": ""
+  },
+  "content": {
+   "protected": true,
+   "rendered": ""
+  }
+ }
+]

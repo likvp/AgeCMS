@@ -88,3 +88,32 @@ h3 { font-size: 1.2rem; }
 .figure { margin: 0; }
 .figure img { display: block; width: 100%; height: auto; border-radius: var(--radius); background: var(--surface); }
 .figure figcaption { margin-top: 10px; color: var(--muted); font-size: 0.9rem; }
+
+.rich { overflow-wrap: break-word; }
+.rich > :first-child { margin-top: 0; }
+.rich > :last-child { margin-bottom: 0; }
+.rich p, .rich ul, .rich ol, .rich blockquote, .rich figure, .rich pre, .rich table { margin: 0 0 1.1em; }
+.rich h2, .rich h3, .rich h4 { margin: 1.6em 0 0.6em; line-height: 1.25; }
+.rich li + li { margin-top: 0.3em; }
+.rich a { color: var(--accent); }
+.rich img { max-width: 100%; height: auto; border-radius: 12px; }
+.rich figure { margin-left: 0; margin-right: 0; }
+.rich figcaption { margin-top: 8px; color: var(--muted); font-size: 0.9rem; }
+.rich blockquote { margin-left: 0; padding: 4px 0 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); }
+.rich hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
+.rich code { font: 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
+.rich pre { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.rich pre code { border: 0; padding: 0; background: none; }
+.rich table { display: block; overflow-x: auto; border-collapse: collapse; max-width: 100%; }
+.rich th, .rich td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.rich th { background: var(--surface); }
+.is-editing .rich[data-ag-field] { min-height: 3em; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.card { display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); color: inherit; text-decoration: none; transition: border-color 0.15s; }
+.card:hover { border-color: var(--accent); }
+.card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--line); }
+.card-body { display: flex; flex-direction: column; gap: 6px; padding: 20px 22px 22px; }
+.card time { color: var(--accent); font-size: 0.85rem; font-weight: 600; }
+.card strong { font-size: 1.1rem; line-height: 1.3; }
+.card-text { color: var(--muted); font-size: 0.95rem; }

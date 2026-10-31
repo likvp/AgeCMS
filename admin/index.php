@@ -213,6 +213,18 @@ try {
                     $flash = 'Картинка удалена навсегда';
                     $section = 'trash';
                     break;
+                case 'redirect_add':
+                    $result = Queue::submit($actor, 'add_redirects', ['items' => [['from' => trim((string)($_POST['from'] ?? '')), 'to' => trim((string)($_POST['to'] ?? ''))]]]);
+                    $flash = $result['changed'] ? 'Редирект сохранён' : 'Такой редирект уже есть';
+                    $section = 'settings';
+                    $_GET['tab'] = 'redirects';
+                    break;
+                case 'redirect_remove':
+                    $result = Queue::submit($actor, 'remove_redirects', ['from' => [(string)($_POST['from'] ?? '')]]);
+                    $flash = $result['changed'] ? 'Редирект удалён' : 'Такого редиректа уже нет';
+                    $section = 'settings';
+                    $_GET['tab'] = 'redirects';
+                    break;
                 case 'page_purge':
                     $slug = (string)($_POST['slug'] ?? '');
                     Queue::submit($actor, 'purge_page', ['slug' => $slug]);
@@ -534,14 +546,21 @@ if ($adminModule !== null) {
         exit;
     }
     $method = $_SERVER['REQUEST_METHOD'];
+    // data-ag-poll / data-ag-step of admin.js: the answer is the bare HTML fragment of the module (or its JSON).
+    $modulePoll = ($_SERVER['HTTP_X_AGECMS_POLL'] ?? '') === '1';
+    // A body larger than post_max_size reaches PHP empty: say that, not "the session expired".
+    $postLimit = \AgeCMS\ModuleUpload::iniBytes((string)ini_get('post_max_size'));
+    $tooLarge = $method === 'POST' && $_POST === [] && $_FILES === [] && $postLimit > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $postLimit;
     if (!AntiSpam::rateLimit('admmod:' . (int)$user['id'], 300, 60)) {
         $moduleReply = \AgeCMS\ModuleResponse::html('Слишком много запросов', '<div class="notice error">Подождите минуту и повторите.</div>', 429);
+    } elseif ($tooLarge) {
+        $moduleReply = \AgeCMS\ModuleResponse::html('Файл слишком большой', '<div class="notice error">Запрос больше, чем принимает сервер (post_max_size ' . ag_e((string)ini_get('post_max_size')) . ', upload_max_filesize ' . ag_e((string)ini_get('upload_max_filesize')) . '). Увеличьте эти значения в настройках PHP или передайте файл другим способом.</div>', 413);
     } elseif ($method === 'POST' && !Auth::checkCsrf($_POST['csrf'] ?? null)) {
         $moduleReply = \AgeCMS\ModuleResponse::html('Сессия устарела', '<div class="notice error">Сессия устарела, обновите страницу и повторите.</div>', 403);
     } else {
         $input = $_POST;
         unset($input['csrf']);
-        $moduleReply = \AgeCMS\ModuleAdmin::run($adminModule, $method, (string)$adminModule['path'], $_GET, $input, Auth::actor(), $_FILES);
+        $moduleReply = \AgeCMS\ModuleAdmin::run($adminModule, $method, (string)$adminModule['path'], $_GET, $input, Auth::actor(), $_FILES, $modulePoll);
     }
     if ($moduleReply->kind === 'redirect') {
         http_response_code($moduleReply->status);
@@ -551,6 +570,16 @@ if ($adminModule !== null) {
     if ($moduleReply->kind === 'json') {
         http_response_code($moduleReply->status);
         header('Content-Type: application/json; charset=utf-8');
+        echo $moduleReply->body;
+        exit;
+    }
+    if ($modulePoll) {
+        // Only the body of the module page; admin.js puts it in place of the polled element. The header tells admin.js that
+        // this is a fragment and not, say, the sign-in page after the session ended.
+        http_response_code($moduleReply->status);
+        header('Content-Type: text/html; charset=utf-8');
+        header('X-AgeCMS-Fragment: 1');
+        header('Vary: X-AgeCMS-Poll');
         echo $moduleReply->body;
         exit;
     }

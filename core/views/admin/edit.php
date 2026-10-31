@@ -68,4 +68,5 @@ $url = '/' . ($slug === 'index' ? '' : $slug);
 <div id="ag-editor"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
 <noscript><div class="notice error"><?= icon('warning-circle') ?><div>Редактору нужен JavaScript.</div></div></noscript>
 <script type="application/json" id="ag-editor-data"><?= $json ?></script>
+<script src="<?= h('/assets/rich.js?v=' . (is_file(AGECMS_ROOT . '/assets/rich.js') ? filemtime(AGECMS_ROOT . '/assets/rich.js') : 1)) ?>" defer></script>
 <script src="<?= h(admin_asset('editor.js')) ?>" defer></script>

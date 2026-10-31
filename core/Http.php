@@ -133,25 +133,57 @@ final class Http
         return self::request($url, 'POST', $fields, [], $timeout, 1048576);
     }
 
-    /** @return array{status:int,body:string}|null */
-    public static function get(string $url, int $timeout = 5, int $maxBytes = 10485760): ?array
+    /**
+     * GET of a public address. $allowHttp also lets plain http through (pictures of an old site), $redirects is how many
+     * redirects to follow; every hop is checked by guard() again, so a redirect cannot lead into the local network.
+     *
+     * @return array{status:int,body:string}|null
+     */
+    public static function get(string $url, int $timeout = 5, int $maxBytes = 10485760, bool $allowHttp = false, int $redirects = 0): ?array
     {
-        return self::request($url, 'GET', null, [], $timeout, $maxBytes);
+        for ($hop = 0; ; $hop++) {
+            $response = self::request($url, 'GET', null, [], $timeout, $maxBytes, $allowHttp);
+            $location = $response['location'] ?? '';
+            if ($response === null || $hop >= $redirects || $location === '' || !in_array($response['status'], [301, 302, 303, 307, 308], true)) {
+                return $response === null ? null : ['status' => $response['status'], 'body' => $response['body']];
+            }
+            $url = self::resolve($url, $location);
+        }
+    }
+
+    /** Absolute address of a Location header relative to the address that answered with it. */
+    public static function resolve(string $base, string $location): string
+    {
+        if (preg_match('~^https?://~i', $location) === 1) {
+            return $location;
+        }
+        $p = parse_url($base);
+        $origin = strtolower((string)($p['scheme'] ?? 'https')) . '://' . (string)($p['host'] ?? '') . (isset($p['port']) ? ':' . $p['port'] : '');
+        if (str_starts_with($location, '//')) {
+            return strtolower((string)($p['scheme'] ?? 'https')) . ':' . $location;
+        }
+        if (str_starts_with($location, '/')) {
+            return $origin . $location;
+        }
+        $dir = (string)($p['path'] ?? '/');
+        $dir = substr($dir, 0, (int)strrpos($dir, '/') + 1);
+        return $origin . ($dir === '' ? '/' : $dir) . $location;
     }
 
     /**
      * @param string|array<string,mixed>|null $payload
      * @param list<string> $headers
-     * @return array{status:int,body:string}|null
+     * @return array{status:int,body:string,location:string}|null
      */
-    private static function request(string $url, string $method, string|array|null $payload, array $headers, int $timeout, int $maxBytes): ?array
+    private static function request(string $url, string $method, string|array|null $payload, array $headers, int $timeout, int $maxBytes, bool $allowHttp = false): ?array
     {
-        $target = self::guard($url);
+        $target = self::guard($url, $allowHttp);
         if ($target === null || !function_exists('curl_init')) {
             Logger::log('warning', 'http.refused', ['host' => (string)parse_url($url, PHP_URL_HOST)]);
             return null;
         }
         $body = '';
+        $location = '';
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => $method,
@@ -159,7 +191,13 @@ final class Http
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_CONNECTTIMEOUT => min(3, $timeout),
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => $allowHttp ? CURLPROTO_HTTPS | CURLPROTO_HTTP : CURLPROTO_HTTPS,
+            CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$location): int {
+                if (stripos($line, 'location:') === 0) {
+                    $location = trim(substr($line, 9));
+                }
+                return strlen($line);
+            },
             CURLOPT_RESOLVE => ["{$target['host']}:{$target['port']}:{$target['ip']}"],
             CURLOPT_USERAGENT => 'AgeCMS/1.0',
             CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$body, $maxBytes): int {
@@ -172,6 +210,6 @@ final class Http
         }
         $ok = curl_exec($ch);
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        return $ok === false ? null : ['status' => $status, 'body' => $body];
+        return $ok === false ? null : ['status' => $status, 'body' => $body, 'location' => $location];
     }
 }

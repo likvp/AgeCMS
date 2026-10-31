@@ -16,27 +16,49 @@ final class Media
         return extension_loaded('gd') && function_exists('imagewebp');
     }
 
+    /** True when GD can read AVIF pictures (PHP 8.1+ built with libavif). */
+    public static function avifReadable(): bool
+    {
+        return function_exists('imagecreatefromavif');
+    }
+
     public static function dir(): string
     {
         return defined('AGECMS_UPLOADS') ? AGECMS_UPLOADS : AGECMS_ROOT . '/assets/uploads';
     }
 
-    /** Downloads a public image and stores an optimised copy. Returns its site-relative URL. */
+    /**
+     * Downloads a public image (https, or http for pictures of an old site; up to three redirects, each checked against the
+     * local network) and stores an optimised copy. Returns its site-relative URL; the same picture again gives the same URL.
+     */
     public static function importUrl(string $url, int $quality = 82): string
     {
-        $response = Http::get($url, 8, self::MAX_BYTES);
+        $response = Http::get($url, 8, self::MAX_BYTES, true, 3);
         if ($response === null || $response['status'] !== 200) {
             throw new ValidationException(['Image could not be downloaded (non-public address, error or larger than 10 MB)']);
         }
         $tmp = tempnam(sys_get_temp_dir(), 'agimg');
         file_put_contents($tmp, $response['body']);
         try {
-            $stored = self::optimize($tmp, $quality);
-            Audit::record(Audit::MEDIA, "Загружена картинка {$stored} (по ссылке)");
-            return $stored;
+            return self::store($tmp, $quality, 'по ссылке');
         } finally {
             @unlink($tmp);
         }
+    }
+
+    /**
+     * A local file (an export unpacked on the server, for example): the same checks as an upload, the original is left alone.
+     * Returns the site-relative URL; the same picture again gives the same URL.
+     */
+    public static function importFile(string $path, int $quality = 82): string
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            throw new ValidationException(['The file is not there or cannot be read']);
+        }
+        if ((int)filesize($path) > self::MAX_BYTES) {
+            throw new ValidationException(['The file is larger than 10 MB']);
+        }
+        return self::store($path, $quality, 'из файла');
     }
 
     /**
@@ -56,9 +78,42 @@ final class Media
         if ((int)($file['size'] ?? 0) > self::MAX_BYTES) {
             throw new ValidationException(['The file is larger than 10 MB']);
         }
-        $stored = self::optimize($file['tmp_name'], $quality);
-        Audit::record(Audit::MEDIA, "Загружена картинка {$stored}");
+        return self::store($file['tmp_name'], $quality, '');
+    }
+
+    /**
+     * Optimises and stores a picture once: the SHA-256 of the source bytes is remembered (table media_hashes), so the same
+     * picture uploaded or imported again returns the path stored the first time, as long as that file is still in the library.
+     */
+    private static function store(string $path, int $quality, string $how): string
+    {
+        $hash = (string)hash_file('sha256', $path);
+        $known = self::known($hash);
+        if ($known !== null) {
+            return $known;
+        }
+        $stored = self::optimize($path, $quality);
+        try {
+            Database::write(static fn(\PDO $pdo) => $pdo->prepare('INSERT OR REPLACE INTO media_hashes (sha256, url, created_at) VALUES (?, ?, ?)')->execute([$hash, $stored, ag_now()]));
+        } catch (\Throwable $e) {
+            Logger::log('warning', 'media.hash_failed', ['error' => $e->getMessage()]);
+        }
+        Audit::record(Audit::MEDIA, "Загружена картинка {$stored}" . ($how !== '' ? " ({$how})" : ''));
         return $stored;
+    }
+
+    /** URL of a picture with this source hash that is still in the library, or null. */
+    private static function known(string $hash): ?string
+    {
+        try {
+            $url = Database::value('SELECT url FROM media_hashes WHERE sha256 = ?', [$hash]);
+        } catch (\Throwable) {
+            return null; // the table appears with the schema update, until then every picture is new
+        }
+        if (!is_string($url) || preg_match('~^/assets/uploads/([a-f0-9]{20}\.webp)$~', $url, $m) !== 1) {
+            return null;
+        }
+        return is_file(self::dir() . '/' . $m[1]) ? $url : null;
     }
 
     /**
@@ -222,13 +277,18 @@ final class Media
             throw new AgeCMSException('The GD extension with WebP support is required');
         }
         $info = @getimagesize($path);
-        if ($info === false || !in_array($info[2], self::TYPES, true)) {
-            throw new ValidationException(['Only JPEG, PNG, GIF and WebP images are accepted']);
+        // AVIF (Webflow and other builders upload it as is) is read when GD can decode it, and stored as WebP like the rest.
+        $avif = $info !== false && defined('IMAGETYPE_AVIF') && $info[2] === IMAGETYPE_AVIF;
+        if ($avif && !self::avifReadable()) {
+            throw new ValidationException(['AVIF images need GD with AVIF support (imagecreatefromavif) on the server']);
+        }
+        if ($info === false || !$avif && !in_array($info[2], self::TYPES, true)) {
+            throw new ValidationException(['Only JPEG, PNG, GIF, WebP and AVIF images are accepted']);
         }
         if ($info[0] * $info[1] > self::MAX_PIXELS) {
             throw new ValidationException(['Image is too large (max 40 megapixels)']);
         }
-        $image = @imagecreatefromstring((string)file_get_contents($path));
+        $image = $avif ? @imagecreatefromavif($path) : @imagecreatefromstring((string)file_get_contents($path));
         if ($image === false) {
             throw new ValidationException(['Image could not be decoded']);
         }

@@ -1,0 +1,14 @@
+{
+    "name": "import_status",
+    "description": "State of an import job and one more portion of work (analysis, creation or rollback continue with each call): status, counts, pages with old and new addresses, blocks, losses, errors, redirects, and what to do next. Administrators only.",
+    "permission": "system.manage",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "job_id": {"type": "integer"},
+            "details": {"type": "boolean", "description": "Full block descriptions"}
+        },
+        "required": ["job_id"],
+        "additionalProperties": false
+    }
+}

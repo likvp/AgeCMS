@@ -1,0 +1,18 @@
+{
+    "name": "importer",
+    "version": "1.0.0",
+    "title": "Импорт сайта с другой CMS",
+    "entry": "Module.php",
+    "class": "AgeCMS\\Modules\\Importer\\Module",
+    "admin": [
+        {"path": "/", "title": "Импорт сайта", "permission": "system.manage", "methods": ["GET", "POST"]},
+        {"path": "/job", "title": "Задание импорта", "permission": "system.manage", "methods": ["GET", "POST"], "menu": false},
+        {"path": "/upload", "title": "Загрузка файла импорта", "permission": "system.manage", "methods": ["POST"], "menu": false, "upload": {"kinds": ["xml", "zip"], "max_kb": 51200, "max_files": 1}}
+    ],
+    "settings": [
+        {"key": "page_limit", "label": "Страниц за один импорт", "type": "number", "min": 1, "max": 2000, "default": 200, "help": "Сколько страниц брать с сайта, если в форме не указано другое."},
+        {"key": "delay_ms", "label": "Пауза между запросами, мс", "type": "number", "min": 0, "max": 10000, "default": 500, "help": "Чтобы не нагружать старый сайт. 500 мс подходят почти всегда."},
+        {"key": "chunk", "label": "Страниц за один шаг", "type": "number", "min": 1, "max": 20, "default": 5, "help": "На хостинге с коротким временем запроса уменьшите до 2-3."},
+        {"key": "respect_robots", "label": "Соблюдать запреты robots.txt", "type": "bool", "default": true, "help": "Адреса, закрытые для всех роботов, не открываются."}
+    ]
+}

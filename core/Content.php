@@ -14,6 +14,7 @@ use PDO;
 final class Content
 {
     public const DELETE_DESC = 'Удаление страницы';
+    public const CREATE_DESC = 'Создание страницы';
     public const PURGE_DESC = 'Удаление навсегда';
     /** The last revision of an address a page moved away from reads "Перенос на /new-address". */
     public const MOVED_TO = 'Перенос на ';
@@ -166,7 +167,7 @@ final class Content
             if (($owner = ModuleRoutes::claimedBy($slug)) !== null) {
                 throw new ValidationException(["The address '/{$slug}' belongs to the module {$owner}"]);
             }
-            return self::commit($pdo, $actor, $slug, 'Создание страницы', [], SchemaValidator::document($fields), true);
+            return self::commit($pdo, $actor, $slug, self::CREATE_DESC, [], SchemaValidator::document($fields), true);
         });
     }
 
@@ -252,7 +253,7 @@ final class Content
             CircuitBreaker::guardModify($pdo, $session, $slug);
 
             $created = (string)Database::value('SELECT created_at FROM pages WHERE slug = ?', [$slug]);
-            $tags = ['page:' . $slug, 'page:' . $newSlug];
+            $tags = array_merge(['page:' . $slug, 'page:' . $newSlug, 'children:' . $slug, 'children:' . $newSlug], self::childrenTags($before));
 
             $revisionId = Revisions::record($pdo, $newSlug, $actor, self::MOVED_FROM . '/' . $slug, [], $before);
             Pages::save($pdo, $newSlug, $before, true);
@@ -330,8 +331,83 @@ final class Content
 
             $revisionId = Revisions::record($pdo, $slug, $actor, self::DELETE_DESC, $before, []);
             Pages::delete($pdo, $slug);
-            return ['slug' => $slug, 'revision_id' => $revisionId, 'changed' => true, 'tags' => ['page:' . $slug], 'ping' => false];
+            return ['slug' => $slug, 'revision_id' => $revisionId, 'changed' => true, 'tags' => array_merge(['page:' . $slug], self::childrenTags($before)), 'ping' => false];
         });
+    }
+
+    /**
+     * Undoes pages a session created: moves them to the trash (restorePage() brings them back) without counting them towards
+     * the share of changed pages of the circuit breaker. Needs CircuitBreaker::allowRollback() for $session first (a person
+     * with system.manage, or the agent token that owns the session). A page is removed only when $session created it (its
+     * last creation at this address) and nobody outside that session changed it afterwards; children go before parents.
+     * Every removal is a regular "Удаление страницы" revision of $actor in the history.
+     *
+     * @param list<string> $slugs pages to undo, usually what the job remembers it created
+     * @return array{deleted:list<string>,missing:list<string>,kept:array<string,string>} kept: slug => why it stays
+     */
+    public static function rollbackSession(Actor $actor, string $session, array $slugs): array
+    {
+        Security::requirePermission($actor, 'content.write');
+        if (CircuitBreaker::isFrozen()) {
+            $info = CircuitBreaker::frozenInfo();
+            throw new FrozenException('Writes are frozen since ' . ($info['since'] ?? '?') . ': ' . ($info['reason'] ?? 'circuit breaker') . '. An administrator must run bin/unfreeze.php.');
+        }
+        $slugs = array_values(array_unique(array_filter($slugs, 'is_string')));
+        // Deeper addresses first: a child created by the session goes before its parent.
+        usort($slugs, static fn(string $a, string $b): int => [substr_count($b, '/'), $a] <=> [substr_count($a, '/'), $b]);
+        Backup::beforeAgentEdit($actor);
+        $result = Database::write(static function (PDO $pdo) use ($actor, $session, $slugs): array {
+            if (!CircuitBreaker::rollbackAllowed($pdo, $actor, $session)) {
+                throw new ForbiddenException("Undoing session {$session} was not allowed: call CircuitBreaker::allowRollback() first");
+            }
+            $out = ['deleted' => [], 'missing' => [], 'kept' => [], 'tags' => []];
+            foreach ($slugs as $slug) {
+                if ($slug === 'index') {
+                    $out['kept'][$slug] = 'главная страница не удаляется';
+                    continue;
+                }
+                $before = Pages::doc($slug);
+                if ($before === null) {
+                    $out['missing'][] = $slug;
+                    continue;
+                }
+                $stmt = $pdo->prepare('SELECT MAX(id) FROM revisions WHERE page_slug = ? AND session_id = ? AND action_desc = ?');
+                $stmt->execute([$slug, $session, self::CREATE_DESC]);
+                $created = $stmt->fetchColumn();
+                if ($created === null || $created === false) {
+                    $out['kept'][$slug] = 'страницу по этому адресу создала не эта сессия';
+                    continue;
+                }
+                // Anything after the creation from outside the session (an edit, a deletion and restore, a move here) keeps it.
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM revisions WHERE page_slug = ? AND id > ? AND (session_id IS NULL OR session_id != ?)');
+                $stmt->execute([$slug, $created, $session]);
+                if ((int)$stmt->fetchColumn() > 0) {
+                    $out['kept'][$slug] = 'страницу меняли после создания';
+                    continue;
+                }
+                $stmt = $pdo->prepare('SELECT slug FROM pages WHERE parent_slug = ? ORDER BY slug LIMIT 3');
+                $stmt->execute([$slug]);
+                $children = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                if ($children !== []) {
+                    $out['kept'][$slug] = 'у страницы есть дочерние: ' . implode(', ', $children);
+                    continue;
+                }
+                Revisions::record($pdo, $slug, $actor, self::DELETE_DESC, $before, []);
+                Pages::delete($pdo, $slug);
+                $out['deleted'][] = $slug;
+                array_push($out['tags'], 'page:' . $slug, ...self::childrenTags($before));
+            }
+            return $out;
+        });
+        if ($result['deleted'] !== []) {
+            Cache::invalidate(array_values(array_unique($result['tags'])));
+            foreach ($result['deleted'] as $slug) {
+                EventBus::trigger('content.changed', ['slug' => $slug, 'revision_id' => null, 'actor' => $actor->name]);
+            }
+        }
+        Logger::log('info', 'circuit_breaker.session_rollback', ['actor' => $actor->name, 'session' => $session, 'deleted' => count($result['deleted']), 'kept' => count($result['kept'])]);
+        unset($result['tags']);
+        return $result;
     }
 
     /**
@@ -394,6 +470,108 @@ final class Content
             $doc['parent_slug'] = '';
         }
         return $doc;
+    }
+
+    /**
+     * Permanent (301) redirects from addresses of the old site, for a move from another CMS: [['from' => '/old/path/?p=12',
+     * 'to' => '/new-slug'], ...], up to Redirects::MAX_BATCH per call. from is a path with an optional query (a full address
+     * of the old site is cut to its path); to is the path of an existing page or a full https address. A source may not be
+     * the address of a page, of the system or of a module, and a target is always a page or another site, so neither chains
+     * nor loops can appear. All or nothing: one bad item refuses the whole list. A source already stored is pointed at the
+     * new target. Recorded in the history as "@redirects".
+     *
+     * @param list<array{from:string,to:string}> $items
+     * @return array{slug:string,revision_id:?int,changed:bool,added:int,updated:int,unchanged:int}
+     */
+    public static function addRedirects(Actor $actor, array $items): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $items): array {
+            if ($items === [] || !array_is_list($items) || count($items) > Redirects::MAX_BATCH) {
+                throw new ValidationException(['items must be a list of 1-' . Redirects::MAX_BATCH . ' redirects']);
+            }
+            $errors = [];
+            $clean = [];
+            foreach ($items as $i => $item) {
+                $checked = is_array($item) ? Redirects::check($item['from'] ?? null, $item['to'] ?? null) : 'must be an object {from, to}';
+                if (is_string($checked)) {
+                    $errors[] = "items[{$i}]: {$checked}";
+                } elseif (isset($clean[$checked[0]])) {
+                    $errors[] = "items[{$i}]: '{$checked[0]}' is listed twice";
+                } else {
+                    $clean[$checked[0]] = $checked[1];
+                }
+                if (count($errors) >= 50) {
+                    $errors[] = 'and maybe more, fix these first';
+                    break;
+                }
+            }
+            if ($errors !== []) {
+                throw new ValidationException($errors);
+            }
+
+            $added = $updated = $unchanged = 0;
+            $find = $pdo->prepare('SELECT to_slug FROM redirects WHERE from_slug = ?');
+            $put = $pdo->prepare('INSERT OR REPLACE INTO redirects (from_slug, to_slug, created_at) VALUES (?, ?, ?)');
+            $now = ag_now();
+            foreach ($clean as $from => $to) {
+                $find->execute([$from]);
+                $old = $find->fetchColumn();
+                if ($old === $to) {
+                    $unchanged++;
+                    continue;
+                }
+                $old === false ? $added++ : $updated++;
+                $put->execute([$from, $to, $now]);
+            }
+            if ($added + $updated === 0) {
+                return ['slug' => Audit::REDIRECTS, 'revision_id' => null, 'changed' => false, 'tags' => [], 'ping' => false, 'added' => 0, 'updated' => 0, 'unchanged' => $unchanged];
+            }
+            $sample = implode(', ', array_slice(array_map(static fn(string $f, string $t): string => $f . ' -> ' . $t, array_keys($clean), $clean), 0, 3));
+            $revisionId = Revisions::mark($pdo, Audit::REDIRECTS, $actor, "Редиректы: добавлено {$added}, изменено {$updated}" . ($sample !== '' ? " ({$sample}" . (count($clean) > 3 ? ', ...' : '') . ')' : ''));
+            return ['slug' => Audit::REDIRECTS, 'revision_id' => $revisionId, 'changed' => true, 'tags' => [], 'ping' => false, 'added' => $added, 'updated' => $updated, 'unchanged' => $unchanged];
+        });
+    }
+
+    /**
+     * Removes redirects by their source address, written as in addRedirects() (it is normalized the same way). Also removes
+     * the redirect a moved page left at its old address ("/old-slug").
+     *
+     * @param list<string> $fromList
+     * @return array{slug:string,revision_id:?int,changed:bool,removed:int,missing:list<string>}
+     */
+    public static function removeRedirects(Actor $actor, array $fromList): array
+    {
+        return self::run($actor, static function (PDO $pdo) use ($actor, $fromList): array {
+            if ($fromList === [] || !array_is_list($fromList) || count($fromList) > Redirects::MAX_BATCH) {
+                throw new ValidationException(['from must be a list of 1-' . Redirects::MAX_BATCH . ' addresses']);
+            }
+            $removed = [];
+            $missing = [];
+            $delete = $pdo->prepare('DELETE FROM redirects WHERE from_slug = ?');
+            foreach ($fromList as $from) {
+                $key = is_string($from) ? Redirects::normalizeFrom($from) : null;
+                if ($key === null) {
+                    $missing[] = is_string($from) ? $from : gettype($from);
+                    continue;
+                }
+                $delete->execute([$key]);
+                $count = $delete->rowCount();
+                if (!str_contains($key, '?')) {
+                    $delete->execute([ltrim($key, '/')]);
+                    $count += $delete->rowCount();
+                }
+                if ($count > 0) {
+                    $removed[] = $key;
+                } else {
+                    $missing[] = $from;
+                }
+            }
+            if ($removed === []) {
+                return ['slug' => Audit::REDIRECTS, 'revision_id' => null, 'changed' => false, 'tags' => [], 'ping' => false, 'removed' => 0, 'missing' => $missing];
+            }
+            $revisionId = Revisions::mark($pdo, Audit::REDIRECTS, $actor, 'Редиректы: удалено ' . count($removed) . ' (' . implode(', ', array_slice($removed, 0, 3)) . (count($removed) > 3 ? ', ...' : '') . ')');
+            return ['slug' => Audit::REDIRECTS, 'revision_id' => $revisionId, 'changed' => true, 'tags' => [], 'ping' => false, 'removed' => count($removed), 'missing' => $missing];
+        });
     }
 
     /**
@@ -529,7 +707,7 @@ final class Content
         }
         Pages::save($pdo, $slug, $after, $isNew);
 
-        $tags = ['page:' . $slug];
+        $tags = array_merge(['page:' . $slug], self::childrenTags($before, $after));
         return [
             'slug' => $slug,
             'revision_id' => $revisionId,
@@ -537,6 +715,25 @@ final class Content
             'tags' => $tags,
             'ping' => (int)$after['is_published'] === 1 && (int)$after['is_noindex'] === 0,
         ];
+    }
+
+    /**
+     * Lists of child pages (the child_pages block) show the title, description, picture and date of each child, so a change
+     * of a page drops the cached pages that list the children of its parent, the old one and the new one.
+     *
+     * @param array<string,mixed> ...$docs
+     * @return list<string>
+     */
+    private static function childrenTags(array ...$docs): array
+    {
+        $tags = [];
+        foreach ($docs as $doc) {
+            $parent = (string)($doc['parent_slug'] ?? '');
+            if ($parent !== '') {
+                $tags[] = 'children:' . $parent;
+            }
+        }
+        return array_values(array_unique($tags));
     }
 
     /** @return array<string,mixed> */

@@ -12,6 +12,9 @@ final class Renderer
     /** Settings of the page being rendered, for ag_setting() in block templates. @var array<string,string> */
     public static array $settings = [];
 
+    /** Extra cache tags a block template asked for while the page is rendered (ag_cache_tag, ag_child_pages). @var list<string> */
+    public static array $tags = [];
+
     /**
      * Renders a stored page. Returns null when the page does not exist or, outside edit mode and preview, is unpublished.
      *
@@ -37,6 +40,7 @@ final class Renderer
 
         self::$context = ['editing' => $editing, 'slug' => $slug, 'block' => '', 'csrf' => $csrf];
         self::$settings = Seo::settings();
+        self::$tags = [];
         $content = '';
         foreach ($doc['blocks'] as $block) {
             $file = "{$themeDir}/blocks/{$block['type']}.php";
@@ -63,7 +67,8 @@ final class Renderer
         foreach (Theme::cachePages($theme) as $shared) {
             $tags[] = 'page:' . $shared;
         }
-        $tags = array_values(array_unique($tags));
+        $tags = array_values(array_unique(array_merge($tags, self::$tags)));
+        self::$tags = [];
 
         $settings = self::$settings;
         $html = self::layout($theme, [
@@ -106,6 +111,14 @@ final class Renderer
             'editing' => false,
             'csrf' => '',
         ]);
+    }
+
+    /** A cache tag for the page being rendered: the cached copy is dropped when Cache::invalidate() gets this tag. */
+    public static function addTag(string $tag): void
+    {
+        if ($tag !== '' && strlen($tag) <= 200 && !in_array($tag, self::$tags, true)) {
+            self::$tags[] = $tag;
+        }
     }
 
     /** @return list<array{title:string,url:string}> */

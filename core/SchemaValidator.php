@@ -10,6 +10,8 @@ namespace AgeCMS;
  */
 final class SchemaValidator
 {
+    /** Every field a page document may have. published_at is optional and stays out of the document while empty. */
+    public const PAGE_FIELDS = ['title', 'parent_slug', 'meta_title', 'meta_description', 'canonical_url', 'og_image', 'is_noindex', 'is_published', 'sort_order', 'published_at', 'schema_type', 'theme', 'blocks'];
     public const SCHEMA_TYPES = ['WebPage', 'AboutPage', 'ContactPage', 'CollectionPage', 'Article', 'Service', 'Product', 'FAQPage', 'LocalBusiness'];
     private const MAX_BLOCKS = 100;
     // A path may not start with // or /\ : browsers read that as a link to another host.
@@ -25,7 +27,7 @@ final class SchemaValidator
     public static function document(array $input): array
     {
         $errors = [];
-        $known = ['title', 'parent_slug', 'meta_title', 'meta_description', 'canonical_url', 'og_image', 'is_noindex', 'is_published', 'sort_order', 'schema_type', 'theme', 'blocks'];
+        $known = self::PAGE_FIELDS;
         foreach (array_keys($input) as $key) {
             if (!in_array($key, $known, true)) {
                 $errors[] = "Unknown page field '{$key}'";
@@ -47,6 +49,13 @@ final class SchemaValidator
             'blocks' => [],
         ];
 
+        // The date of a post (a blog imported from WordPress): only kept when set, so older documents and revisions are unchanged.
+        $published = self::publishedAt($input['published_at'] ?? '', $errors);
+        if ($published !== '') {
+            $at = (int)array_search('schema_type', array_keys($doc), true);
+            $doc = array_slice($doc, 0, $at, true) + ['published_at' => $published] + array_slice($doc, $at, null, true);
+        }
+
         if ($doc['parent_slug'] !== '' && !Pages::slugValid($doc['parent_slug'])) {
             $errors[] = 'parent_slug is not a valid slug';
         }
@@ -64,6 +73,30 @@ final class SchemaValidator
             throw new ValidationException($errors);
         }
         return $doc;
+    }
+
+    /**
+     * YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS (time of the site, no zone). Empty when not set.
+     *
+     * @param list<string> $errors
+     */
+    private static function publishedAt(mixed $value, array &$errors): string
+    {
+        if (!is_string($value)) {
+            $errors[] = 'published_at must be a string';
+            return '';
+        }
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2}))?$/', $value, $m) !== 1
+            || !checkdate((int)$m[2], (int)$m[3], (int)$m[1]) || (int)$m[1] < 1970
+            || (isset($m[4]) && ((int)$m[4] > 23 || (int)$m[5] > 59 || (int)$m[6] > 59))) {
+            $errors[] = 'published_at must be a date YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS';
+            return '';
+        }
+        return $value;
     }
 
     /**
@@ -182,6 +215,18 @@ final class SchemaValidator
                     return '';
                 }
                 return self::string($value, $type, (int)($spec['max'] ?? ($type === 'text' ? 5000 : ($type === 'url' ? 500 : 200))), $path, $errors);
+            case 'richtext':
+                // HTML through the white list of RichText; max counts the cleaned HTML.
+                if (!is_string($value)) {
+                    $errors[] = "{$path} must be a string";
+                    return '';
+                }
+                $clean = RichText::sanitize($value);
+                $max = (int)($spec['max'] ?? 50000);
+                if (mb_strlen($clean) > $max) {
+                    $errors[] = "{$path} is longer than {$max} characters";
+                }
+                return $clean;
             case 'int':
                 return self::intValue($value, (int)($spec['min'] ?? -1000000000), (int)($spec['max'] ?? 1000000000), $path, $errors);
             case 'bool':

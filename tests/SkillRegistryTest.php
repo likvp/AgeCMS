@@ -20,7 +20,8 @@ final class SkillRegistryTest extends TestCase
     {
         $this->freshSite();
         $this->assertSame('ok', $this->status()['status']);
-        $names = array_map(fn($s) => $s['module'] . '/' . $s['name'], SkillRegistry::skills());
+        $own = array_filter(SkillRegistry::skills(), fn($s) => $s['module'] === 'telegram_leads');
+        $names = array_map(fn($s) => $s['module'] . '/' . $s['name'], $own);
         sort($names);
         $this->assertSame(['telegram_leads/send_test_message', 'telegram_leads/status'], $names);
     }
@@ -32,7 +33,7 @@ final class SkillRegistryTest extends TestCase
         $s = $this->status();
         $this->assertSame('blocked', $s['status']);
         $this->assertContains('File changed after signing: skills/status.json', $s['reason']);
-        $this->assertSame([], SkillRegistry::skills());
+        $this->assertSame([], array_values(array_filter(SkillRegistry::skills(), fn($s) => $s['module'] === 'telegram_leads')));
     }
 
     public function testEditedPhpFileBlocksTheModule(): void

@@ -268,6 +268,7 @@
         var title = label + (spec.required ? ' *' : '');
         var control;
         if (type === 'list') { return listField(spec, obj, key, title); }
+        if (type === 'richtext') { return richField(spec, obj, key, title); }
         if (spec.media && (type === 'url' || type === 'string')) { return imageField(spec, obj, key, title); }
         if (type === 'bool') {
             control = el('input', { type: 'checkbox', onchange: function (e) { obj[key] = e.target.checked; setDirty(); } });
@@ -293,6 +294,22 @@
             control.value = obj[key] || '';
         }
         return el('label', { class: 'f' }, [el('span', { text: title }), control]);
+    }
+
+    // Formatted text: assets/rich.js gives the editable box and its buttons. Without it the HTML is edited as text,
+    // the server cleans it either way.
+    function richField(spec, obj, key, title) {
+        var R = window.AgeRich;
+        if (!R) {
+            var area = el('textarea', { class: 'in', rows: 8, oninput: function (e) { setValue(obj, key, spec, e.target.value); } });
+            area.value = obj[key] || '';
+            return el('label', { class: 'f' }, [el('span', { text: title + ' (HTML)' }), area]);
+        }
+        var box = el('div', { class: 'rich-ed', 'aria-label': title });
+        box.innerHTML = R.clean(obj[key] || '');
+        R.attach(box);
+        box.addEventListener('input', function () { setValue(obj, key, spec, R.clean(box.innerHTML)); });
+        return el('div', { class: 'f' }, [el('span', { text: title }), el('div', { class: 'rich-box' }, [R.toolbar(document, 'rich-bar', function () { return box; }), box])]);
     }
 
     function fieldsOf(specs, obj) {
@@ -369,7 +386,8 @@
                 parentField(),
                 field({ type: 'bool' }, flagProxy('is_published'), 'v', 'Опубликована'),
                 field({ type: 'bool' }, flagProxy('is_noindex'), 'v', 'Скрыть от поисковиков (noindex)'),
-                field({ type: 'int', min: -100000, max: 100000 }, page, 'sort_order', 'Порядок в списке')
+                field({ type: 'int', min: -100000, max: 100000 }, page, 'sort_order', 'Порядок в списке'),
+                field({ type: 'string', max: 19 }, page, 'published_at', 'Дата публикации (ГГГГ-ММ-ДД, для записей блога)')
             ])
         ]);
         var seo = el('section', { class: 'panel' }, [
@@ -444,7 +462,7 @@
             var payload = {};
             Object.keys(page).forEach(function (k) { if (k !== 'theme') { payload[k] = page[k]; } });
             // A cleared optional field must overwrite the stored value, so it is sent as an empty one.
-            ['title', 'parent_slug', 'meta_title', 'meta_description', 'canonical_url', 'og_image'].forEach(function (k) { if (payload[k] === undefined) { payload[k] = ''; } });
+            ['title', 'parent_slug', 'meta_title', 'meta_description', 'canonical_url', 'og_image', 'published_at'].forEach(function (k) { if (payload[k] === undefined) { payload[k] = ''; } });
             if (payload.sort_order === undefined) { payload.sort_order = 0; }
             saveBtn.disabled = true;
             status.say('Сохранение...', '');

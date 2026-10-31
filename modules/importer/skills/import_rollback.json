@@ -1,0 +1,13 @@
+{
+    "name": "import_rollback",
+    "description": "Undo an applied import: pages it created go to the trash (pages edited since then stay), its redirects are removed, menus come back. An agent may undo an import of any size that was applied with the same agent token (the deletions are then outside the circuit breaker limit); an import applied by a person or another token only up to 2 pages, a bigger one is undone by the owner in the admin with «Отменить импорт». Administrators only.",
+    "permission": "system.manage",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "job_id": {"type": "integer"}
+        },
+        "required": ["job_id"],
+        "additionalProperties": false
+    }
+}

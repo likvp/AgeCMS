@@ -111,6 +111,9 @@ final class Seo
         if ($doc['meta_description'] !== '') {
             $page['description'] = $doc['meta_description'];
         }
+        if (($doc['published_at'] ?? '') !== '') {
+            $page['datePublished'] = $doc['published_at'];
+        }
 
         $graph = [
             $org,

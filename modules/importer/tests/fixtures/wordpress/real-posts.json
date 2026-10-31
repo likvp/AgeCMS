@@ -1,0 +1,32 @@
+[
+ {
+  "id": 20,
+  "date": "2024-03-05T09:30:00",
+  "slug": "novyj-kabinet",
+  "status": "publish",
+  "type": "post",
+  "link": "https://smile.example.ru/blog/novyj-kabinet/",
+  "parent": 0,
+  "guid": {
+   "rendered": "https://smile.example.ru/?p=20"
+  },
+  "title": {
+   "rendered": "Новый кабинет &#171;Детский&#187;"
+  },
+  "excerpt": {
+   "rendered": "<p>Открыли детский кабинет.</p>"
+  },
+  "content": {
+   "protected": false,
+   "rendered": "<div class=\"wp-block-cover\"><img class=\"wp-block-cover__image-background\" alt=\"\" src=\"https://smile.example.ru/wp-content/uploads/2024/03/kids-1024x683.jpg\"><div class=\"wp-block-cover__inner-container\"><p class=\"has-large-font-size\">Для самых маленьких</p></div></div>\n<p>Открыли детский кабинет с игровой зоной.</p>\n<p><audio class=\"wp-audio-shortcode\" controls=\"controls\"><source type=\"audio/mpeg\" src=\"https://smile.example.ru/wp-content/uploads/2024/03/song.mp3?_=1\"><a href=\"https://smile.example.ru/wp-content/uploads/2024/03/song.mp3\">https://smile.example.ru/wp-content/uploads/2024/03/song.mp3</a></audio></p>"
+  },
+  "_embedded": {
+   "wp:featuredmedia": [
+    {
+     "source_url": "https://smile.example.ru/wp-content/uploads/2024/03/kids.jpg",
+     "alt_text": "Детский кабинет"
+    }
+   ]
+  }
+ }
+]

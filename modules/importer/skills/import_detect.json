@@ -1,0 +1,13 @@
+{
+    "name": "import_detect",
+    "description": "Find out which CMS a site is built on (WordPress, Tilda, 1C-Bitrix, Joomla, Wix, MODX, HostCMS, Webflow, plain HTML...) before importing it: platform, confidence 0..1 and the evidence. Reads only the home page (and /wp-json/ for WordPress). Administrators only.",
+    "permission": "system.manage",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "Address of the site, https://example.com"}
+        },
+        "required": ["url"],
+        "additionalProperties": false
+    }
+}

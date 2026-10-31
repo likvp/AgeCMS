@@ -73,15 +73,25 @@ final class Router
                 self::search();
         }
 
+        $query = (string)($_SERVER['QUERY_STRING'] ?? '');
         if ($path === '/index' || ($path !== '/' && str_ends_with($path, '/'))) {
             $target = $path === '/index' ? '/' : rtrim($path, '/');
-            $query = (string)($_SERVER['QUERY_STRING'] ?? '');
+            // An address of the old site with a slash at the end goes to its new page in one step.
+            if ($path !== '/index' && ($to = Redirects::target($target, $query)) !== null) {
+                self::redirect($to);
+            }
             self::redirect($target . ($query !== '' ? '?' . $query : ''));
         }
 
         $module = ModuleRoutes::match($method, $path);
         if ($module !== null) {
             self::module($module, $method, $path);
+        }
+
+        // Addresses of the old site (Content::addRedirects): the path with its query (/?p=12 of WordPress), then the path alone.
+        // A path alone never belongs to a page, so a page is never shadowed by it.
+        if (($to = Redirects::target($path, $query)) !== null) {
+            self::redirect($to);
         }
 
         $slug = Cache::slugForPath($path);
@@ -98,7 +108,6 @@ final class Router
             // A page that moved leaves a permanent redirect at its old address.
             $to = Pages::redirectFor($slug);
             if ($to !== null) {
-                $query = (string)($_SERVER['QUERY_STRING'] ?? '');
                 self::redirect('/' . ($to === 'index' ? '' : $to) . ($query !== '' ? '?' . $query : ''));
             }
             self::notFound();

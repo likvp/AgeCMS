@@ -1,0 +1,5 @@
+Options -Indexes
+ErrorDocument 404 /404.html
+RewriteEngine On
+RewriteRule ^$ page456789.html [NC]
+RewriteRule ^raspisanie$ page456790.html [NC]

@@ -171,6 +171,119 @@
         drop.addEventListener('submit', function (e) { e.preventDefault(); });
     }
 
+    // ---- live parts of module pages: [data-ag-poll] (GET) and [data-ag-step] (POST with the CSRF token) ---------------
+    // Pages of modules cannot bring their own scripts (CSP), so the core does it for them. The element asks an address of a
+    // module page (same site, /admin/m/...) again and again and shows the answer:
+    //  - an HTML fragment (the core sends just the body of the module page when the request carries X-AgeCMS-Poll) replaces
+    //    the content of the element; a [data-ag-done] element inside it stops the loop, its value "reload" reloads the page,
+    //    an /admin/... address opens that address;
+    //  - JSON {done, html, fields, location, reload}: html replaces the content, fields fill [data-ag-field="name"] elements
+    //    (text, or value of progress/meter/input; data-ag-max="name" takes max from another field), done stops the loop.
+    // The fragment is inserted as HTML: it is what the module page would print anyway, and inline scripts or handlers in it do
+    // not run (CSP has no 'unsafe-inline'), so nothing gets more rights than the page itself. Forms in it keep working
+    // (confirm dialogs are delegated). data-ag-step does the same with POST and the CSRF token of the admin, so a module can
+    // do its work in portions while the page is open, without cron.
+    function liveUrl(raw) {
+        if (!raw || !window.URL) { return null; }
+        try {
+            var u = new URL(raw, location.href);
+            return u.origin === location.origin && u.pathname.indexOf('/admin/m/') === 0 ? u : null;
+        } catch (e) { return null; }
+    }
+    function adminUrl(raw) {
+        try {
+            var u = new URL(raw, location.href);
+            return u.origin === location.origin && u.pathname.indexOf('/admin/') === 0 ? u : null;
+        } catch (e) { return null; }
+    }
+    function csrfFor(el) {
+        var own = el.getAttribute('data-ag-csrf');
+        if (own) { return own; }
+        var field = (el.closest && el.closest('form') ? el.closest('form').querySelector('input[name="csrf"]') : null) || document.querySelector('input[name="csrf"]');
+        if (field) { return field.value; }
+        var wrapEl = document.querySelector('[data-csrf]');
+        return wrapEl ? wrapEl.getAttribute('data-csrf') : '';
+    }
+    function fillFields(el, fields) {
+        el.querySelectorAll('[data-ag-field]').forEach(function (node) {
+            var name = node.getAttribute('data-ag-field');
+            if (!Object.prototype.hasOwnProperty.call(fields, name)) { return; }
+            var v = fields[name];
+            var maxName = node.getAttribute('data-ag-max');
+            if (maxName && Object.prototype.hasOwnProperty.call(fields, maxName)) { node.max = Math.max(1, Number(fields[maxName]) || 1); }
+            if (/^(PROGRESS|METER|INPUT|SELECT|TEXTAREA)$/.test(node.tagName)) { node.value = v; } else { node.textContent = v === null || v === undefined ? '' : String(v); }
+        });
+    }
+    function startLive(el) {
+        if (el.__agLive || !window.fetch) { return; }
+        var post = el.hasAttribute('data-ag-step');
+        var url = liveUrl(el.getAttribute(post ? 'data-ag-step' : 'data-ag-poll'));
+        if (!url) { return; }
+        el.__agLive = true;
+        var every = parseInt(el.getAttribute(post ? 'data-ag-step-interval' : 'data-ag-poll-interval') || el.getAttribute('data-ag-poll-interval') || '', 10);
+        every = Math.min(600000, Math.max(post ? 200 : 1000, isNaN(every) ? 2000 : every));
+        if (!el.hasAttribute('aria-live')) { el.setAttribute('aria-live', 'polite'); }
+        var fails = 0;
+        var finish = function (how) {
+            el.removeAttribute('aria-busy');
+            var to = how === 'reload' ? null : (how ? adminUrl(how) : null);
+            if (how === 'reload') { location.reload(); } else if (to) { location.href = to.href; }
+        };
+        var later = function (ms) { setTimeout(tick, ms); };
+        var tick = function () {
+            if (!document.body.contains(el)) { return; }
+            if (!post && document.hidden) { later(every); return; }
+            var opt = { method: post ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', headers: { 'X-AgeCMS-Poll': '1', 'Accept': 'application/json, text/html' } };
+            if (post) {
+                var fd = new FormData();
+                fd.append('csrf', csrfFor(el));
+                opt.body = fd;
+            }
+            el.setAttribute('aria-busy', 'true');
+            fetch(url.href, opt).then(function (r) {
+                var type = r.headers.get('Content-Type') || '';
+                if (type.indexOf('application/json') !== -1) {
+                    return r.json().then(function (d) { return { r: r, json: d }; });
+                }
+                return r.text().then(function (t) { return { r: r, text: t }; });
+            }).then(function (res) {
+                el.removeAttribute('aria-busy');
+                var r = res.r;
+                if (r.status === 429 || r.status >= 502) { throw new Error('busy'); }
+                fails = 0;
+                if (res.json) {
+                    var d = res.json || {};
+                    if (typeof d.html === 'string') { el.innerHTML = d.html; initLive(el); }
+                    if (d.fields && typeof d.fields === 'object') { fillFields(el, d.fields); }
+                    if (d.done || !r.ok) { finish(d.reload ? 'reload' : (d.location || '')); return; }
+                    later(every);
+                    return;
+                }
+                if (r.headers.get('X-AgeCMS-Fragment') !== '1') {
+                    // Not a fragment of the module: the session ended or the address went away. The page itself says what.
+                    location.reload();
+                    return;
+                }
+                el.innerHTML = res.text;
+                initLive(el);
+                var done = el.querySelector('[data-ag-done]');
+                if (done || !r.ok) { finish(done ? done.getAttribute('data-ag-done') : ''); return; }
+                later(every);
+            }).catch(function () {
+                el.removeAttribute('aria-busy');
+                fails++;
+                if (fails >= 6) { window.agToast('Нет связи с сервером: обновите страницу', 'error'); return; }
+                later(every * Math.min(8, Math.pow(2, fails)));
+            });
+        };
+        later(every);
+    }
+    function initLive(root) {
+        root.querySelectorAll('[data-ag-poll], [data-ag-step]').forEach(startLive);
+    }
+    window.agLive = initLive;
+    initLive(document);
+
     // Tabs of a long page: on a phone the row scrolls sideways, the current tab is brought into view.
     document.querySelectorAll('.tabs').forEach(function (nav) {
         var on = nav.querySelector('[aria-current="page"]');

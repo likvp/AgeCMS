@@ -28,6 +28,8 @@ final class Queue
         'restore_page' => ['restorePage', 'content.write'],
         'purge_page' => ['purgePage', 'system.manage'],
         'set_menu' => ['setMenu', 'content.write'],
+        'add_redirects' => ['addRedirects', 'content.write'],
+        'remove_redirects' => ['removeRedirects', 'content.write'],
         'set_settings' => ['setSettings', 'system.manage'],
     ];
 
@@ -181,6 +183,8 @@ final class Queue
             'purge_page' => Content::purgePage($actor, (string)$a['slug']),
             'rollback' => Content::rollback($actor, (string)$a['slug'], (int)$a['revision_id']),
             'set_menu' => Content::setMenu($actor, (string)$a['name'], (array)($a['items'] ?? [])),
+            'add_redirects' => Content::addRedirects($actor, (array)($a['items'] ?? [])),
+            'remove_redirects' => Content::removeRedirects($actor, (array)($a['from'] ?? [])),
             'set_settings' => Content::setSettings($actor, (array)($a['values'] ?? [])),
         };
     }

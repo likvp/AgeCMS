@@ -20,6 +20,7 @@ final class Audit
     public const BACKUP = '@backup';
     public const SYSTEM = '@system';
     public const MEDIA = '@media';
+    public const REDIRECTS = '@redirects';
 
     private const LABELS = [
         self::CORE => 'Ядро',
@@ -30,6 +31,7 @@ final class Audit
         self::BACKUP => 'Бэкапы',
         self::SYSTEM => 'Система',
         self::MEDIA => 'Медиа',
+        self::REDIRECTS => 'Редиректы',
     ];
 
     private static ?Actor $actor = null;

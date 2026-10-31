@@ -41,7 +41,7 @@ final class Pages
      */
     public static function toDoc(array $row): array
     {
-        return [
+        $doc = [
             'title' => (string)$row['title'],
             'parent_slug' => (string)$row['parent_slug'],
             'meta_title' => (string)$row['meta_title'],
@@ -55,6 +55,12 @@ final class Pages
             'theme' => (string)$row['theme'],
             'blocks' => json_decode((string)$row['blocks_json'], true, 512, JSON_THROW_ON_ERROR),
         ];
+        // Same place and the same rule as in SchemaValidator::document(): present only when set.
+        if ((string)($row['published_at'] ?? '') !== '') {
+            $at = (int)array_search('schema_type', array_keys($doc), true);
+            $doc = array_slice($doc, 0, $at, true) + ['published_at' => (string)$row['published_at']] + array_slice($doc, $at, null, true);
+        }
+        return $doc;
     }
 
     public static function count(): int
@@ -80,19 +86,38 @@ final class Pages
         $blocksJson = json_encode($doc['blocks'], self::JSON);
         if ($isNew) {
             $pdo->prepare(
-                'INSERT INTO pages (slug, parent_slug, title, meta_title, meta_description, canonical_url, og_image, is_noindex, is_published, sort_order, schema_type, theme, blocks_json, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-            )->execute([$slug, $doc['parent_slug'], $doc['title'], $doc['meta_title'], $doc['meta_description'], $doc['canonical_url'], $doc['og_image'], $doc['is_noindex'], $doc['is_published'], $doc['sort_order'], $doc['schema_type'], $doc['theme'], $blocksJson, $now, $now]);
+                'INSERT INTO pages (slug, parent_slug, title, meta_title, meta_description, canonical_url, og_image, is_noindex, is_published, sort_order, published_at, schema_type, theme, blocks_json, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )->execute([$slug, $doc['parent_slug'], $doc['title'], $doc['meta_title'], $doc['meta_description'], $doc['canonical_url'], $doc['og_image'], $doc['is_noindex'], $doc['is_published'], $doc['sort_order'], (string)($doc['published_at'] ?? ''), $doc['schema_type'], $doc['theme'], $blocksJson, $now, $now]);
         } else {
             $pdo->prepare(
-                'UPDATE pages SET parent_slug = ?, title = ?, meta_title = ?, meta_description = ?, canonical_url = ?, og_image = ?, is_noindex = ?, is_published = ?, sort_order = ?, schema_type = ?, theme = ?, blocks_json = ?, updated_at = ? WHERE slug = ?'
-            )->execute([$doc['parent_slug'], $doc['title'], $doc['meta_title'], $doc['meta_description'], $doc['canonical_url'], $doc['og_image'], $doc['is_noindex'], $doc['is_published'], $doc['sort_order'], $doc['schema_type'], $doc['theme'], $blocksJson, $now, $slug]);
+                'UPDATE pages SET parent_slug = ?, title = ?, meta_title = ?, meta_description = ?, canonical_url = ?, og_image = ?, is_noindex = ?, is_published = ?, sort_order = ?, published_at = ?, schema_type = ?, theme = ?, blocks_json = ?, updated_at = ? WHERE slug = ?'
+            )->execute([$doc['parent_slug'], $doc['title'], $doc['meta_title'], $doc['meta_description'], $doc['canonical_url'], $doc['og_image'], $doc['is_noindex'], $doc['is_published'], $doc['sort_order'], (string)($doc['published_at'] ?? ''), $doc['schema_type'], $doc['theme'], $blocksJson, $now, $slug]);
         }
         if ($isNew) {
-            // A page now lives at this address: an old redirect from it must not shadow the page.
-            $pdo->prepare('DELETE FROM redirects WHERE from_slug = ?')->execute([$slug]);
+            // A page now lives at this address: an old redirect from it (after a move or from an import) must not shadow the page.
+            $pdo->prepare('DELETE FROM redirects WHERE from_slug IN (?, ?)')->execute([$slug, '/' . ($slug === 'index' ? '' : $slug)]);
         }
         self::index($pdo, $slug, $doc);
+    }
+
+    /**
+     * Published pages whose parent is $parent: sort_order first, then the newest post (published_at, else the creation time).
+     * For listings such as the child_pages block; the template adds the cache tag "children:<parent>" (see ag_child_pages).
+     *
+     * @return list<array{slug:string,title:string,meta_description:string,og_image:string,published_at:string,sort_order:int}>
+     */
+    public static function children(string $parent, int $limit = 100): array
+    {
+        $rows = Database::rows(
+            "SELECT slug, title, meta_description, og_image, published_at, sort_order FROM pages WHERE parent_slug = ? AND is_published = 1
+             ORDER BY sort_order, CASE WHEN published_at <> '' THEN published_at ELSE created_at END DESC, slug LIMIT ?",
+            [$parent, max(1, min(1000, $limit))],
+        );
+        return array_map(static fn(array $r): array => [
+            'slug' => (string)$r['slug'], 'title' => (string)$r['title'], 'meta_description' => (string)$r['meta_description'],
+            'og_image' => (string)$r['og_image'], 'published_at' => (string)$r['published_at'], 'sort_order' => (int)$r['sort_order'],
+        ], $rows);
     }
 
     /** Where an address that no longer holds a page now lives, or null. Only when the target page exists. */
@@ -139,11 +164,21 @@ final class Pages
             $texts = [];
             array_walk_recursive($doc['blocks'], static function ($v, $k) use (&$texts): void {
                 if (is_string($v) && !in_array($k, ['id', 'type', 'size', 'cta_url'], true)) {
-                    $texts[] = $v;
+                    $texts[] = self::plainText($v);
                 }
             });
             $pdo->prepare('INSERT INTO pages_fts (slug, title, body) VALUES (?, ?, ?)')->execute([$slug, $doc['title'], implode("\n", $texts)]);
         }
+    }
+
+    /** Text of a richtext value for the search index: tags out, block ends as line breaks. Other values pass unchanged. */
+    public static function plainText(string $value): string
+    {
+        if (!str_contains($value, '<') || preg_match('~</?(p|br|h[1-6]|ul|ol|li|a|strong|b|em|i|u|s|blockquote|figure|figcaption|img|table|tr|td|th|hr|code|pre)\b~i', $value) !== 1) {
+            return $value;
+        }
+        $value = preg_replace('~<(br|hr)\b[^>]*>|</(p|h[1-6]|li|blockquote|figcaption|tr|td|th|pre)>~i', "$0\n", $value) ?? $value;
+        return trim(html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 
     /** Slugs of all ancestors, nearest last: "a/b/c" gives ["a", "a/b"]. @return list<string> */
