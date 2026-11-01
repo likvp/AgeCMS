@@ -103,7 +103,8 @@ final class Router
         $signedIn = Auth::user() !== null;
         $editing = $signedIn && ($_COOKIE[self::EDIT_COOKIE] ?? '') === '1';
         $generation = Cache::generation();
-        $page = Renderer::renderSlug($slug, $editing, $editing ? Auth::csrf() : '', $signedIn);
+        $variant = ($_GET['ag_view'] ?? '') === 'm' ? 'm' : '';
+        $page = Renderer::renderSlug($slug, $editing, $editing ? Auth::csrf() : '', $signedIn, $variant);
         if ($page === null) {
             // A page that moved leaves a permanent redirect at its old address.
             $to = Pages::redirectFor($slug);
@@ -111,6 +112,9 @@ final class Router
                 self::redirect('/' . ($to === 'index' ? '' : $to) . ($query !== '' ? '?' . $query : ''));
             }
             self::notFound();
+        }
+        if (($page['policy'] ?? '') === 'copy') {
+            self::sendCopy($slug, $page['html'], $signedIn, $path, $method);
         }
         $cacheable = !$signedIn && $method === 'GET' && ($_SERVER['QUERY_STRING'] ?? '') === '';
         if ($cacheable) {
@@ -124,11 +128,34 @@ final class Router
     }
 
     /**
+     * A copied page (CopyPage): never stored in the shadow cache, sent with its own policy, validated with an ETag so a repeat
+     * visit costs one small query. A signed-in user gets the pencil that leads to the page editor of the importer.
+     */
+    private static function sendCopy(string $slug, string $html, bool $signedIn, string $path, string $method): never
+    {
+        $doc = Pages::doc($slug) ?? [];
+        $headers = CopyPage::headers(CopyPage::data($doc));
+        $headers['X-AgeCMS-Cache'] = 'bypass';
+        if ($signedIn) {
+            $html = self::withEditButton($html, false, $path, '/admin/m/importer/copy?slug=' . rawurlencode($slug));
+            $headers['Cache-Control'] = 'private, no-store';
+        } else {
+            $etag = '"' . substr(sha1($html), 0, 20) . '"';
+            $headers['Cache-Control'] = 'public, max-age=0, must-revalidate';
+            $headers['ETag'] = $etag;
+            if (trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')) === $etag) {
+                self::send(304, 'text/html; charset=utf-8', '', $headers);
+            }
+        }
+        self::send(200, 'text/html; charset=utf-8', $html, $headers);
+    }
+
+    /**
      * What a signed-in user gets on top of the page. A round button in the corner: the pencil opens the editor, in the editor the eye
      * returns to the plain view. In the editor also the black strip "Режим редактирования" right after <body>, unless the theme
      * draws its own (older themes have a .ag-bar in layout.php). Styles: assets/edit-button.css, loaded in <head>.
      */
-    private static function withEditButton(string $html, bool $editing, string $path): string
+    private static function withEditButton(string $html, bool $editing, string $path, ?string $editHref = null): string
     {
         $pos = strripos($html, '</body>');
         if ($pos === false) {
@@ -138,7 +165,7 @@ final class Router
         $icon = $editing
             ? '<path d="M1.5 12s3.8-7 10.5-7 10.5 7 10.5 7-3.8 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3"/>'
             : '<path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m14.5 7.5 3 3"/>';
-        $button = '<a class="ag-fab" href="/_/edit?to=' . rawurlencode($path) . '" title="' . ag_e($label) . '" aria-label="' . ag_e($label) . '">'
+        $button = '<a class="ag-fab" href="' . ag_e($editHref ?? '/_/edit?to=' . rawurlencode($path)) . '" title="' . ag_e($label) . '" aria-label="' . ag_e($label) . '">'
             . '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $icon . '</svg></a>';
         $html = substr($html, 0, $pos) . $button . substr($html, $pos);
 
@@ -458,7 +485,7 @@ final class Router
         if (!headers_sent()) {
             http_response_code($status);
             header('Content-Type: ' . $type);
-            foreach ((require __DIR__ . '/security-headers.php') + $headers as $name => $value) {
+            foreach (array_replace(require __DIR__ . '/security-headers.php', $headers) as $name => $value) {
                 header($name . ': ' . $value);
             }
         }

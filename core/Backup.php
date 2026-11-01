@@ -6,7 +6,7 @@ namespace AgeCMS;
 use ZipArchive;
 
 /**
- * Consistent database snapshots (VACUUM INTO, safe while the site is live), zipped into data/backups/.
+ * Consistent database snapshots (VACUUM INTO, safe while the site is live), zipped into data/backups/ together with the files of copied pages (CopyPage).
  * data/config.php is not included: it holds the secrets and stays on the server.
  */
 final class Backup
@@ -37,6 +37,18 @@ final class Backup
                 throw new AgeCMSException('Cannot create zip archive');
             }
             $zip->addFile($snapshot, 'data.sqlite');
+            // Files of copied pages (importer, mode "exact copy") are part of the site: they go in as site-copy/<key>/...
+            // The images of the media library are not included, as before.
+            $root = CopyPage::root();
+            if (is_dir($root)) {
+                $base = strlen(rtrim($root, '/')) + 1;
+                $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS));
+                foreach ($it as $file) {
+                    if ($file->isFile() && !$file->isLink()) {
+                        $zip->addFile($file->getPathname(), 'site-copy/' . str_replace('\\', '/', substr($file->getPathname(), $base)));
+                    }
+                }
+            }
             $zip->close();
         } else {
             $target = "{$dir}/agecms-{$stamp}.sqlite.gz";

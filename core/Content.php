@@ -454,6 +454,12 @@ final class Content
                 throw new NotFoundException("Page '{$slug}' is not in the trash");
             }
             $revisionId = Revisions::mark($pdo, $slug, $actor, self::PURGE_DESC);
+            // The files of a copied page go with it unless another page still uses them.
+            try {
+                CopyPage::collect();
+            } catch (\Throwable $e) {
+                Logger::log('warning', 'copy.collect_failed', ['error' => $e->getMessage()]);
+            }
             return ['slug' => $slug, 'revision_id' => $revisionId, 'changed' => true, 'tags' => [], 'ping' => false];
         });
     }

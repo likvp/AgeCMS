@@ -7,6 +7,7 @@
     "admin": [
         {"path": "/", "title": "Импорт сайта", "permission": "system.manage", "methods": ["GET", "POST"]},
         {"path": "/job", "title": "Задание импорта", "permission": "system.manage", "methods": ["GET", "POST"], "menu": false},
+        {"path": "/copy", "title": "Правка копии страницы", "permission": "system.manage", "methods": ["GET", "POST"], "menu": false},
         {"path": "/upload", "title": "Загрузка файла импорта", "permission": "system.manage", "methods": ["POST"], "menu": false, "upload": {"kinds": ["xml", "zip"], "max_kb": 51200, "max_files": 1}}
     ],
     "settings": [

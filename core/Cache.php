@@ -185,7 +185,7 @@ final class Cache
     {
         $generation = self::generation();
         $page = Renderer::renderSlug($slug, false);
-        if ($page === null || $page['status'] !== 200) {
+        if ($page === null || $page['status'] !== 200 || ($page['policy'] ?? '') !== '') {
             return false;
         }
         return self::store($slug, $page['html'], $page['tags'], $generation);

@@ -26,7 +26,48 @@ final class Report
             $e = $plan['items'][$p['id']];
             $rows[] = self::row($p, $e, $e['doc'], $e['losses'], 1, $e['action'] === 'skip' ? 'skipped' : 'pending', '');
         }
-        return self::wrap((string)$analysis['source']['source'], (array)$analysis['detect'], (array)$analysis['site'], $rows, $plan['menus'], $plan['redirects'], array_values(array_unique(array_merge($analysis['warnings'], $plan['warnings']))), $plan['roles'], 'ready', []);
+        $out = self::wrap((string)$analysis['source']['source'], (array)$analysis['detect'], (array)$analysis['site'], $rows, $plan['menus'], $plan['redirects'], array_values(array_unique(array_merge($analysis['warnings'], $plan['warnings']))), $plan['roles'], 'ready', []);
+        $out['mode'] = (string)($plan['mode'] ?? 'blocks');
+        if ($out['mode'] === 'exact') {
+            $out['copy'] = self::copySummary($rows, (array)($analysis['capture'] ?? []), []);
+        }
+        return $out;
+    }
+
+    /**
+     * What an exact copy brings: pages, files, size, what was left out.
+     *
+     * @param list<array<string,mixed>> $rows
+     * @param array<string,mixed> $capture the package as the extractor saw it
+     * @param array<string,mixed> $installed result["copy"] of a job
+     * @return array<string,mixed>
+     */
+    private static function copySummary(array $rows, array $capture, array $installed): array
+    {
+        $chosen = array_filter($rows, static fn(array $r): bool => $r['selected'] && $r['action'] !== 'skip');
+        $trackers = [];
+        $forms = 0;
+        $unconnected = 0;
+        $html = 0;
+        foreach ($chosen as $r) {
+            $c = (array)($r['copy'] ?? []);
+            $trackers = array_merge($trackers, (array)($c['trackers'] ?? []));
+            $forms += (int)($c['forms'] ?? 0);
+            $unconnected += (int)($c['forms_unconnected'] ?? 0);
+            $html += (int)($c['size'] ?? 0);
+        }
+        return [
+            'pages' => count($chosen),
+            'files' => (int)($installed['total'] ?? $capture['files'] ?? 0),
+            'bytes' => (int)($capture['bytes'] ?? 0) + $html,
+            'installed_bytes' => (int)($installed['bytes'] ?? 0),
+            'trackers' => array_values(array_unique($trackers)),
+            'forms' => $forms,
+            'forms_unconnected' => $unconnected,
+            'skipped_files' => (int)($capture['skipped_files'] ?? 0),
+            'installed' => !empty($installed['installed']),
+            'key' => (string)($installed['key'] ?? ''),
+        ];
     }
 
     /** Preview or result of a stored job. @return array<string,mixed> */
@@ -47,6 +88,13 @@ final class Report
         }
         $state = $job['state'];
         $out = self::wrap((string)$job['source'], (array)$job['detect'], (array)$job['site'], $rows, (array)($job['plan']['menus'] ?? []), $redirects, array_values(array_unique(array_merge((array)($state['warnings'] ?? []), (array)($job['plan']['warnings'] ?? [])))), (array)($job['plan']['roles'] ?? []), (string)$job['status'], $job['result']);
+        $out['mode'] = (string)($job['options']['mode'] ?? 'blocks');
+        if ($out['mode'] === 'exact') {
+            $out['copy'] = self::copySummary($rows, (array)($state['capture'] ?? []), (array)($job['result']['copy'] ?? []));
+        }
+        if (($job['result']['mode_note'] ?? '') !== '') {
+            $out['warnings'][] = (string)$job['result']['mode_note'];
+        }
         $out['job_id'] = $jobId;
         $out['status_text'] = Runner::statusText((string)$job['status']);
         $out['error'] = (string)$job['error'];
@@ -83,6 +131,25 @@ final class Report
             'losses' => $losses,
             'redirects' => (array)($e['redirects'] ?? []),
             'elements' => count((array)($p['elements'] ?? [])),
+            'copy' => self::copyRow((array)($p['copy'] ?? [])),
+        ];
+    }
+
+    /** What the preview says about one copied page. @param array<string,mixed> $c @return array<string,mixed>|null */
+    private static function copyRow(array $c): ?array
+    {
+        if ($c === []) {
+            return null;
+        }
+        $forms = array_filter((array)($c['forms'] ?? []), static fn($f): bool => is_array($f) && empty($f['search']));
+        return [
+            'mode' => (string)($c['mode'] ?? 'source'),
+            'size' => (int)($c['size'] ?? 0),
+            'trackers' => array_values(array_map('strval', (array)($c['trackers'] ?? []))),
+            'forms' => count($forms),
+            'forms_unconnected' => count(array_filter($forms, static fn(array $f): bool => empty($f['rewired']))),
+            'phone' => (string)($c['mobile_file'] ?? '') !== '',
+            'similarity' => (array)($c['similarity'] ?? []),
         ];
     }
 
@@ -171,6 +238,11 @@ final class Report
         }
         $c = $r['counts'];
         $out[] = sprintf('Найдено страниц: %d (записей блога: %d). Будет создано: %d, заменено: %d, пропущено: %d. Потерь: %d. Редиректов: %d.', $c['pages'], $c['posts'], $c['create'], $c['update'], $c['skip'], $c['losses'], $c['redirects']);
+        if (($r['mode'] ?? '') === 'exact' && isset($r['copy'])) {
+            $k = $r['copy'];
+            $out[] = sprintf('Режим: точная копия. Страниц %d, файлов %d, размер около %s. Счётчики и чаты не переносятся (%s). Форм: %d, не подключено: %d.',
+                $k['pages'], $k['files'], self::mb((int)$k['bytes']), $k['trackers'] === [] ? 'их не было' : implode(', ', $k['trackers']), $k['forms'], $k['forms_unconnected']);
+        }
         if (($r['roles'] ?? []) !== []) {
             $out[] = 'Блоки темы: ' . implode(', ', array_map(static fn(string $role, string $type): string => $role . '=' . $type, array_keys($r['roles']), $r['roles']));
         }
@@ -200,6 +272,14 @@ final class Report
             $out[] = '  ' . $indent . str_pad($old, max(0, $width - mb_strlen($indent) + (strlen($old) - mb_strlen($old)))) . ' -> ' . $new . '  «' . mb_substr($row['title'], 0, 60) . '»' . $kind . $flag;
             if (!$details || $row['action'] === 'skip' || !$row['selected']) {
                 continue;
+            }
+            if (is_array($row['copy'] ?? null)) {
+                $c = $row['copy'];
+                $sim = $c['similarity'];
+                $out[] = '  ' . $indent . '    копия: ' . ($c['mode'] === 'dom' ? 'итоговая страница' : 'исходный код') . ', ' . self::mb((int)$c['size'])
+                    . (is_numeric($sim['desktop'] ?? null) ? ', сходство на компьютере ' . (int)round((float)$sim['desktop'] * 100) . '%' : '')
+                    . (is_numeric($sim['mobile'] ?? null) ? ', на телефоне ' . (int)round((float)$sim['mobile'] * 100) . '%' : '')
+                    . ($c['phone'] ? ', отдельная версия для телефона' : '');
             }
             $blocks = array_map(static fn(array $b): string => $b['type'] . ($b['summary'] !== '' ? ' ' . $b['summary'] : ''), $row['blocks']);
             if ($blocks !== []) {
@@ -251,6 +331,11 @@ final class Report
             $out[] = 'Отмена: ' . $n;
         }
         return implode("\n", $out) . "\n";
+    }
+
+    private static function mb(int $bytes): string
+    {
+        return $bytes >= 1048576 ? number_format($bytes / 1048576, 1, ',', '') . ' МБ' : max(1, (int)round($bytes / 1024)) . ' КБ';
     }
 
     private static function oldLabel(array $row): string

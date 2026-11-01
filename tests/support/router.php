@@ -19,6 +19,15 @@ if ($uploads !== false && $uploads !== '' && preg_match('~^/assets/uploads/([a-f
     readfile($uploads . '/' . $m[1]);
     return true;
 }
+// Files of copied pages live under uploads/copy/<key>/ (CopyPage); with a separate uploads folder they are served from there.
+if ($uploads !== false && $uploads !== '' && preg_match('#^/assets/uploads/(copy/[a-z0-9]+/[A-Za-z0-9_./~-]+)$#', $path, $m) === 1 && !str_contains($m[1], '..') && is_file($uploads . '/' . $m[1])) {
+    $ext = strtolower(pathinfo($m[1], PATHINFO_EXTENSION));
+    $types = ['css' => 'text/css', 'js' => 'text/javascript', 'woff2' => 'font/woff2', 'woff' => 'font/woff', 'ttf' => 'font/ttf', 'otf' => 'font/otf', 'svg' => 'image/svg+xml', 'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif', 'webp' => 'image/webp', 'avif' => 'image/avif', 'ico' => 'image/x-icon', 'mp4' => 'video/mp4', 'webm' => 'video/webm', 'json' => 'application/json', 'pdf' => 'application/pdf'];
+    header('Content-Type: ' . ($types[$ext] ?? 'application/octet-stream'));
+    header('X-Content-Type-Options: nosniff');
+    readfile($uploads . '/' . $m[1]);
+    return true;
+}
 if (preg_match('~^/assets/(?!cache/)[A-Za-z0-9_./-]+$~', $path) === 1 && !str_contains($path, '..') && is_file($root . $path)) {
     return false;
 }

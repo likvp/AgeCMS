@@ -5,7 +5,14 @@ declare(strict_types=1);
 //
 //   php modules/importer/bin/import.php <address|file> [options]
 //
-//   <address|file>      https://old-site.ru, a WordPress export (.xml), a Tilda project export (.zip) or a saved .html page
+//   <address|file>      https://old-site.ru, a WordPress export (.xml), a Tilda project export (.zip or folder), a saved .html page
+//                       or a capture package made by tools/capture (folder or .zip)
+//   --mode=exact        (default) exact copy: every page looks and works like the source; the source is captured by Chrome
+//                       (tools/capture, needs Node.js and Chrome on this machine) unless it already is a capture package
+//   --mode=blocks       the content goes into blocks of the active theme (the older way, editable block by block)
+//   --capture-dir=DIR   exact mode: keep the package made from an address or a folder in DIR (default: a temporary folder, removed after)
+//   --no-mobile         exact mode, capturing: do not open the phone version (faster, less exact on phones)
+//   --no-verify         exact mode, capturing: do not compare the copy with the original
 //   --dry-run           (default) read the source and print the plan: tree of pages, blocks, losses, redirects; nothing is written
 //   --apply             create the pages (needs an installed site), then redirects and menus
 //   --json              the plan or the result as JSON instead of text
@@ -80,7 +87,12 @@ $options = [
     'replace_home' => isset($opts['replace-home']),
     'menus' => !isset($opts['no-menus']),
     'section' => is_string($opts['section'] ?? null) ? $opts['section'] : '',
+    'mode' => ($opts['mode'] ?? 'exact') === 'blocks' ? 'blocks' : 'exact',
 ];
+if (isset($opts['mode']) && !in_array($opts['mode'], Importer::MODES, true)) {
+    fwrite(STDERR, "--mode: exact или blocks\n");
+    exit(1);
+}
 $progress = static function (array $job) use ($say): void {
     static $last = '';
     $line = Runner::statusText((string)$job['status']) . ': страниц ' . Jobs::countItems((int)$job['id']) . ', готово ' . Jobs::countItems((int)$job['id'], ['done', 'rolled_back']);
@@ -106,9 +118,31 @@ try {
     }
     $input = $positional[0] ?? '';
     if ($input === '') {
-        fwrite(STDERR, "Usage: php modules/importer/bin/import.php <https://site|export.xml|tilda.zip> [--dry-run|--apply] [--json] [--limit=N]\n");
+        fwrite(STDERR, "Usage: php modules/importer/bin/import.php <https://site|export.xml|tilda.zip|package> [--mode=exact|blocks] [--dry-run|--apply] [--json] [--limit=N]\n");
         exit(1);
     }
+    // Exact copy of an address, a Tilda export or a saved folder: Chrome captures it first, the importer reads the package.
+    $madePackage = '';
+    if ($options['mode'] === 'exact') {
+        $src = is_dir($input) && !\AgeCMS\Modules\Importer\Extract\CapturePackage::looksDir($input) ? ['type' => 'folder'] : Importer::source($input);
+        if (in_array($src['type'], ['url', 'tilda_zip', 'folder'], true)) {
+            $keep = is_string($opts['capture-dir'] ?? null) ? $opts['capture-dir'] : '';
+            $say('Захват в Chrome: ' . $input);
+            $input = \AgeCMS\Modules\Importer\Copy\CaptureRunner::run($input, ['limit' => min($options['limit'], 2000), 'delay_ms' => $options['delay_ms'], 'robots' => $options['robots'], 'mobile' => !isset($opts['no-mobile']), 'verify' => !isset($opts['no-verify'])], static function (string $line) use ($say): void {
+                $say('  ' . $line);
+            }, $keep);
+            $madePackage = $keep === '' ? $input : '';
+        }
+    }
+    $removePackage = static function () use (&$madePackage): void {
+        if ($madePackage !== '' && is_dir($madePackage)) {
+            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($madePackage, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+            foreach ($it as $f) {
+                $f->isDir() && !$f->isLink() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+            }
+            @rmdir($madePackage);
+        }
+    };
     if (isset($opts['apply'])) {
         $needSite();
         $actor = Actor::cli('importer');
@@ -117,6 +151,7 @@ try {
         $runner = new Runner();
         $job = $runner->runToEnd($id, $progress);
         if ($job['status'] !== 'ready') {
+            $removePackage();
             fwrite(STDERR, 'Анализ не удался: ' . $job['error'] . "\n");
             exit(1);
         }
@@ -127,6 +162,7 @@ try {
         Runner::startApply($id, $pages, $actor);
         $say('Перенос...');
         $job = $runner->runToEnd($id, $progress);
+        $removePackage();
         $print(Report::job($id));
         $say('Задание ' . $id . ': ' . Runner::statusText((string)$job['status']) . '. Отменить: php modules/importer/bin/import.php --rollback=' . $id);
         exit($job['status'] === 'done' ? 0 : 1);
@@ -148,6 +184,7 @@ try {
     $plan = $importer->plan($pages, $analysis['site']);
     $report = Report::fromPlan($analysis, $plan, $pages);
     $report['requests'] = $importer->fetcher()->count();
+    $removePackage();
     if ($json && isset($opts['full'])) {
         $report['neutral'] = $analysis['pages'];
         $report['documents'] = array_map(static fn(array $e): array => ['slug' => $e['slug'], 'action' => $e['action']] + $e['doc'], $plan['items']);

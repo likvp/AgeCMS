@@ -113,7 +113,7 @@ final class SchemaValidator
             $errors[] = 'Too many blocks (max ' . self::MAX_BLOCKS . ')';
             return [];
         }
-        $schemas = Theme::exists($themeName) ? Theme::blocks($themeName) : [];
+        $schemas = Theme::exists($themeName) ? Theme::schemas($themeName) : [];
         $seen = [];
         $out = [];
         foreach ($blocks as $i => $block) {

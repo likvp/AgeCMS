@@ -13,6 +13,13 @@ map "$request_method:$is_args:$agecms_admin" $agecms_cache_dir {
     "HEAD::0"    /assets/cache;
 }
 
+# Pages copied from another site (modules/importer, mode "exact copy") are answered by PHP with their own policy and the marker
+# X-AgeCMS-Policy: copy; every other response gets the strict policy of the site.
+map $upstream_http_x_agecms_policy $agecms_csp {
+    default "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self' https://mc.yandex.ru; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html https://mc.yandex.ru; frame-ancestors 'self'";
+    copy    $upstream_http_content_security_policy;
+}
+
 server {
     listen 80;
     server_name example.com;
@@ -25,7 +32,7 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self' https://mc.yandex.ru; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html https://mc.yandex.ru; frame-ancestors 'self'" always;
+    add_header Content-Security-Policy $agecms_csp always;
 
     # Internals are never served.
     location ~ ^/(data|core|bin|tests|bench|docs|modules)(/|$) { return 404; }
@@ -46,6 +53,15 @@ server {
         add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self' https://mc.yandex.ru; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html https://mc.yandex.ru; frame-ancestors 'self'" always;
     }
 
+    # Files of copied pages (CopyPage): a script or a page opened by its address runs under a policy that allows nothing.
+    location ^~ /assets/uploads/copy/ {
+        location ~ \.php$ { return 404; }
+        expires 7d;
+        add_header Cache-Control "public" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox" always;
+        try_files $uri =404;
+    }
     location ^~ /assets/uploads/ {
         location ~ \.php$ { return 404; }
         expires 30d;
@@ -77,11 +93,16 @@ server {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root/index.php;
         fastcgi_param SCRIPT_NAME /index.php;
+        # The policy header is set above from the map ($agecms_csp); PHP's own copy would double it.
+        fastcgi_hide_header Content-Security-Policy;
+        fastcgi_hide_header X-AgeCMS-Policy;
         fastcgi_pass unix:/run/php/php8.2-fpm.sock;
     }
     location = /index.php {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_hide_header Content-Security-Policy;
+        fastcgi_hide_header X-AgeCMS-Policy;
         fastcgi_pass unix:/run/php/php8.2-fpm.sock;
     }
     location ~ ^/admin/(index|api|mcp|install|upload)\.php$ {

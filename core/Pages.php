@@ -163,7 +163,8 @@ final class Pages
         if ((int)$doc['is_published'] === 1 && (int)$doc['is_noindex'] === 0) {
             $texts = [];
             array_walk_recursive($doc['blocks'], static function ($v, $k) use (&$texts): void {
-                if (is_string($v) && !in_array($k, ['id', 'type', 'size', 'cta_url'], true)) {
+                // The code of a copied page stays out of the search; its visible text (copy_text) goes in.
+                if (is_string($v) && !in_array($k, ['id', 'type', 'size', 'cta_url'], true) && !(is_string($k) && str_starts_with($k, 'copy_') && $k !== 'copy_text')) {
                     $texts[] = self::plainText($v);
                 }
             });

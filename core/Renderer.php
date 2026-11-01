@@ -18,15 +18,22 @@ final class Renderer
     /**
      * Renders a stored page. Returns null when the page does not exist or, outside edit mode and preview, is unpublished.
      *
-     * @return array{status:int,html:string,tags:list<string>}|null
+     * A page copied from another site (CopyPage) comes back with "policy" => "copy": it must not be cached and has its own headers.
+     * $variant 'm' asks for the phone version of such a page.
+     *
+     * @return array{status:int,html:string,tags:list<string>,policy?:string}|null
      */
-    public static function renderSlug(string $slug, bool $editing, string $csrf = '', bool $preview = false): ?array
+    public static function renderSlug(string $slug, bool $editing, string $csrf = '', bool $preview = false, string $variant = ''): ?array
     {
         $row = Pages::row($slug);
         if ($row === null || ((int)$row['is_published'] !== 1 && !$editing && !$preview)) {
             return null;
         }
-        return self::renderDoc($slug, Pages::toDoc($row), $editing, $csrf);
+        $doc = Pages::toDoc($row);
+        if (CopyPage::is($doc)) {
+            return CopyPage::render($slug, $doc, $variant);
+        }
+        return self::renderDoc($slug, $doc, $editing, $csrf);
     }
 
     /**

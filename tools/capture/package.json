@@ -1,0 +1,12 @@
+{
+  "name": "agecms-capture",
+  "version": "1.0.0",
+  "description": "Local tool: opens a site in Chrome and saves every page as a self-contained package for the AgeCMS importer (exact copy mode).",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {"agecms-capture": "capture.mjs"},
+  "engines": {"node": ">=20"},
+  "scripts": {"test": "node --test test/*.test.mjs"},
+  "dependencies": {"playwright-core": "1.64.1"}
+}

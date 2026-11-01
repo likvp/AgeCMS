@@ -50,7 +50,7 @@ final class Module implements AdminModuleInterface
             'chunk' => (int)($settings['chunk'] ?? Importer::DEFAULTS['chunk']),
             'robots' => (bool)($settings['respect_robots'] ?? true),
         ];
-        foreach (['limit', 'conflict', 'replace_home', 'menus', 'section'] as $k) {
+        foreach (['limit', 'conflict', 'replace_home', 'menus', 'section', 'mode'] as $k) {
             if (array_key_exists($k, $args)) {
                 $o[$k] = $args[$k];
             }
@@ -87,7 +87,7 @@ final class Module implements AdminModuleInterface
                 throw new ImportException('Файл больше 50 МБ: положите его в папку data/import на сервере и передайте путь через админку.');
             }
             $ext = match ((string)($args['type'] ?? '')) {
-                'tilda_zip', 'zip' => 'zip',
+                'tilda_zip', 'capture_zip', 'zip' => 'zip',
                 'html' => 'html',
                 default => 'xml',
             };

@@ -5,7 +5,7 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{Media, Pages, SchemaValidator, Theme};
+use AgeCMS\{CopyPage, Media, Pages, SchemaValidator, Theme};
 
 $slug = (string)($_GET['slug'] ?? '');
 $doc = Pages::slugValid($slug) ? Pages::doc($slug) : null;
@@ -14,6 +14,21 @@ if ($doc === null): ?>
 <?php return; endif;
 if (!$canWrite): ?>
     <div class="notice error"><?= icon('lock-key') ?><div>Для правки нужна роль editor или admin.</div></div>
+<?php return; endif;
+
+if (CopyPage::is($doc)):
+    $copyUrl = '/' . ($slug === 'index' ? '' : $slug);
+    $copyEdit = '/admin/m/importer/copy?slug=' . rawurlencode($slug); ?>
+    <a class="crumb" href="<?= h(admin_url('pages')) ?>"><?= icon('arrow-left') ?>Все страницы</a>
+    <div class="pagehead">
+        <div class="grow"><h1><?= h($doc['title']) ?></h1><p class="mono"><?= h($copyUrl) ?></p></div>
+        <div class="actions-row">
+            <a class="btn" href="<?= h(admin_url('history', ['slug' => $slug])) ?>"><?= icon('clock-counter-clockwise') ?>История</a>
+            <a class="btn" href="<?= h($copyUrl) ?>" target="_blank" rel="noopener"><?= icon('eye') ?>На сайте</a>
+        </div>
+    </div>
+    <div class="notice"><?= icon('info') ?><div>Это точная копия страницы другого сайта: она не собрана из блоков темы. Заголовок, описание для поисковиков, адрес, публикацию и код страницы правят в редакторе копии. Каждая правка попадает в историю, откатить её можно там же.</div></div>
+    <p><a class="btn primary" href="<?= h($copyEdit) ?>"><?= icon('pencil-simple') ?>Править копию</a></p>
 <?php return; endif;
 
 $theme = $doc['theme'] !== '' ? $doc['theme'] : Theme::active();

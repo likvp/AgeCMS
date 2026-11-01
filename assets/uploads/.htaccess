@@ -8,3 +8,9 @@ Options -ExecCGI -Indexes
 <IfModule mod_headers.c>
     Header set Cache-Control "public, max-age=2592000, immutable"
 </IfModule>
+# An image file opened on its own (a copied SVG with a script inside) gets no rights; used as a picture it is not affected.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(svg|xml|html?)$">
+        Header set Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    </FilesMatch>
+</IfModule>

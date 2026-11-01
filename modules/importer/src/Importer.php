@@ -8,6 +8,8 @@ use AgeCMS\ModuleRoutes;
 use AgeCMS\Pages;
 use AgeCMS\Theme;
 use AgeCMS\Modules\Importer\Detect\Detector;
+use AgeCMS\Modules\Importer\Copy\CopyBuilder;
+use AgeCMS\Modules\Importer\Extract\CapturePackage;
 use AgeCMS\Modules\Importer\Extract\Extractor;
 use AgeCMS\Modules\Importer\Extract\Generic;
 use AgeCMS\Modules\Importer\Extract\TildaZip;
@@ -22,7 +24,10 @@ use AgeCMS\Modules\Importer\Net\Fetcher;
  */
 final class Importer
 {
-    public const DEFAULTS = ['limit' => 200, 'delay_ms' => 500, 'robots' => true, 'conflict' => 'suffix', 'replace_home' => false, 'menus' => true, 'section' => '', 'chunk' => 5];
+    public const DEFAULTS = ['limit' => 200, 'delay_ms' => 500, 'robots' => true, 'conflict' => 'suffix', 'replace_home' => false, 'menus' => true, 'section' => '', 'chunk' => 5, 'mode' => 'blocks'];
+
+    /** The two ways to import: an exact copy of the pages (needs a capture package) or the content in blocks of the theme. */
+    public const MODES = ['exact', 'blocks'];
 
     private Fetcher $fetcher;
     /** @var array<string,mixed> */
@@ -47,7 +52,22 @@ final class Importer
         $o['menus'] = (bool)$o['menus'];
         $o['conflict'] = $o['conflict'] === 'skip' ? 'skip' : 'suffix';
         $o['section'] = trim((string)$o['section'], '/');
+        $o['mode'] = in_array($o['mode'], self::MODES, true) ? (string)$o['mode'] : 'blocks';
         return $o;
+    }
+
+    /** What to say when the mode "exact copy" is asked for a source that is not a capture package. */
+    public static function captureHelp(string $type): string
+    {
+        $what = match ($type) {
+            'url' => 'адрес сайта',
+            'tilda_zip' => 'архив экспорта Tilda',
+            'html_file' => 'сохранённая страница',
+            default => 'этот источник',
+        };
+        return 'Для режима «Точная копия» нужен пакет захвата: страницы берутся такими, какими их рисует Chrome, а у сервера сайта браузера нет. '
+            . 'Сделайте пакет на своём компьютере: в папке tools/capture выполните «npm install», затем «node capture.mjs ' . ($type === 'url' ? 'https://адрес-сайта' : 'ПУТЬ') . ' --zip», и загрузите получившийся zip (' . $what . ' захват не заменяет). '
+            . 'В консоли это делает одна команда: «php modules/importer/bin/import.php ' . ($type === 'url' ? 'https://адрес-сайта' : 'ПУТЬ') . ' --mode=exact» (нужны Node.js и Chrome). Если важнее редактирование текста в блоках, выберите режим «В блоки темы».';
     }
 
     public function fetcher(): Fetcher
@@ -63,12 +83,18 @@ final class Importer
     public static function source(string $input): array
     {
         $input = trim($input);
+        if ($input !== '' && is_dir($input) && CapturePackage::looksDir($input)) {
+            return ['type' => 'capture_dir', 'source' => rtrim($input, '/')];
+        }
         if ($input !== '' && is_file($input)) {
             $head = (string)file_get_contents($input, false, null, 0, 4096);
             if (Wxr::looks($head)) {
                 return ['type' => 'wxr', 'source' => $input];
             }
             if (str_starts_with($head, "PK\x03\x04")) {
+                if (CapturePackage::looksZip($input)) {
+                    return ['type' => 'capture_zip', 'source' => $input];
+                }
                 if (!TildaZip::looks($input)) {
                     throw new ImportException('Архив не похож на экспорт проекта Tilda (нет файлов page*.html).');
                 }
@@ -77,7 +103,7 @@ final class Importer
             if (preg_match('~<(html|body|div)[\s>]~i', $head) === 1) {
                 return ['type' => 'html_file', 'source' => $input];
             }
-            throw new ImportException('Файл не распознан: нужна выгрузка WordPress (.xml), архив экспорта Tilda (.zip) или адрес сайта.');
+            throw new ImportException('Файл не распознан: нужна выгрузка WordPress (.xml), архив экспорта Tilda (.zip), пакет захвата (.zip) или адрес сайта.');
         }
         if ($input === '') {
             throw new ImportException('Укажите адрес сайта или файл выгрузки.');
@@ -150,6 +176,7 @@ final class Importer
         $o = $this->options;
         return match ($src['type']) {
             'wxr' => new Wxr(['file' => $src['source'], 'limit' => $o['limit']]),
+            'capture_zip', 'capture_dir' => new CapturePackage(['file' => $src['source'], 'dir' => $dir !== '' ? $dir : sys_get_temp_dir() . '/agecms-import-' . bin2hex(random_bytes(4)), 'limit' => $o['limit']]),
             'tilda_zip' => new TildaZip(['file' => $src['source'], 'dir' => $dir !== '' ? $dir : sys_get_temp_dir() . '/agecms-import-' . bin2hex(random_bytes(4)), 'limit' => $o['limit']]),
             'html_file' => new class ($src['source']) implements Extractor {
                 public function __construct(private string $file)
@@ -210,7 +237,7 @@ final class Importer
         }
         $site = Neutral::site((array)($state['site'] ?? []));
         $site['local_base'] = (string)($state['local_base'] ?? $state['root'] ?? '');
-        return ['source' => $src, 'detect' => (array)($state['detect'] ?? []), 'site' => $site, 'pages' => $pages, 'warnings' => array_values(array_unique((array)($state['warnings'] ?? [])))];
+        return ['source' => $src, 'detect' => (array)($state['detect'] ?? []), 'site' => $site, 'pages' => $pages, 'warnings' => array_values(array_unique((array)($state['warnings'] ?? []))), 'capture' => (array)($state['capture'] ?? [])];
     }
 
     /**
@@ -225,6 +252,9 @@ final class Importer
      */
     public function plan(array $pages, array $site, ?array $blocks = null, ?callable $taken = null): array
     {
+        if (($this->options['mode'] ?? 'blocks') === 'exact' || ($pages !== [] && isset($pages[0]['copy']))) {
+            return $this->planExact($pages, $site, $taken);
+        }
         $blocks ??= self::themeBlocks();
         $plan = (new Planner($this->options, $taken ?? self::takenChecker()))->plan($pages, $site);
         $source = (string)($site['source_url'] ?? '');
@@ -279,7 +309,82 @@ final class Importer
             }
         }
         $plan['menus'] = self::menuAnchors($plan['menus'], $anchors, $all, $plan['pages'], $plan['warnings']);
-        return ['items' => $items, 'sections' => $plan['sections'], 'menus' => $plan['menus'], 'redirects' => $plan['redirects'], 'warnings' => $plan['warnings'], 'roles' => $mapper->roles()];
+        return ['items' => $items, 'sections' => $plan['sections'], 'menus' => $plan['menus'], 'redirects' => $plan['redirects'], 'warnings' => $plan['warnings'], 'roles' => $mapper->roles(), 'links' => $links, 'mode' => 'blocks'];
+    }
+
+    /**
+     * The plan of an exact copy: the same addresses, redirects and conflicts as for blocks, but a page is a document with no blocks yet
+     * (the block "site_copy" is built from the package file when the page is created, see Runner::applyItem) and the "losses" list what
+     * the capture left out on purpose: trackers, chats, forms that are not connected.
+     *
+     * @param list<array<string,mixed>> $pages
+     * @param array<string,mixed> $site
+     * @param (callable(string):?string)|null $taken
+     * @return array<string,mixed>
+     */
+    private function planExact(array $pages, array $site, ?callable $taken): array
+    {
+        $plan = (new Planner($this->options, $taken ?? self::takenChecker()))->plan($pages, $site);
+        $items = [];
+        $siteTitle = (string)($site['title'] ?? '');
+        foreach ($pages as $p) {
+            $entry = $plan['pages'][$p['id']];
+            $copy = (array)($p['copy'] ?? []);
+            $og = (string)$p['og_image'];
+            $doc = [
+                'title' => mb_substr((string)$p['title'] !== '' ? (string)$p['title'] : 'Без названия', 0, 200),
+                'meta_title' => mb_substr(Mapper::metaTitle((string)$p['meta_title'], (string)$p['title'], $siteTitle), 0, 200),
+                'meta_description' => mb_substr((string)$p['meta_description'], 0, 500),
+                'og_image' => (str_starts_with($og, CopyBuilder::SENTINEL) || Mapper::urlOk($og)) && strlen($og) <= 500 ? $og : '',
+                'is_noindex' => $p['is_noindex'] ? 1 : 0,
+                'schema_type' => 'WebPage',
+                'blocks' => [],
+            ];
+            if ($entry['slug'] !== 'index') {
+                $doc['parent_slug'] = $entry['parent_slug'];
+            }
+            if ($copy === []) {
+                $entry['action'] = 'skip';
+                $entry['reason'] = 'в пакете нет файла этой страницы';
+            }
+            $items[$p['id']] = $entry + ['doc' => $doc, 'losses' => self::copyLosses($copy)];
+        }
+        return ['items' => $items, 'sections' => [], 'menus' => ['header' => [], 'footer' => []], 'redirects' => $plan['redirects'], 'warnings' => $plan['warnings'], 'roles' => [], 'links' => $plan['links'], 'mode' => 'exact'];
+    }
+
+    /**
+     * What a person should know about a copied page: counters and chats that were not carried over, forms, scripts that could not be taken.
+     *
+     * @param array<string,mixed> $copy the "copy" part of a neutral page
+     * @return list<array{what:string,why:string,source:string}>
+     */
+    public static function copyLosses(array $copy): array
+    {
+        $out = [];
+        foreach (array_values(array_unique((array)($copy['trackers'] ?? []))) as $t) {
+            $out[] = ['what' => 'Счётчик или чат «' . mb_substr((string)$t, 0, 80) . '»', 'why' => 'не перенесён: чужая слежка и чужие скрипты на странице не нужны', 'source' => ''];
+        }
+        foreach ((array)($copy['forms'] ?? []) as $f) {
+            if (!is_array($f) || !empty($f['search'])) {
+                continue;
+            }
+            $label = 'Форма' . ((string)($f['kind'] ?? 'form') !== 'form' ? ' (' . $f['kind'] . ')' : '') . ((array)($f['fields'] ?? []) !== [] ? ' с полями ' . implode(', ', array_slice(array_map('strval', (array)$f['fields']), 0, 6)) : '');
+            $out[] = !empty($f['rewired'])
+                ? ['what' => $label, 'why' => 'отправляет заявки в раздел «Заявки» этого сайта (на почту владельца, если она настроена)', 'source' => '']
+                : ['what' => $label, 'why' => 'форма не подключена: на копии она не отправляет данные', 'source' => ''];
+        }
+        foreach ((array)($copy['notes'] ?? []) as $n) {
+            $out[] = ['what' => 'Замечание захвата', 'why' => mb_substr((string)$n, 0, 300), 'source' => ''];
+        }
+        $d = $copy['similarity']['desktop'] ?? null;
+        $m = $copy['similarity']['mobile'] ?? null;
+        if (is_numeric($d) && (float)$d < 0.9) {
+            $out[] = ['what' => 'Сходство с оригиналом', 'why' => 'на компьютере ' . round((float)$d * 100) . '%: страница может отличаться от оригинала', 'source' => ''];
+        }
+        if (is_numeric($m) && (float)$m < 0.9) {
+            $out[] = ['what' => 'Сходство с оригиналом', 'why' => 'на телефоне ' . round((float)$m * 100) . '%: страница может отличаться от оригинала', 'source' => ''];
+        }
+        return $out;
     }
 
     /**

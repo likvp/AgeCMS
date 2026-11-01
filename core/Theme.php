@@ -39,10 +39,24 @@ final class Theme
         return self::$manifests[$name] ??= json_decode((string)file_get_contents(self::dir($name) . '/theme.json'), true, 512, JSON_THROW_ON_ERROR);
     }
 
+    /** Block type of a page that is a copy of a page of another site (see CopyPage). It belongs to the core, not to a theme. */
+    public const COPY_BLOCK = 'site_copy';
+
     /** @return array<string,array<string,mixed>> */
     public static function blocks(string $name): array
     {
         return self::manifest($name)['blocks'] ?? [];
+    }
+
+    /**
+     * Every block type a document may hold: those of the theme and the system block of a copied page. The editors list only
+     * blocks(); the validator and the renderer know both.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public static function schemas(string $name): array
+    {
+        return self::blocks($name) + [self::COPY_BLOCK => CopyPage::schema()];
     }
 
     /**

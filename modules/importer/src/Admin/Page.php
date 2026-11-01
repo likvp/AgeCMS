@@ -34,6 +34,9 @@ final class Page
             }
             return $request->method === 'POST' ? self::jobPost($id, $request, $actor) : self::job($id, $request);
         }
+        if (str_ends_with(rtrim($request->path, '/'), '/copy')) {
+            return CopyEditor::handle($request, $actor);
+        }
         if ($request->method === 'POST') {
             // "/" and "/upload" (the same form; /upload is the page the core passes files to)
             return self::start($request, $actor);
@@ -80,11 +83,14 @@ final class Page
         // The form goes to /upload, the page that takes files (the core checks them); without a file it works the same as /.
         $action = $max > 0 ? self::BASE . '/upload' : self::BASE . '/';
         $body .= '<section class="panel"><div class="panel-h"><h2>Перенести сайт</h2></div><form method="post" action="' . $action . '"' . ($max > 0 ? ' enctype="multipart/form-data"' : '') . ' class="panel-b">' . ag_admin_csrf_field()
-            . '<p class="muted">Переносятся тексты, картинки, структура страниц, меню, заголовки и описания для поисковиков, старые адреса (с них будет переход на новые). Дизайн не переносится: страницы собираются из блоков вашей темы. Сначала будет предпросмотр, на сайте до кнопки «Импортировать» ничего не меняется.</p>'
-            . '<label class="f"><span>Адрес сайта</span><input class="in" type="text" name="url" placeholder="https://old-site.ru" value="' . $e($old['url'] ?? '') . '" autocomplete="off"><small class="hint">WordPress, Tilda, 1С-Битрикс, Joomla, Wix, MODX, HostCMS и любой другой сайт.</small></label>';
+            . '<p class="muted">Сначала будет предпросмотр, на сайте до кнопки «Импортировать» ничего не меняется. Старые адреса получат переход на новые, заголовки и описания для поисковиков переносятся в обоих режимах.</p>'
+            . '<fieldset class="f"><legend>Как переносить</legend>'
+            . '<label class="chk"><input type="radio" name="mode" value="exact"' . (($old['mode'] ?? 'exact') !== 'blocks' ? ' checked' : '') . '> <b>Точная копия</b>: страница выглядит и работает как на старом сайте (и на компьютере, и на телефоне), но не собрана из блоков темы. Нужен пакет захвата (ниже).</label>'
+            . '<label class="chk"><input type="radio" name="mode" value="blocks"' . (($old['mode'] ?? '') === 'blocks' ? ' checked' : '') . '> <b>В блоки темы</b>: тексты и картинки собираются из блоков вашей темы, оформление берётся из темы. Подходит, когда сайт будет жить с новым дизайном.</label></fieldset>'
+            . '<label class="f"><span>Адрес сайта</span><input class="in" type="text" name="url" placeholder="https://old-site.ru" value="' . $e($old['url'] ?? '') . '" autocomplete="off"><small class="hint">Для режима «В блоки темы»: WordPress, Tilda, 1С-Битрикс, Joomla, Wix, MODX, HostCMS и любой другой сайт. Для «Точной копии» адрес открывает инструмент захвата на вашем компьютере (см. ниже), здесь нужен готовый пакет.</small></label>';
         if ($max > 0) {
             $body .= '<label class="f"><span>Или файл выгрузки</span><input class="in" type="file" name="upload" accept=".xml,.zip,application/xml,text/xml,application/zip">'
-                . '<small class="hint">Выгрузка WordPress («Инструменты», «Экспорт», «Всё содержимое», файл .xml) или архив экспорта проекта Tilda (.zip), до ' . $e(ModuleUpload::sizeText($max)) . '.'
+                . '<small class="hint">Пакет захвата (.zip из tools/capture), выгрузка WordPress («Инструменты», «Экспорт», «Всё содержимое», файл .xml) или архив экспорта проекта Tilda (.zip), до ' . $e(ModuleUpload::sizeText($max)) . '.'
                 . ' Файл больше положите по FTP в папку <span class="mono">data/import/</span> сайта и выберите ниже.</small></label>';
         }
         $body .= '<label class="f"><span>' . ($max > 0 ? 'Или файл из папки data/import' : 'Или файл выгрузки') . '</span><select class="in" name="file"><option value="">не выбран</option>';
@@ -94,6 +100,9 @@ final class Page
         $body .= '</select><small class="hint">' . ($max > 0 ? '' : 'Выгрузка WordPress («Инструменты», «Экспорт», файл .xml) или архив экспорта проекта Tilda (.zip). ')
             . 'Положите файл по FTP в папку <span class="mono">data/import/</span> сайта, он появится в списке.'
             . ($files === [] ? ' Сейчас там пусто.' : '') . '</small></label>';
+        $body .= '<details class="f"><summary>Как сделать пакет захвата для «Точной копии»</summary><div class="muted"><p>Страницы берутся такими, какими их рисует Chrome, поэтому пакет делается на вашем компьютере (на сервере браузера нет): нужны Node.js 18+ и Chrome.</p>'
+            . '<pre class="mono">cd tools/capture\nnpm install\nnode capture.mjs https://old-site.ru --zip</pre>'
+            . '<p>Для экспорта Tilda вместо адреса укажите архив или папку экспорта. Получится файл .zip: загрузите его выше (или положите по FTP в <span class="mono">data/import/</span>). В пакете нет чужих счётчиков, чатов и сторонних скриптов. С машины, где есть Node.js и Chrome, то же делает одна команда: <span class="mono">php modules/importer/bin/import.php https://old-site.ru --mode=exact --apply</span>.</p></div></details>';
         $body .= '<div class="row"><label class="f"><span>Сколько страниц брать</span><input class="in" type="number" name="limit" min="1" max="2000" value="' . (int)($old['limit'] ?? $defaults['limit']) . '"></label>'
             . '<label class="f"><span>Если адрес уже занят</span><select class="in" name="conflict"><option value="suffix">добавить к адресу -2</option><option value="skip"' . (($old['conflict'] ?? '') === 'skip' ? ' selected' : '') . '>не переносить страницу</option></select></label></div>'
             . '<label class="chk"><input type="checkbox" name="replace_home" value="1"' . (!empty($old['replace_home']) ? ' checked' : '') . '> Заменить главную страницу содержимым старой главной</label>'
@@ -104,7 +113,7 @@ final class Page
         if ($jobs !== []) {
             $body .= '<section class="panel"><div class="panel-h"><h2>Задания</h2></div><div class="tbl-scroll"><table class="tbl"><thead><tr><th>№</th><th>Источник</th><th>Платформа</th><th>Состояние</th><th>Когда</th></tr></thead><tbody>';
             foreach ($jobs as $j) {
-                $src = $j['source_type'] === 'url' ? $j['source'] : Runner::sourceLabel($j) . ' (' . ($j['source_type'] === 'wxr' ? 'выгрузка WordPress' : ($j['source_type'] === 'tilda_zip' ? 'архив Tilda' : 'файл')) . ')';
+                $src = $j['source_type'] === 'url' ? $j['source'] : Runner::sourceLabel($j) . ' (' . ($j['source_type'] === 'wxr' ? 'выгрузка WordPress' : ($j['source_type'] === 'tilda_zip' ? 'архив Tilda' : (in_array($j['source_type'], ['capture_zip', 'capture_dir'], true) ? 'пакет захвата' : 'файл'))) . ')';
                 $body .= '<tr><td><a href="' . self::BASE . '/job?id=' . $j['id'] . '">' . $j['id'] . '</a></td><td class="mono">' . $e(mb_substr($src, 0, 80)) . '</td><td>' . $e((string)($j['detect']['name'] ?? '')) . '</td><td>' . self::statusTag((string)$j['status']) . '</td><td class="muted">' . $e(str_replace(['T', 'Z'], [' ', ''], (string)$j['created_at'])) . '</td></tr>';
             }
             $body .= '</tbody></table></div></section>';
@@ -141,6 +150,7 @@ final class Page
             'conflict' => (string)($b['conflict'] ?? 'suffix'),
             'replace_home' => !empty($b['replace_home']),
             'menus' => !empty($b['menus']),
+            'mode' => ($b['mode'] ?? 'exact') === 'blocks' ? 'blocks' : 'exact',
         ];
         if ((int)($b['limit'] ?? 0) > 0) {
             $args['limit'] = (int)$b['limit'];
@@ -267,8 +277,12 @@ final class Page
                     if (!in_array($job['status'], ['ready', 'failed', 'rolled_back'], true)) {
                         throw new \AgeCMS\Modules\Importer\ImportException('Удалить можно задание, которое не применено или уже отменено.');
                     }
+                    $copyKey = (string)($job['result']['copy']['key'] ?? '');
                     Jobs::delete($id);
                     self::removeDir(Runner::dir($id));
+                    if ($copyKey !== '' && \AgeCMS\CopyPage::keyValid($copyKey) && !\AgeCMS\CopyPage::keyInUse($copyKey)) {
+                        \AgeCMS\CopyPage::removeFiles($copyKey);
+                    }
                     return ModuleResponse::redirect(self::BASE . '/');
                 default:
                     throw new NotFoundException('Неизвестное действие');
@@ -299,7 +313,16 @@ final class Page
         if ($job['status'] !== 'analyzing') {
             $html .= ' Будет создано: <b>' . $c['create'] . '</b>' . ($c['update'] > 0 ? ', главная будет заменена' : '') . ', пропущено: ' . $c['skip'] . ', переходов со старых адресов: ' . $c['redirects'] . '.';
         }
-        $html .= '</p></div></section>';
+        $html .= '</p>';
+        if (($r['mode'] ?? '') === 'exact' && isset($r['copy'])) {
+            $k = $r['copy'];
+            $html .= '<p><b>Точная копия.</b> Файлов: ' . (int)$k['files'] . ', размер около ' . self::mb((int)$k['bytes']) . '. '
+                . ($k['trackers'] === [] ? 'Чужих счётчиков и чатов на страницах не было.' : 'Не перенесены счётчики и чаты: ' . $e(implode(', ', $k['trackers'])) . '.')
+                . ' Форм: ' . (int)$k['forms'] . ($k['forms_unconnected'] > 0 ? ', не подключено: ' . (int)$k['forms_unconnected'] : ', заявки с них пойдут в раздел «Заявки»') . '.</p>';
+        } elseif (($r['mode'] ?? '') === 'blocks') {
+            $html .= '<p class="muted">Режим «В блоки темы».</p>';
+        }
+        $html .= '</div></section>';
         if ($r['warnings'] !== []) {
             $html .= '<div class="notice warn"><div>' . implode('<br>', array_map($e, $r['warnings'])) . '</div></div>';
         }
@@ -327,7 +350,7 @@ final class Page
         $e = 'ag_e';
         $html = '<form method="post" action="' . self::BASE . '/job?id=' . $id . '" data-confirm="Перенести выбранные страницы?" data-confirm-text="Страницы появятся на сайте сразу. Импорт можно отменить кнопкой «Отменить импорт»." data-confirm-ok="Импортировать">'
             . ag_admin_csrf_field() . '<input type="hidden" name="id" value="' . (int)($job['id'] ?? $id) . '"><input type="hidden" name="action" value="apply">';
-        $html .= '<section class="panel"><div class="panel-h"><h2>Что будет перенесено</h2><span class="muted">снимите галочку, чтобы не переносить страницу</span></div><div class="tbl-scroll"><table class="tbl"><thead><tr><th></th><th>Было</th><th>Станет</th><th>Страница</th><th>Блоки</th><th>Потери</th></tr></thead><tbody>';
+        $html .= '<section class="panel"><div class="panel-h"><h2>Что будет перенесено</h2><span class="muted">снимите галочку, чтобы не переносить страницу</span></div><div class="tbl-scroll"><table class="tbl"><thead><tr><th></th><th>Было</th><th>Станет</th><th>Страница</th><th>' . (($r['mode'] ?? '') === 'exact' ? 'Копия' : 'Блоки') . '</th><th>Потери</th></tr></thead><tbody>';
         $rows = $r['pages'];
         usort($rows, static fn(array $a, array $b): int => [$a['slug'] === 'index' ? 0 : 1, $a['slug']] <=> [$b['slug'] === 'index' ? 0 : 1, $b['slug']]);
         foreach ($rows as $row) {
@@ -341,6 +364,14 @@ final class Page
             if ($row['blocks'] !== []) {
                 $blocks = '<details><summary>' . count($row['blocks']) . ' ' . self::plural(count($row['blocks']), 'блок', 'блока', 'блоков') . '</summary><small>'
                     . implode('<br>', array_map(static fn(array $b): string => ag_e($b['type'] . ($b['summary'] !== '' ? ': ' . $b['summary'] : '')), $row['blocks'])) . '</small></details>';
+            }
+            if (is_array($row['copy'] ?? null)) {
+                $c = $row['copy'];
+                $sd = $c['similarity']['desktop'] ?? null;
+                $sm = $c['similarity']['mobile'] ?? null;
+                $blocks = self::mb((int)$c['size']) . ', ' . ($c['mode'] === 'dom' ? 'итоговая страница' : 'исходный код')
+                    . (is_numeric($sd) ? '<br><small class="muted">сходство: компьютер ' . (int)round((float)$sd * 100) . '%' . (is_numeric($sm) ? ', телефон ' . (int)round((float)$sm * 100) . '%' : '') . '</small>' : '')
+                    . ($c['phone'] ? '<br><small class="muted">отдельная версия для телефона</small>' : '');
             }
             $losses = $row['losses'] === [] ? '<span class="muted">нет</span>' : '<details><summary>' . count($row['losses']) . '</summary><small>'
                 . implode('<br>', array_map(static fn(array $l): string => ag_e($l['what'] . ': ' . $l['why']), $row['losses'])) . '</small></details>';
@@ -387,6 +418,9 @@ final class Page
         } else {
             $html .= '<p>Создано страниц: <b>' . $c['done'] . '</b>' . ($c['failed'] > 0 ? ', не получилось: <b>' . $c['failed'] . '</b>' : '') . '. Потерь при переносе: ' . $c['losses'] . '.</p>';
         }
+        if (isset($res['copy']['total'])) {
+            $html .= '<p>Файлов копии: ' . (int)$res['copy']['total'] . ', записано ' . self::mb((int)$res['copy']['bytes']) . (($res['copy']['skipped'] ?? 0) > 0 ? ', пропущено небезопасных или лишних: ' . (int)$res['copy']['skipped'] : '') . (!empty($res['copy']['removed']) ? ' (при отмене удалены)' : '') . '.</p>';
+        }
         if (isset($res['redirects'])) {
             $html .= '<p>Переходов со старых адресов добавлено: ' . count($res['redirects']['added'] ?? []) . (($res['redirects']['refused'] ?? []) !== [] ? ', не принято: ' . count($res['redirects']['refused']) : '') . '.</p>';
             if (($res['redirects']['note'] ?? '') !== '') {
@@ -417,7 +451,8 @@ final class Page
                 'kept' => '<span class="tag warn">оставлена</span><br><small>' . $e($row['error']) . '</small>',
                 default => $e($row['status']),
             };
-            $link = $row['status'] === 'done' ? '<a class="mono" href="/' . $e($row['slug'] === 'index' ? '' : $row['slug']) . '" target="_blank" rel="noopener">/' . $e($row['slug'] === 'index' ? '' : $row['slug']) . '</a>' : '<span class="mono">/' . $e($row['slug'] === 'index' ? '' : $row['slug']) . '</span>';
+            $edit = $row['status'] === 'done' && is_array($row['copy'] ?? null) ? ' <a class="muted" href="' . self::BASE . '/copy?slug=' . rawurlencode((string)$row['slug']) . '">править код</a>' : '';
+            $link = $row['status'] === 'done' ? '<a class="mono" href="/' . $e($row['slug'] === 'index' ? '' : $row['slug']) . '" target="_blank" rel="noopener">/' . $e($row['slug'] === 'index' ? '' : $row['slug']) . '</a>' . $edit : '<span class="mono">/' . $e($row['slug'] === 'index' ? '' : $row['slug']) . '</span>';
             $losses = $row['losses'] === [] ? '<span class="muted">нет</span>' : '<details><summary>' . count($row['losses']) . '</summary><small>' . implode('<br>', array_map(static fn(array $l): string => ag_e($l['what'] . ': ' . $l['why']), $row['losses'])) . '</small></details>';
             $html .= '<tr><td class="mono">' . ($row['new'] ? '<span class="muted">новый раздел</span>' : $e(mb_substr($row['old_path'], 0, 70))) . '</td><td>' . $link . '</td><td>' . $state . '</td><td>' . $losses . '</td></tr>';
         }
@@ -441,6 +476,11 @@ final class Page
             default => 'plain',
         };
         return '<span class="tag ' . $kind . '">' . ag_e(Runner::statusText($status)) . '</span>';
+    }
+
+    private static function mb(int $bytes): string
+    {
+        return $bytes >= 1048576 ? number_format($bytes / 1048576, 1, ',', '') . ' МБ' : max(1, (int)round($bytes / 1024)) . ' КБ';
     }
 
     private static function plural(int $n, string $one, string $few, string $many): string

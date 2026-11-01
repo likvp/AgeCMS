@@ -9,8 +9,12 @@ use AgeCMS\CircuitBreaker;
 use AgeCMS\Content;
 use AgeCMS\Database;
 use AgeCMS\Logger;
+use AgeCMS\CopyPage;
 use AgeCMS\Pages;
+use AgeCMS\Theme;
 use AgeCMS\ValidationException;
+use AgeCMS\Modules\Importer\Copy\CopyBuilder;
+use AgeCMS\Modules\Importer\Copy\CopyFiles;
 use AgeCMS\Modules\Importer\Html\Sanitizer;
 use AgeCMS\Modules\Importer\Net\Fetcher;
 
@@ -54,17 +58,31 @@ final class Runner
     {
         $src = Importer::source($input);
         $options = Importer::options($options);
+        $note = '';
+        if (in_array($src['type'], ['capture_zip', 'capture_dir'], true)) {
+            // A capture package holds finished pages, not content to put into blocks.
+            $options['mode'] = 'exact';
+        }
+        if ($options['mode'] === 'exact' && !in_array($src['type'], ['capture_zip', 'capture_dir'], true)) {
+            if ($src['type'] === 'wxr') {
+                // An export of WordPress holds only texts: there is nothing to copy exactly.
+                $options['mode'] = 'blocks';
+                $note = 'Выгрузка WordPress (XML) содержит только тексты и картинки без оформления, поэтому импорт идёт в режиме «В блоки темы».';
+            } else {
+                throw new ImportException(Importer::captureHelp($src['type']));
+            }
+        }
         $id = Jobs::create($src['source'], $src['type'], $options, $actor);
         if ($src['type'] !== 'url') {
-            Jobs::update($id, ['result' => ['source_name' => mb_substr(basename(str_replace('\\', '/', $name ?? $src['source'])), 0, 120)]]);
+            Jobs::update($id, ['result' => ['source_name' => mb_substr(basename(str_replace('\\', '/', $name ?? $src['source'])), 0, 120)] + ($note !== '' ? ['mode_note' => $note] : [])]);
         }
-        if ($src['type'] !== 'url') {
+        if ($src['type'] !== 'url' && $src['type'] !== 'capture_dir') {
             // The job keeps its own copy: the file in the inbox or the temporary upload may go away.
             $dir = self::dir($id);
             if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
                 throw new ImportException('Не получилось создать папку задания: ' . $dir);
             }
-            $copy = $dir . '/source.' . ($src['type'] === 'tilda_zip' ? 'zip' : ($src['type'] === 'wxr' ? 'xml' : 'html'));
+            $copy = $dir . '/source.' . (in_array($src['type'], ['tilda_zip', 'capture_zip'], true) ? 'zip' : ($src['type'] === 'wxr' ? 'xml' : 'html'));
             if (!@copy($src['source'], $copy)) {
                 throw new ImportException('Не получилось сохранить файл задания.');
             }
@@ -211,7 +229,7 @@ final class Runner
         foreach ($unselected as $itemId) {
             Jobs::updateItem($itemId, ['action' => 'skip', 'status' => 'skipped', 'plan' => ['reason' => 'не выбрана для переноса', 'redirects' => []], 'doc' => [], 'losses' => []]);
         }
-        Jobs::update($jobId, ['plan' => ['menus' => $plan['menus'], 'redirects' => $plan['redirects'], 'warnings' => $plan['warnings'], 'roles' => $plan['roles']]]);
+        Jobs::update($jobId, ['plan' => ['menus' => $plan['menus'], 'redirects' => $plan['redirects'], 'warnings' => $plan['warnings'], 'roles' => $plan['roles'], 'links' => $plan['links'] ?? []]]);
     }
 
     // ---- apply ---------------------------------------------------------------------------------------------------
@@ -275,6 +293,9 @@ final class Runner
         $actor = self::actor($job);
         $chunk = max(1, (int)($job['options']['chunk'] ?? 5));
         $done = 0;
+        if (($job['options']['mode'] ?? '') === 'exact' && empty($job['result']['copy']['installed']) && !$this->installCopy($deadline)) {
+            return;
+        }
         foreach (Jobs::items($job['id'], ['pending']) as $item) {
             if (microtime(true) >= $deadline || $done >= $chunk) {
                 return;
@@ -292,12 +313,86 @@ final class Runner
         $this->finish($actor);
     }
 
+    /** The folder name of the files of the copies made by a job. */
+    public static function copyKey(int $jobId): string
+    {
+        return 'j' . $jobId;
+    }
+
+    /** Root folder of the capture package of a job (a folder given by the owner or the unpacked archive). @param array<string,mixed> $job */
+    private static function packageRoot(array $job): string
+    {
+        $root = (string)($job['state']['root'] ?? $job['state']['local_base'] ?? $job['site']['local_base'] ?? '');
+        if ($root === '' || !is_dir($root)) {
+            throw new ImportException('Папка пакета захвата не найдена: ' . $root);
+        }
+        return $root;
+    }
+
+    /** One portion of the files of the package into the folder of the copy. @return bool true when everything is in place */
+    private function installCopy(float $deadline): bool
+    {
+        $job = $this->job;
+        $result = $job['result'];
+        $root = self::packageRoot($job);
+        $key = self::copyKey((int)$job['id']);
+        $list = self::dir((int)$job['id']) . '/copy-files.lst';
+        if (!isset($result['copy'])) {
+            if (!is_dir(dirname($list)) && !@mkdir(dirname($list), 0700, true) && !is_dir(dirname($list))) {
+                throw new ImportException('Не получилось создать папку задания.');
+            }
+            $names = CopyFiles::list($root);
+            file_put_contents($list, implode("\n", $names));
+            $result['copy'] = ['key' => $key, 'total' => count($names), 'done' => 0, 'bytes' => 0, 'skipped' => 0, 'installed' => false];
+            Jobs::update($job['id'], ['result' => $result]);
+        }
+        $names = is_file($list) ? array_values(array_filter(explode("\n", (string)file_get_contents($list)), static fn(string $n): bool => $n !== '')) : [];
+        $progress = ['done' => (int)$result['copy']['done'], 'bytes' => (int)$result['copy']['bytes'], 'skipped' => (int)$result['copy']['skipped'], 'notes' => []];
+        $move = str_starts_with(realpath($root) ?: $root, (string)realpath(self::dir((int)$job['id'])));
+        $ready = CopyFiles::install($root, $key, $names, $progress, $deadline, $move);
+        $result['copy'] = ['done' => $progress['done'], 'bytes' => $progress['bytes'], 'skipped' => $progress['skipped'], 'installed' => $ready] + $result['copy'];
+        Jobs::update($job['id'], ['result' => $result]);
+        $this->job['result'] = $result;
+        return $ready;
+    }
+
+    /** The document of an exact copy: the block "site_copy" built from the page file of the package. @param array<string,mixed> $item @param array<string,mixed> $doc @return array<string,mixed> */
+    private function copyDoc(array $item, array $doc): array
+    {
+        $job = $this->job;
+        $copy = (array)($item['page']['copy'] ?? []);
+        $root = self::packageRoot($job);
+        $key = self::copyKey((int)$job['id']);
+        $file = $root . '/' . (string)($copy['file'] ?? '');
+        $mobile = (string)($copy['mobile_file'] ?? '') !== '' ? $root . '/' . $copy['mobile_file'] : '';
+        if (!is_file($file)) {
+            throw new ImportException('Файла страницы нет в пакете: ' . ($copy['file'] ?? '?'));
+        }
+        $links = (array)($job['plan']['links'] ?? []);
+        $source = (string)$item['old_path'] . ' ← ' . (string)($item['page']['source_url'] ?? '');
+        $data = CopyBuilder::data($file, $key, $links, $source, (string)($copy['mode'] ?? 'source'), $mobile);
+        $doc['blocks'] = [['id' => CopyPage::BLOCK_ID, 'type' => Theme::COPY_BLOCK, 'data' => $data]];
+        if (str_starts_with((string)($doc['og_image'] ?? ''), CopyBuilder::SENTINEL)) {
+            $doc['og_image'] = CopyPage::url($key) . substr((string)$doc['og_image'], strlen(CopyBuilder::SENTINEL));
+        }
+        return $doc;
+    }
+
     /** @param array<string,mixed> $item */
     private function applyItem(array $item, Actor $actor, float $deadline): void
     {
         $losses = $item['losses'];
-        $doc = $this->images($item['doc'], $losses, $deadline);
-        $doc = $this->finalRichText($doc);
+        if (($this->job['options']['mode'] ?? '') === 'exact') {
+            try {
+                $doc = $this->copyDoc($item, $item['doc']);
+            } catch (ImportException $e) {
+                Jobs::updateItem($item['id'], ['status' => 'failed', 'error' => mb_substr($e->getMessage(), 0, 1000)]);
+                return;
+            }
+        } else {
+            $doc = $this->images($item['doc'], $losses, $deadline);
+            $doc = $this->finalRichText($doc);
+        }
         $slug = (string)$item['new_slug'];
         for ($attempt = 0; $attempt < 3; $attempt++) {
             try {
@@ -641,6 +736,16 @@ final class Runner
             }
         }
         $result = $job['result'];
+        if (!empty($result['copy']['key']) && CopyPage::keyValid((string)$result['copy']['key'])) {
+            $key = (string)$result['copy']['key'];
+            if (CopyPage::keyLive($key)) {
+                $result['rollback_notes'][] = 'Файлы копии оставлены: страница, которая их использует, изменена после импорта и не отменена.';
+            } else {
+                $n = CopyPage::removeFiles($key);
+                $result['rollback_notes'][] = 'Файлы копии удалены (' . $n . ').';
+                $result['copy']['removed'] = true;
+            }
+        }
         $added = (array)($result['redirects']['added'] ?? []);
         if ($added !== [] && Compat::redirects()) {
             foreach (array_chunk($added, 1000) as $batch) {
