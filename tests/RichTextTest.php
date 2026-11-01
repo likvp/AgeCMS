@@ -160,6 +160,15 @@ final class RichTextTest extends TestCase
         $this->assertSame(true, Revisions::verifyChain()['ok']);
     }
 
+    public function testVoidTagsDoNotSwallowTheTextAfterThem(): void
+    {
+        $this->assertSame("<p>a</p>\n<p>b</p>", $this->clean('<p>a</p><object data=x></object><embed src=x><p>b</p>'));
+        $this->assertSame("<p>a</p>\n<p>text <b>b</b></p>", $this->clean('<p>a</p><embed src="x>y" title=\'q\'>text <b>b</b>'), 'a ">" inside a quoted value');
+        $this->assertSame("<p>xy</p>\n<p>z</p>", $this->clean('<p>x<wbr>y</p><video><source src=a><track src=b></video><p>z</p>'));
+        $this->assertSame('<p>tail</p>', $this->clean('<embed src=x/>tail'));
+        $this->assertSame("<p>t</p>\n<p>u</p>", $this->clean('<p>t</p><param name=a><p>u</p>'));
+    }
+
     public function testTemplatesPrintCleanHtml(): void
     {
         $this->assertSame('<p>a</p>', ag_rich('<p onclick="x">a</p><script>b</script>'));

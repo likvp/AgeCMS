@@ -63,6 +63,9 @@ final class RichText
 
         // A "<" that cannot open a tag is text in HTML5; the libxml parser would cut the rest of the text there.
         $html = preg_replace('~<(?![a-zA-Z/!?])~', '&lt;', $html) ?? '';
+        // Void tags the HTML4 parser of libxml does not know as empty (embed, source, ...) would swallow all the text after them;
+        // closing them explicitly keeps the rest. The attribute part skips quoted values, so a ">" inside one does not end the tag.
+        $html = preg_replace('~<(embed|source|track|wbr|param|keygen)\b((?:[^>"\']|"[^"]*"|\'[^\']*\')*?)\s*/?>~i', '<$1$2 />', $html) ?? '';
         // PARSEHUGE lifts the nesting limit of 256 levels, past which libxml would drop the text; walk() flattens deep nesting itself.
         $in = new DOMDocument();
         $previous = libxml_use_internal_errors(true);

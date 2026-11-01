@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 use AgeCMS\{Actor, Backup, Cache, Content, CopyPage, Pages, Renderer, Updater};
 use AgeCMS\Modules\Importer\{ImportException, Importer, Jobs, Report, Runner};
-use AgeCMS\Modules\Importer\Copy\{CopyBuilder, CopyFiles};
+use AgeCMS\Modules\Importer\Copy\{CaptureRunner, CopyBuilder, CopyFiles};
 use AgeCMS\Modules\Importer\Extract\CapturePackage;
 
 require_once dirname(__DIR__, 3) . '/tests/support/HttpCase.php';
@@ -73,7 +73,7 @@ final class CopyImportTest extends HttpCase
     private function run(string $input, array $options = []): int
     {
         $actor = $this->admin();
-        $id = Runner::create($input, ['delay_ms' => 0, 'chunk' => 20, 'mode' => 'exact', 'replace_home' => true] + $options, $actor);
+        $id = Runner::create($input, ['delay_ms' => 0, 'chunk' => 20, 'mode' => 'exact', 'replace_home' => true] + $options, $actor, null, true);
         $runner = new Runner();
         $job = $runner->runToEnd($id);
         $this->assertSame('ready', $job['status'], (string)$job['error']);
@@ -226,12 +226,17 @@ final class CopyImportTest extends HttpCase
     public function testTheModeIsAskedForOnlyWhereItMakesSense(): void
     {
         $this->freshSite();
-        $e = $this->assertThrows(ImportException::class, fn() => Runner::create('https://old.example', ['mode' => 'exact'], $this->admin()));
+        CaptureRunner::$availableOverride = false;
+        try {
+            $e = $this->assertThrows(ImportException::class, fn() => Runner::create('https://old.example', ['mode' => 'exact'], $this->admin()));
+        } finally {
+            CaptureRunner::$availableOverride = null;
+        }
         $this->assertContains('tools/capture', $e->getMessage());
         $this->assertContains('--mode=exact', $e->getMessage());
         $wxr = TEST_TMP . '/e.xml';
         file_put_contents($wxr, '<?xml version="1.0"?><rss version="2.0" xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>T</title></channel></rss>');
-        $id = Runner::create($wxr, ['mode' => 'exact'], $this->admin());
+        $id = Runner::create($wxr, ['mode' => 'exact'], $this->admin(), null, true);
         $this->assertSame('blocks', Jobs::get($id)['options']['mode'], 'an export of texts goes to blocks');
         $this->assertSame('blocks', Importer::options([])['mode'], 'the older callers keep the mode they had');
         $this->assertSame('exact', Importer::options(['mode' => 'exact'])['mode']);
@@ -287,6 +292,57 @@ final class CopyImportTest extends HttpCase
         $this->assertContains('Новый текст', $this->http('GET', '/about', null, ['Cache-Control' => 'no-cache'])['body']);
         $empty = $this->http('POST', '/admin/m/importer/copy?slug=about', http_build_query(['csrf' => $m[1], 'slug' => 'about', 'title' => 'x', 'copy_body' => '  ']), self::FORM, true);
         $this->assertSame(422, $empty['status'], 'an empty page is refused');
+        $this->stop();
+    }
+
+    public function testTheTextOfACopyIsEditedOnThePageByAnEditor(): void
+    {
+        $this->boot(['demo' => false]);
+        $this->run($this->package());
+        \AgeCMS\Auth::createUser('writer', 'long-enough-pass-1', 'editor');
+        // A visitor sees no editor, no marks.
+        $plain = $this->http('GET', '/about');
+        $this->assertNotContains('data-ag-e', $plain['body']);
+        $this->assertNotContains('copy-edit', $plain['body']);
+
+        $this->http('POST', '/admin/index.php', http_build_query(['action' => 'login', 'username' => 'writer', 'password' => 'long-enough-pass-1']), self::FORM, true);
+        $seen = $this->http('GET', '/about', null, [], true);
+        $this->assertContains('Править текст', $seen['body'], 'a signed-in editor gets the way into editing');
+        $this->assertNotContains('data-ag-e', $seen['body']);
+        $this->http('GET', '/_/edit?on=1&to=/about', null, [], true);
+        $page = $this->http('GET', '/about', null, [], true);
+        $this->assertContains('data-ag-e="1"', $page['body'], 'in the editing mode the elements are marked');
+        $this->assertContains('/assets/copy-edit.js', $page['body']);
+        preg_match('/data-csrf="([^"]+)"/', $page['body'], $csrf);
+        preg_match('/data-base="([^"]+)"/', $page['body'], $base);
+        $this->assertTrue(isset($csrf[1], $base[1]));
+
+        $save = function (array $payload, string $token) {
+            return $this->http('POST', '/admin/m/importer/copy-edit', http_build_query(['csrf' => $token, 'payload' => json_encode($payload)]), self::FORM, true);
+        };
+        $before = (int)\AgeCMS\Database::value('SELECT COUNT(*) FROM revisions WHERE page_slug = ?', ['about']);
+        $codeBefore = (string)\AgeCMS\CopyPage::data(\AgeCMS\Pages::doc('about'))['copy_head'];
+        $r = $save(['slug' => 'about', 'variant' => '', 'base' => $base[1], 'edits' => [['n' => 1, 'from' => ['О компании'], 'to' => ['Наша <b>компания</b>']]]], $csrf[1]);
+        $this->assertSame(200, $r['status'], $r['body']);
+        $j = json_decode($r['body'], true);
+        $this->assertSame(1, $j['result']['applied'], $r['body']);
+        $this->assertSame($before + 1, (int)\AgeCMS\Database::value('SELECT COUNT(*) FROM revisions WHERE page_slug = ?', ['about']), 'one save is one revision');
+        $doc = \AgeCMS\Pages::doc('about');
+        $this->assertContains('<h1>Наша &lt;b&gt;компания&lt;/b&gt;</h1>', \AgeCMS\CopyPage::data($doc)['copy_body']);
+        $this->assertContains('Наша <b>компания</b>', \AgeCMS\CopyPage::data($doc)['copy_text'], 'the search text follows');
+        $this->assertSame($codeBefore, \AgeCMS\CopyPage::data($doc)['copy_head'], 'the code of the page is not touched');
+        $this->assertContains('data-ag-e', $this->http('GET', '/about', null, [], true)['body']);
+
+        // The page changed under the editor (the old base), a wrong token, no right to write: nothing is saved.
+        $stale = $save(['slug' => 'about', 'variant' => '', 'base' => $base[1], 'edits' => [['n' => 1, 'from' => ['Наша <b>компания</b>'], 'to' => ['x']]]], $csrf[1]);
+        $this->assertSame(409, $stale['status']);
+        $this->assertTrue($save(['slug' => 'about', 'base' => $j['result']['base'], 'edits' => []], 'wrong')['status'] !== 200, 'the CSRF token is checked');
+        $js = $save(['slug' => 'about', 'base' => $j['result']['base'], 'edits' => [['n' => 3, 'href' => 'javascript:alert(1)']]], $csrf[1]);
+        $this->assertSame(0, json_decode($js['body'], true)['result']['applied']);
+        $this->assertSame(404, $save(['slug' => 'no-such', 'base' => 'x', 'edits' => [['n' => 1]]], $csrf[1])['status']);
+        $this->http('POST', '/admin/index.php', http_build_query(['action' => 'logout', 'csrf' => $csrf[1]]), self::FORM, true);
+        $anon = $this->http('POST', '/admin/m/importer/copy-edit', http_build_query(['payload' => '{}']), self::FORM);
+        $this->assertTrue($anon['status'] !== 200 || !str_contains($anon['body'], '"ok":true'), 'a visitor cannot save');
         $this->stop();
     }
 }

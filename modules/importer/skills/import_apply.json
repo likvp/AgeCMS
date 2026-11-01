@@ -1,6 +1,6 @@
 {
     "name": "import_apply",
-    "description": "Create the pages of an analysed import job (status ready): pictures go to the media library, pages are written in portions in the history under your name, then 301 redirects from old addresses and menus. pages: list of old_path or id from the plan to take only these (omit for all). Long imports continue: call import_status until status is done. Administrators only.",
+    "description": "Create the pages of an analysed import job (status ready), or start the capture of a site that was only looked at (status scouted: the capture runs in the background and the transfer follows by itself): pictures go to the media library, pages are written in portions in the history under your name, then 301 redirects from old addresses and menus. pages: list of old_path or id from the plan to take only these (omit for all). Long imports continue: call import_status until status is done. Administrators only.",
     "permission": "system.manage",
     "inputSchema": {
         "type": "object",

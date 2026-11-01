@@ -5,7 +5,7 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{CopyPage, Media, Pages, SchemaValidator, Theme};
+use AgeCMS\{BlockEditor, CopyPage, Media, Pages, SchemaValidator, Theme};
 
 $slug = (string)($_GET['slug'] ?? '');
 $doc = Pages::slugValid($slug) ? Pages::doc($slug) : null;
@@ -43,7 +43,7 @@ $data = [
     'slug' => $slug,
     'csrf' => $csrf,
     'page' => $doc,
-    'blockTypes' => Theme::blocks($theme),
+    'blockTypes' => BlockEditor::forAdmin($theme),
     'schemaTypes' => SchemaValidator::SCHEMA_TYPES,
     'pages' => $others,
     'media' => array_column(Media::items(), 'url'),

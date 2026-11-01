@@ -31,7 +31,7 @@ final class Renderer
         }
         $doc = Pages::toDoc($row);
         if (CopyPage::is($doc)) {
-            return CopyPage::render($slug, $doc, $variant);
+            return CopyPage::render($slug, $doc, $variant, $editing ? $csrf : '', $preview);
         }
         return self::renderDoc($slug, $doc, $editing, $csrf);
     }

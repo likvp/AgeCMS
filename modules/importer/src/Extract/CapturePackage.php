@@ -172,6 +172,68 @@ final class CapturePackage implements Extractor
         return true;
     }
 
+    /**
+     * Checks a folder that the capture tool of this server made, as strictly as an uploaded zip is checked: only entries a package may
+     * have (the same names as safeTarget() allows), no links, no file above the size limit, limits on count and total size, a manifest
+     * of sane size. Entries that do not belong are deleted. Throws when the package as a whole is not acceptable.
+     *
+     * @return array{files:int,bytes:int,removed:int,warnings:list<string>}
+     */
+    public static function verifyDir(string $root): array
+    {
+        $base = realpath($root);
+        if ($base === false || !is_dir($base)) {
+            throw new ImportException('Папка пакета захвата не найдена.');
+        }
+        $manifest = $base . '/manifest.json';
+        if (!is_file($manifest) || is_link($manifest) || filesize($manifest) > self::MAX_MANIFEST) {
+            throw new ImportException('В пакете захвата нет manifest.json или он слишком велик.');
+        }
+        $files = 0;
+        $bytes = 0;
+        $removed = 0;
+        $warnings = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($base, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $path = $f->getPathname();
+            $rel = substr($path, strlen($base) + 1);
+            if ($f->isLink()) {
+                @unlink($path);
+                $removed++;
+                continue;
+            }
+            if ($f->isDir()) {
+                @rmdir($path); // an empty folder goes, a full one stays
+                continue;
+            }
+            $size = (int)$f->getSize();
+            if (self::safeTarget($rel) === null || !$f->isFile()) {
+                @unlink($path);
+                $removed++;
+                continue;
+            }
+            if ($size > self::MAX_FILE) {
+                @unlink($path);
+                $removed++;
+                $warnings[] = 'Файл ' . $rel . ' пропущен: слишком большой.';
+                continue;
+            }
+            $files++;
+            $bytes += $size;
+            if ($files > self::MAX_ENTRIES) {
+                throw new ImportException('В пакете захвата больше ' . self::MAX_ENTRIES . ' файлов: так много не берём.');
+            }
+            if ($bytes > self::MAX_TOTAL) {
+                throw new ImportException('Пакет захвата больше ' . (int)(self::MAX_TOTAL / 1073741824) . ' ГБ: так много не берём.');
+            }
+            @chmod($path, 0600);
+        }
+        if ($removed > 0) {
+            $warnings[] = 'Из пакета убрано лишних или небезопасных записей: ' . $removed . '.';
+        }
+        return ['files' => $files, 'bytes' => $bytes, 'removed' => $removed, 'warnings' => array_slice($warnings, 0, 20)];
+    }
+
     /** The place of an archive entry inside the package folder, or null when the entry is not part of a package. */
     public static function safeTarget(string $rel): ?string
     {

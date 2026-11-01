@@ -69,6 +69,58 @@ final class BlockEditor
     }
 
     /**
+     * Block types of a theme for the form editor of the admin: the schema of the theme as it is, plus what the editor shows
+     * in Russian: "title" without the explanation after the colon, "hint", a "label" for every field and "labels" (value => name)
+     * for every enum, also inside lists. A theme's own names win, the tables above fill the rest.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public static function forAdmin(string $theme): array
+    {
+        $out = [];
+        foreach (Theme::blocks($theme) as $type => $schema) {
+            $title = (string)($schema['title'] ?? $type);
+            $hint = '';
+            if (($colon = strpos($title, ':')) !== false) {
+                $hint = trim(substr($title, $colon + 1));
+                $title = trim(substr($title, 0, $colon));
+            }
+            $entry = $schema;
+            $entry['title'] = $title;
+            $entry['hint'] = $hint;
+            $entry['fields'] = self::labelled((array)($schema['fields'] ?? []));
+            $out[$type] = $entry;
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<string,array<string,mixed>> $fields
+     * @return array<string,array<string,mixed>>
+     */
+    private static function labelled(array $fields): array
+    {
+        $out = [];
+        foreach ($fields as $name => $spec) {
+            $spec = (array)$spec;
+            $spec['label'] = self::label((string)$name, $spec);
+            if (($spec['type'] ?? 'string') === 'enum') {
+                $labels = (array)($spec['labels'] ?? []);
+                $named = [];
+                foreach ((array)($spec['values'] ?? []) as $v) {
+                    $named[(string)$v] = is_string($labels[$v] ?? null) ? $labels[$v] : (self::VALUES[$v] ?? (string)$v);
+                }
+                $spec['labels'] = $named;
+            }
+            if (($spec['type'] ?? 'string') === 'list') {
+                $spec['of'] = self::labelled((array)($spec['of'] ?? []));
+            }
+            $out[(string)$name] = $spec;
+        }
+        return $out;
+    }
+
+    /**
      * Address of the picture of a block for the "add block" window: "preview" in theme.json is a file inside the theme folder
      * (previews/hero.webp). Only an image that is really there counts, otherwise the card stays without a picture.
      */

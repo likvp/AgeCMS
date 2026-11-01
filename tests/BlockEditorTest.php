@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use AgeCMS\{Pages, Queue, Renderer, ValidationException, NotFoundException};
+use AgeCMS\{BlockEditor, Pages, Queue, Renderer, ValidationException, NotFoundException};
 
 final class BlockEditorTest extends TestCase
 {
@@ -122,6 +122,87 @@ final class BlockEditorTest extends TestCase
         $json = substr($html, $start, strpos($html, '</script>', $start) - $start);
         $this->assertNotContains('<b>', $json);
         $this->assertContains('\\' . 'u003C', $json);
+    }
+
+    /** @param array<string,array<string,mixed>> $fields @param list<string> $bad */
+    private function unnamed(array $fields, string $where, array &$bad): void
+    {
+        foreach ($fields as $name => $spec) {
+            if (!is_string($spec['label'] ?? null) || preg_match('/\p{Cyrillic}/u', $spec['label']) !== 1) {
+                $bad[] = "{$where}.{$name}";
+            }
+            if (($spec['type'] ?? '') === 'enum') {
+                foreach ($spec['values'] as $v) {
+                    if (preg_match('/\p{Cyrillic}/u', (string)($spec['labels'][$v] ?? '')) !== 1) {
+                        $bad[] = "{$where}.{$name}={$v}";
+                    }
+                }
+            }
+            if (($spec['type'] ?? '') === 'list') {
+                $this->unnamed($spec['of'], "{$where}.{$name}", $bad);
+            }
+        }
+    }
+
+    public function testEveryBlockAndFieldOfTheDefaultThemeHasARussianName(): void
+    {
+        $this->freshSite();
+        $theme = json_decode((string)file_get_contents(AGECMS_ROOT . '/themes/default/theme.json'), true);
+        $bad = [];
+        foreach ($theme['blocks'] as $type => $schema) {
+            if (preg_match('/\p{Cyrillic}/u', (string)$schema['title']) !== 1) {
+                $bad[] = "{$type} (title)";
+            }
+            foreach ((array)$schema['fields'] as $name => $spec) {
+                if (!is_string($spec['label'] ?? null) || preg_match('/\p{Cyrillic}/u', $spec['label']) !== 1) {
+                    $bad[] = "{$type}.{$name} (theme.json has no Russian label)";
+                }
+            }
+        }
+        $this->assertSame([], $bad, 'theme.json names every block and field');
+
+        // What the form editor of the admin gets: no English left, also inside lists and enums.
+        $admin = BlockEditor::forAdmin('default');
+        $this->assertSame(array_keys($theme['blocks']), array_keys($admin));
+        foreach ($admin as $type => $spec) {
+            $this->unnamed($spec['fields'], $type, $bad);
+        }
+        $this->assertSame([], $bad);
+        $this->assertSame('Статья', $admin['article']['title']);
+        $this->assertContains('форматированием', $admin['article']['hint']);
+        $this->assertSame('Главный заголовок', $admin['hero']['fields']['h1']['label']);
+        $this->assertSame(['normal' => 'Обычная', 'wide' => 'Широкая'], $admin['features']['fields']['items']['of']['size']['labels']);
+        $this->assertSame('string', $admin['hero']['fields']['h1']['type'], 'the schema itself is untouched');
+
+        // The "add block" window of the page editor shows the same names.
+        $types = array_column(BlockEditor::types('default'), null, 'type');
+        $this->assertSame('Статья', $types['article']['title']);
+        $this->assertSame('Подзаголовок', array_column($types['hero']['fields'], 'label', 'name')['subtitle']);
+        $this->assertSame('Текст кнопки', array_column($types['hero']['fields'], 'label', 'name')['cta_text']);
+    }
+
+    public function testAThemeWithoutNamesStillGetsReadableOnesInTheAdminEditor(): void
+    {
+        $this->freshSite();
+        // The names that themes usually do not set come from the table of the core; the rest is the key made readable.
+        $dir = AGECMS_ROOT . '/themes/zz_names_test';
+        @mkdir($dir . '/blocks', 0777, true);
+        file_put_contents($dir . '/theme.json', json_encode(['name' => 'zz_names_test', 'title' => 'P', 'version' => '1', 'blocks' => ['promo' => ['title' => 'Promo', 'fields' => [
+            'h1' => ['type' => 'string'], 'weird_key' => ['type' => 'string'], 'side' => ['type' => 'enum', 'values' => ['left', 'odd']],
+        ]]]]));
+        file_put_contents($dir . '/layout.php', '<?php ');
+        try {
+            $fields = BlockEditor::forAdmin('zz_names_test')['promo']['fields'];
+            $this->assertSame('Главный заголовок', $fields['h1']['label']);
+            $this->assertSame('Weird key', $fields['weird_key']['label']);
+            $this->assertSame(['left' => 'Слева', 'odd' => 'odd'], $fields['side']['labels']);
+            $this->assertSame('Promo', BlockEditor::forAdmin('zz_names_test')['promo']['title']);
+        } finally {
+            @unlink($dir . '/theme.json');
+            @unlink($dir . '/layout.php');
+            @rmdir($dir . '/blocks');
+            @rmdir($dir);
+        }
     }
 
     public function testABlockMayHaveAPictureForTheAddBlockWindow(): void

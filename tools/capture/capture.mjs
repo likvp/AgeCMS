@@ -5,12 +5,15 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { parseArgs, Log, sleep, SENTINEL, FORMAT, TOOL_VERSION, pageKey, oldPath, sameSite, bareHost, parseRobots, humanBytes, sha1 } from './lib/util.mjs';
 import { Store } from './lib/store.mjs';
 import { TRACKER_URLS, TRACKER_INLINE, ALLOWED_FRAME_PREFIXES, trackerLabel } from './lib/trackers.mjs';
 import { snapshotDom, transform } from './lib/transform.mjs';
 import { findChrome, launch, makeContext, openPage, settle, idle, shot, compareShots, fetchFull, makeUserAgent, mobileUserAgent } from './lib/browser.mjs';
+import { configureGuard, startGuardProxy, urlProblem, resolveChecked, allowLocalPort, releaseLocalPort } from './lib/netguard.mjs';
+import { Progress, CaptureError, EXIT, startWatchdog } from './lib/runtime.mjs';
 import { serveFolder, servePackage } from './lib/serve.mjs';
 import { zipFolder } from './lib/zip.mjs';
 
@@ -32,17 +35,45 @@ const HELP = `AgeCMS capture ${TOOL_VERSION}
   --no-phone-variant   не делать отдельный файл для телефона у страниц, которые скрипты собирают под ширину экрана
   --max-file-mb=N      самый большой файл (по умолчанию 30)
   --max-total-mb=N     предел размера пакета (по умолчанию 500)
-  --chrome=ПУТЬ        Chrome или Chromium (иначе ищется сам)
+  --chrome=ПУТЬ        Chrome или Chromium (иначе: переменная AGECMS_CHROME, затем обычные места, затем канал chrome Playwright
+                       и Chromium из PLAYWRIGHT_BROWSERS_PATH)
+  --self-test          запустить браузер, открыть about:blank, проверить защиту адресов; печатает ok и код 0, иначе код 1 и причина
+  --allow-private      разрешить источник на этом компьютере и в локальной сети (только для проверок на своей машине)
   --cache=ПАПКА        кэш ответов сайта на диске (по умолчанию ~/.cache/agecms-capture), --no-cache отключает
   --keep-work          оставить снимки и рабочие файлы (.work) рядом с пакетом
   --headed             показывать окно браузера
   --quiet              меньше сообщений
+
+Для запуска из админки сайта (фоновый процесс):
+  --detach             отделиться от запустившего и работать в фоне; печатает {"pid":N}
+  --status=ФАЙЛ        файл состояния (ход работы, результат), обновляется каждые несколько секунд
+  --token=СТРОКА       метка запуска, записывается в файл состояния
+  --scout              только разведка: платформа, сколько страниц, оценка размера и времени
+  --url-only           принимать только адрес сайта (не папку и не zip)
+  --max-seconds=N, --max-mem-mb=N, --min-free-mb=N  пределы времени, памяти и свободного места на диске
+  --sandbox=auto|on    auto: если песочница Chrome не стартует и мы не root, запустить без неё и предупредить
 `;
 
 const { opts, positional } = parseArgs(process.argv.slice(2));
-if (opts.help || opts.h || positional.length === 0) {
+if (opts.help || opts.h || (positional.length === 0 && !opts['self-test'])) {
   process.stdout.write(HELP);
   process.exit(positional.length === 0 && !opts.help ? 1 : 0);
+}
+
+if (opts['self-test']) {
+  const { selfTest } = await import('./lib/selftest.mjs');
+  process.exit(await selfTest({ chrome: opts.chrome, sandbox: opts.sandbox === 'on' ? 'on' : 'auto' }));
+}
+
+// ---- a background run: start the same program detached from whoever started it, print its pid and leave ----------
+if (opts.detach) {
+  const args = process.argv.slice(2).filter((a) => a !== '--detach');
+  const mem = Math.max(256, Math.min(1536, Math.round((parseInt(opts['max-mem-mb'] || '2048', 10) || 2048) / 3)));
+  const out = typeof opts.log === 'string' ? fs.openSync(opts.log, 'a') : 'ignore';
+  const child = spawn(process.execPath, [`--max-old-space-size=${mem}`, fileURLToPath(import.meta.url), ...args], { detached: true, stdio: ['ignore', out, out], env: process.env, windowsHide: true });
+  child.unref();
+  process.stdout.write(JSON.stringify({ pid: child.pid }) + '\n');
+  process.exit(0);
 }
 
 const log = new Log(null, !opts.quiet);
@@ -58,6 +89,16 @@ const VERIFY = !opts['no-verify'];
 const PHONE_VARIANT = !opts['no-phone-variant'];
 const EXCLUDE = typeof opts.exclude === 'string' ? new RegExp(opts.exclude, 'i') : null;
 const ONLY = typeof opts.pages === 'string' ? opts.pages.split(',').map((s) => s.trim()).filter(Boolean) : null;
+const ALLOW_PRIVATE = !!opts['allow-private'];
+const SCOUT = !!opts.scout;
+const SANDBOX = opts.sandbox === 'on' ? 'on' : 'auto';
+const int = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : 0; };
+configureGuard({ allowPrivate: ALLOW_PRIVATE });
+const progress = new Progress(typeof opts.status === 'string' ? opts.status : null, {
+  token: typeof opts.token === 'string' ? opts.token : '', scout: SCOUT, limit: LIMIT, max_bytes: MAX_TOTAL,
+});
+let proxy = null;
+let browserRef = null;
 
 let cleanup = [];
 async function main() {
@@ -66,6 +107,8 @@ async function main() {
   let kind = 'url';
   let siteUrl;
   let tmpDir = null;
+  progress.start();
+  if (opts['url-only'] && fs.existsSync(input)) throw new CaptureError('usage', 'Этот запуск принимает только адрес сайта, а не папку или файл.');
   if (fs.existsSync(input)) {
     let dir = input;
     if (fs.statSync(input).isFile()) {
@@ -79,11 +122,17 @@ async function main() {
     } else kind = 'folder';
     const srv = await serveFolder(dir);
     cleanup.push(() => srv.close());
+    allowLocalPort(Number(new URL(srv.url).port));
     siteUrl = srv.url + '/';
     log.info(`Папка ${dir} показывается Chrome на ${srv.url}`);
   } else {
     if (!/^https?:\/\//i.test(input)) input = 'https://' + input;
-    siteUrl = new URL(input).href;
+    try { siteUrl = new URL(input).href; } catch { throw new CaptureError('refused', 'Адрес сайта записан неверно: ' + input.slice(0, 100)); }
+    // Before anything is opened: the address itself and the address its name resolves to must be a public one.
+    const bad = urlProblem(siteUrl, { allowPrivate: ALLOW_PRIVATE });
+    if (bad) throw new CaptureError('refused', 'Адрес не принят: ' + bad + '.');
+    const where = await resolveChecked(new URL(siteUrl).hostname, { allowPrivate: ALLOW_PRIVATE });
+    if (!where.ok) throw new CaptureError('refused', 'Адрес не принят: ' + where.why + '.');
   }
   const origin = new URL(siteUrl).origin;
   const host = new URL(siteUrl).host;
@@ -98,12 +147,28 @@ async function main() {
 
   // ---- browser ----------------------------------------------------------------------------------------------
   const chromePath = findChrome(typeof opts.chrome === 'string' ? opts.chrome : null);
-  if (!chromePath) throw new Error('Не найден Google Chrome или Chromium. Установите Chrome или укажите путь: --chrome="/путь/к/chrome".');
-  const browser = await launch(chromePath, !opts.headed);
+  progress.set({ phase: 'browser', message: 'Запускаю Chrome' });
+  if (!ALLOW_PRIVATE) {
+    proxy = await startGuardProxy({ maxBytes: MAX_TOTAL * 3 });
+    cleanup.push(() => proxy.close());
+    if (kind !== 'url') proxy.allowLocal(Number(new URL(siteUrl).port));
+  }
+  const browser = await launch({
+    chromePath, explicit: typeof opts.chrome === 'string' || !!process.env.AGECMS_CHROME, headless: !opts.headed, sandbox: SANDBOX,
+    proxy: proxy ? { server: proxy.server, username: proxy.user, password: proxy.pass } : null,
+  });
+  browserRef = browser;
+  for (const w of browser.agInfo.warnings) { log.warn(w); progress.warn(w); }
   cleanup.push(() => browser.close());
   const version = browser.version();
   const UA = makeUserAgent(version);
-  const shared = { blocked: new Set(), media: new Set() };
+  const shared = { blocked: new Set(), media: new Set(), refused: [] };
+  const stopWatchdog = startWatchdog({
+    maxSeconds: int(opts['max-seconds']), maxMemMb: int(opts['max-mem-mb']), minFreeMb: int(opts['min-free-mb']), dir: out,
+    proxyStats: proxy ? () => proxy.stats : null, onFail: (code, message) => abort(code, message),
+  });
+  cleanup.push(stopWatchdog);
+  const guardNote = () => { const n = (proxy ? proxy.stats.blocked.length : 0) + shared.refused.length; if (n !== progress.data.blocked) progress.set({ blocked: n }); };
   const desktopCtx = await makeContext(browser, 'desktop', { store, log, state: shared, userAgent: UA });
   const mobileCtx = MOBILE ? await makeContext(browser, 'mobile', { store, log, state: shared, userAgent: mobileUserAgent(UA) }) : null;
   const tool = await browser.newPage();
@@ -128,6 +193,7 @@ async function main() {
     if (ROBOTS && !robots.allowed(x.pathname + x.search)) return false;
     return true;
   };
+  progress.set({ phase: 'discover', message: 'Читаю robots.txt и карту сайта' });
   const queue = [siteUrl];
   const seen = new Set([pageKey(siteUrl)]);
   const enqueue = (u) => {
@@ -163,13 +229,46 @@ async function main() {
     if (found.length) log.info(`В карте сайта ${found.length} адресов`);
   }
 
+  // ---- scout: what is this site, how many pages, how heavy ---------------------------------------------------------
+  if (SCOUT) {
+    progress.set({ phase: 'scout', message: 'Открываю главную страницу' });
+    const res = await openPage(desktopCtx, siteUrl);
+    await settle(res.page);
+    await idle(desktopCtx);
+    const links = await res.page.evaluate(() => Array.from(document.querySelectorAll('a[href]')).map((a) => a.href));
+    const title = await res.page.title().catch(() => '');
+    const platform = detectPlatform(res.raw, res.headers);
+    await res.page.close();
+    const before = queue.length;
+    for (const l of links) enqueue(l);
+    const candidates = Math.min(2000, queue.length + 1);
+    const n = Math.max(1, Math.min(LIMIT, candidates));
+    const homeBytes = store.total;
+    const perPage = Math.max(250 * 1024, homeBytes * 0.25);
+    const seconds = Math.round(n * (8 + (MOBILE ? 8 : 0) + (VERIFY ? 10 : 0) + DELAY / 1000));
+    guardNote();
+    const result = {
+      platform, title: String(title || '').slice(0, 200), status: res.status, final_url: res.finalUrl,
+      pages_found: candidates, from_sitemap: before, pages_planned: n, home_files: Object.keys(store.map).length, home_bytes: homeBytes,
+      estimate_bytes: Math.round(homeBytes + (n - 1) * perPage), estimate_seconds: seconds, robots: ROBOTS && robots.sitemaps !== undefined, chrome: browser.version(),
+    };
+    await browser.close();
+    cleanup = cleanup.filter((f) => f.toString().indexOf('browser.close') < 0);
+    progress.end('done', { phase: 'done', message: 'Разведка закончена', result });
+    process.stdout.write(JSON.stringify({ scout: result }) + '\n');
+    return 0;
+  }
+
   // ---- pass 1: open pages -----------------------------------------------------------------------------------
   const pages = [];
   const failedPages = [];
   let n = 0;
   while (queue.length && pages.length < LIMIT) {
+    if (store.total > MAX_TOTAL * 0.9) { log.warn(`Размер пакета подошёл к пределу (${humanBytes(MAX_TOTAL)}): остальные страницы не взяты`); progress.warn('Достигнут предел размера: часть страниц не взята.'); break; }
     const url = queue.shift();
     n++;
+    progress.set({ phase: 'crawl', message: 'Читаю страницу ' + (pages.length + 1) + ': ' + url, url, pages: pages.length, files: Object.keys(store.map).length, bytes: store.total, queue: queue.length });
+    guardNote();
     let res;
     try {
       res = await openPage(desktopCtx, url);
@@ -214,6 +313,7 @@ async function main() {
     rec.aliases.delete(rec.path);
     pages.push(rec);
     log.info(`[${id}] ${finalUrl} (${rec.platform}, файлов ${Object.keys(store.map).length}, ${humanBytes(store.total)})`);
+    progress.set({ pages: pages.length, files: Object.keys(store.map).length, bytes: store.total });
     for (const l of links) enqueue(l);
     // mobile
     if (mobileCtx) {
@@ -288,8 +388,10 @@ async function main() {
     rec.mode = mode;
     rec.result = r;
   }
+  progress.set({ phase: 'build', message: 'Собираю страницы', url: '' });
   for (const rec of pages) rec.domTextLen = (await T('html', rec.dom, rec.finalUrl, { mode: 'dom' })).textLength;
   for (const rec of pages) {
+    progress.set({ phase: 'build', message: `Собираю страницы: ${rec.id} из ${pages.length}`, built: rec.id });
     rec.mode = chooseMode(rec);
     write(rec, rec.mode, await build(rec, rec.mode));
   }
@@ -349,6 +451,9 @@ async function main() {
     const served = [{ pathKey: rec.path, file: rec.file }];
     if (rec.mobileFile) served.push({ pathKey: rec.path + '?ag_view=m', file: rec.mobileFile });
     const srv = await servePackage(out, served);
+    const srvPort = Number(new URL(srv.url).port);
+    allowLocalPort(srvPort);
+    if (proxy) proxy.allowLocal(srvPort);
     const res = { desktop: null, mobile: null, console: [], external: [], failed: [] };
     try {
       for (const kindName of phoneVariant ? ['mobile'] : ['desktop', 'mobile']) {
@@ -370,11 +475,14 @@ async function main() {
       }
     } finally {
       srv.close();
+      releaseLocalPort(srvPort);
+      if (proxy) proxy.releaseLocal(srvPort);
     }
     return res;
   }
   if (VERIFY) {
     for (const rec of pages) {
+      progress.set({ phase: 'verify', message: `Сверяю копию с оригиналом: ${rec.id} из ${pages.length}`, verified: rec.id - 1 });
       let v = await verify(rec);
       verifyResults.set(rec.id, v);
       const score = scoreOf(v);
@@ -466,6 +574,8 @@ async function main() {
     totals: { pages: pages.length, files: fileList.length, bytes: totalBytes },
     trackers_removed: trackerCounts,
     blocked_requests: [...shared.blocked].slice(0, 100),
+    refused_requests: [...(proxy ? proxy.stats.blocked : []), ...shared.refused].slice(0, 100),
+    browser: { chrome: version, sandbox: browser.agInfo.sandbox, via: browser.agInfo.via, warnings: browser.agInfo.warnings },
     skipped_files: store.skipped.slice(0, 200),
     failed_pages: failedPages.slice(0, 100),
     more_pages_not_taken: leftover,
@@ -478,6 +588,7 @@ async function main() {
   await browser.close();
   cleanup = cleanup.filter((f) => f.toString().indexOf('browser.close') < 0);
   if (!opts['keep-work']) fs.rmSync(work, { recursive: true, force: true });
+  progress.set({ phase: 'pack', message: 'Упаковываю пакет' });
   let zipPath = null;
   if (opts.zip) {
     zipPath = path.resolve(typeof opts.zip === 'string' ? opts.zip : out.replace(/\/$/, '') + '.zip');
@@ -486,6 +597,8 @@ async function main() {
   }
   log.info(`Готово: ${pages.length} страниц, ${fileList.length} файлов, ${humanBytes(totalBytes)}${zipPath ? ', zip ' + humanBytes(fs.statSync(zipPath).size) : ''}. Пакет: ${out}`);
   if (leftover) log.warn(`Ещё ${leftover} адресов найдено, но лимит ${LIMIT} страниц. Увеличьте --limit.`);
+  guardNote();
+  progress.end('done', { phase: 'done', message: 'Готово', pages: pages.length, files: fileList.length, bytes: totalBytes, out, zip: zipPath, leftover });
   process.stdout.write(JSON.stringify({ out, zip: zipPath, pages: pages.length, files: fileList.length, bytes: totalBytes }) + '\n');
   if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
   return 0;
@@ -501,7 +614,7 @@ async function main() {
 async function makeVerifyContext(browser, kindName, ua) {
   const { VIEWPORTS } = await import('./lib/browser.mjs');
   const vp = VIEWPORTS[kindName];
-  const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: kindName === 'mobile' ? 2 : 1, isMobile: vp.isMobile, hasTouch: vp.hasTouch, userAgent: kindName === 'mobile' ? mobileUserAgent(ua) : ua, locale: 'ru-RU', serviceWorkers: 'block' });
+  const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: kindName === 'mobile' ? 2 : 1, isMobile: vp.isMobile, hasTouch: vp.hasTouch, userAgent: kindName === 'mobile' ? mobileUserAgent(ua) : ua, locale: 'ru-RU', serviceWorkers: 'block', acceptDownloads: false });
   return ctx;
 }
 
@@ -534,9 +647,27 @@ function detectPlatform(html, headers = {}) {
   return 'unknown';
 }
 
+/** Stops the run for a reason (limit, cancel, refused address): writes the status, closes Chrome, leaves with the exit code. */
+let aborting = false;
+async function abort(code, message) {
+  if (aborting) return;
+  aborting = true;
+  log.error(message);
+  progress.end(code === 'cancelled' ? 'cancelled' : 'failed', { code, error: message, message });
+  await Promise.race([Promise.allSettled(cleanup.map(async (f) => f())), sleep(4000)]);
+  process.exit(EXIT[code] ?? 1);
+}
+process.on('SIGTERM', () => abort('cancelled', 'Захват отменён.'));
+process.on('SIGINT', () => abort('cancelled', 'Захват отменён.'));
+
 main().then((code) => { for (const f of cleanup) { try { f(); } catch { /* ignore */ } } process.exit(code); }).catch(async (e) => {
-  process.stderr.write('Ошибка: ' + (e && e.message || e) + '\n');
+  if (aborting) return;
+  aborting = true;
+  const code = e && typeof e.code === 'string' && EXIT[e.code] !== undefined ? e.code : 'error';
+  const message = String((e && e.message) || e).split('\n')[0].slice(0, 400);
+  process.stderr.write('Ошибка: ' + message + '\n');
   if (process.env.AGECMS_CAPTURE_DEBUG) process.stderr.write(String(e && e.stack) + '\n');
-  for (const f of cleanup) { try { await f(); } catch { /* ignore */ } }
-  process.exit(1);
+  progress.end('failed', { code, error: message, message });
+  await Promise.race([Promise.allSettled(cleanup.map(async (f) => f())), sleep(4000)]);
+  process.exit(EXIT[code] ?? 1);
 });

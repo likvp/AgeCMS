@@ -128,7 +128,7 @@ final class ImporterAdminTest extends HttpCase
     {
         $file = TEST_TMP . '/export-' . bin2hex(random_bytes(3)) . '.xml';
         file_put_contents($file, self::wxr($pages));
-        $id = Runner::create($file, ['delay_ms' => 0, 'limit' => 500, 'chunk' => 20], $actor);
+        $id = Runner::create($file, ['delay_ms' => 0, 'limit' => 500, 'chunk' => 20], $actor, null, true);
         $runner = new Runner();
         $this->assertSame('ready', $runner->runToEnd($id)['status']);
         Runner::startApply($id, null, $actor);

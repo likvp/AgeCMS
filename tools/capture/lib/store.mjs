@@ -21,7 +21,10 @@ export class Store {
     this.skipped = []; // {url, why}
     this.total = 0;
     fs.mkdirSync(dir, { recursive: true });
-    if (this.cacheDir) fs.mkdirSync(this.cacheDir, { recursive: true });
+    if (this.cacheDir) {
+      // A folder the user of the web server cannot write to (no home folder) must not stop the capture: work without the cache.
+      try { fs.mkdirSync(this.cacheDir, { recursive: true }); fs.accessSync(this.cacheDir, fs.constants.W_OK); } catch { this.cacheDir = null; }
+    }
   }
 
   has(url) { return Object.prototype.hasOwnProperty.call(this.map, url); }

@@ -30,24 +30,24 @@ final class CopyPage
     /** @return array<string,mixed> the schema of the system block (same shape as a block of theme.json) */
     public static function schema(): array
     {
-        $code = static fn(int $max): array => ['type' => 'text', 'max' => $max];
+        $code = static fn(int $max, string $label): array => ['type' => 'text', 'max' => $max, 'label' => $label];
         return [
             'title' => 'Копия страницы',
             'system' => true,
             'fields' => [
-                'copy_html_attrs' => $code(4000),
-                'copy_body_attrs' => $code(4000),
-                'copy_head' => $code(3000000),
-                'copy_body' => $code(8000000),
-                'copy_m_html_attrs' => $code(4000),
-                'copy_m_body_attrs' => $code(4000),
-                'copy_m_head' => $code(3000000),
-                'copy_m_body' => $code(8000000),
-                'copy_text' => $code(300000),
-                'copy_source' => ['type' => 'string', 'max' => 500],
-                'copy_mode' => ['type' => 'enum', 'values' => ['source', 'dom']],
-                'copy_key' => ['type' => 'string', 'max' => 40],
-                'copy_eval' => ['type' => 'bool'],
+                'copy_html_attrs' => $code(4000, 'Атрибуты тега html'),
+                'copy_body_attrs' => $code(4000, 'Атрибуты тега body'),
+                'copy_head' => $code(3000000, 'Содержимое head (стили, мета-теги)'),
+                'copy_body' => $code(8000000, 'Содержимое body (разметка страницы)'),
+                'copy_m_html_attrs' => $code(4000, 'Атрибуты тега html для телефона'),
+                'copy_m_body_attrs' => $code(4000, 'Атрибуты тега body для телефона'),
+                'copy_m_head' => $code(3000000, 'Содержимое head для телефона'),
+                'copy_m_body' => $code(8000000, 'Содержимое body для телефона'),
+                'copy_text' => $code(300000, 'Текст страницы для поиска'),
+                'copy_source' => ['type' => 'string', 'max' => 500, 'label' => 'Адрес источника'],
+                'copy_mode' => ['type' => 'enum', 'values' => ['source', 'dom'], 'label' => 'Как получена страница', 'labels' => ['source' => 'исходный код', 'dom' => 'итоговая страница из браузера']],
+                'copy_key' => ['type' => 'string', 'max' => 40, 'label' => 'Папка файлов копии'],
+                'copy_eval' => ['type' => 'bool', 'label' => 'Разрешить скриптам страницы строить код на лету'],
             ],
         ];
     }
@@ -188,11 +188,13 @@ final class CopyPage
 
     /**
      * The whole page. $variant 'm' is the phone version of a page that was copied with a separate layout for phones.
+     * $editCsrf is not empty when a person with the right to edit has switched the editing mode on: the page then carries the marks and the
+     * script of the text editor (CopyEdit, assets/copy-edit.js). $signedIn without editing only adds a link into that mode.
      *
      * @param array<string,mixed> $doc
      * @return array{status:int,html:string,tags:list<string>,policy:string}
      */
-    public static function render(string $slug, array $doc, string $variant = ''): array
+    public static function render(string $slug, array $doc, string $variant = '', string $editCsrf = '', bool $signedIn = false): array
     {
         $d = self::data($doc);
         $settings = Seo::settings();
@@ -210,8 +212,24 @@ final class CopyPage
         $switch = !$mobile && (string)($d['copy_m_body'] ?? '') !== ''
             ? "<script>if(Math.min(window.innerWidth,(window.screen&&screen.width)||9999)<768&&location.search.indexOf('ag_view=')<0){location.replace(location.pathname+(location.search?location.search+'&':'?')+'ag_view=m'+location.hash)}</script>\n"
             : '';
-        $tail = str_contains($body, 'data-ag-form') ? '<script src="' . ag_e('/assets/copy-forms.js?v=' . (is_file(AGECMS_ROOT . '/assets/copy-forms.js') ? filemtime(AGECMS_ROOT . '/assets/copy-forms.js') : 1)) . "\" defer></script>\n" : '';
-        $html = "<!DOCTYPE html>\n<html" . self::attrs((string)($d[$p . 'html_attrs'] ?? '')) . ">\n<head>\n<meta charset=\"utf-8\">\n" . $viewport . $switch . $seo . "\n" . $head
+        $canEdit = ($editCsrf !== '' || $signedIn) && (Auth::actor()?->can('content.write') ?? false);
+        $editHead = '';
+        $editTail = '';
+        if ($canEdit) {
+            $asset = static fn(string $f): string => '/assets/' . $f . '?v=' . (is_file(AGECMS_ROOT . '/assets/' . $f) ? filemtime(AGECMS_ROOT . '/assets/' . $f) : 1);
+            $editHead = '<link rel="stylesheet" href="' . ag_e($asset('copy-edit.css')) . "\">\n";
+            $to = '/' . ($slug === 'index' ? '' : $slug) . ($mobile ? '?ag_view=m' : '');
+            if ($editCsrf !== '') {
+                $base = CopyEdit::base($body);
+                $body = CopyEdit::mark($body);
+                $editTail = '<script src="' . ag_e($asset('copy-edit.js')) . '" defer data-slug="' . ag_e($slug) . '" data-variant="' . ($mobile ? 'm' : '') . '" data-base="' . $base . '" data-csrf="' . ag_e($editCsrf)
+                    . '" data-exit="' . ag_e('/_/edit?on=0&to=' . rawurlencode($to)) . "\"></script>\n";
+            } else {
+                $editTail = '<a class="ag-copy-edit-link" href="' . ag_e('/_/edit?on=1&to=' . rawurlencode($to)) . "\">Править текст</a>\n";
+            }
+        }
+        $tail = $editTail . (str_contains($body, 'data-ag-form') ? '<script src="' . ag_e('/assets/copy-forms.js?v=' . (is_file(AGECMS_ROOT . '/assets/copy-forms.js') ? filemtime(AGECMS_ROOT . '/assets/copy-forms.js') : 1)) . "\" defer></script>\n" : '');
+        $html = "<!DOCTYPE html>\n<html" . self::attrs((string)($d[$p . 'html_attrs'] ?? '')) . ">\n<head>\n<meta charset=\"utf-8\">\n" . $viewport . $switch . $seo . "\n" . $head . "\n" . $editHead
             . "\n</head>\n<body" . self::attrs((string)($d[$p . 'body_attrs'] ?? '')) . ">\n" . $body . "\n" . $tail . "</body>\n</html>\n";
         $tags = ['page:' . $slug, 'settings'];
         return ['status' => 200, 'html' => $html, 'tags' => $tags, 'policy' => 'copy'];

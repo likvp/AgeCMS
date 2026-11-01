@@ -65,6 +65,7 @@ final class ModuleSettingsTest extends HttpCase
 
         $done = $this->save('st_one', ['from_name' => 'Ломбард', 'batch' => '50', 'enabled' => '1', 'mode' => 'боевой', 'footer' => "Строка 1\r\nСтрока 2", 'api_key' => 'sk-test-12345'], $csrf)['body'];
         $this->assertContains('Настройки сохранены', $done);
+        $this->assertContains('Имя отправителя', $done, 'the flash names the settings by their labels');
         $saved = $this->config('st_one');
         $this->assertSame('Ломбард', $saved['from_name']);
         $this->assertSame(50, $saved['batch']);

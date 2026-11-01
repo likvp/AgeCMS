@@ -407,7 +407,7 @@ try {
                     }
                     $done = ModuleInstaller::install(ModuleInstaller::filesFromZip((string)$up['tmp_name']), isset($_POST['replace']), (string)$user['username']);
                     $flash = 'Модуль ' . $done['name'] . ($done['replaced'] ? ' заменён' : ' установлен') . ': '
-                        . ($done['status'] === 'ok' ? ($done['signed'] === null ? 'работает без подписи' : 'подпись проверена') : 'заблокирован (' . $done['reason'] . ')');
+                        . ($done['status'] === 'ok' ? ($done['signed'] === null ? 'работает без подписи. Проверили код и доверяете ему? Нажмите «Подписать этим сайтом» у модуля в списке выше, и красная плашка исчезнет' : 'подпись проверена') : 'заблокирован (' . $done['reason'] . ')');
                     $section = 'system';
                     break;
                 case 'module_enable':
@@ -502,7 +502,7 @@ try {
                         }
                     }
                     $changed = \AgeCMS\ModuleSettings::save($module, $input);
-                    $flash = $changed === [] ? 'Без изменений' : 'Настройки сохранены: ' . implode(', ', $changed);
+                    $flash = $changed === [] ? 'Без изменений' : 'Настройки сохранены: ' . implode(', ', \AgeCMS\ModuleSettings::labels($module, $changed));
                     break;
                 case 'token_create':
                     Security::requirePermission($actor, 'system.manage');

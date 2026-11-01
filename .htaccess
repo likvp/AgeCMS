@@ -22,7 +22,7 @@ AddDefaultCharset UTF-8
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
     # 1. Internals are never served.
-    RewriteRule ^(data|core|bin|tests|bench|docs)(/|$) - [R=404,L]
+    RewriteRule ^(data|core|bin|tests|bench|docs|tools)(/|$) - [R=404,L]
     RewriteRule ^modules/ - [R=404,L]
     RewriteRule (^|/)\.(?!well-known/) - [R=404,L]
     RewriteRule ^(composer\.(json|lock)|phpunit\.xml.*)$ - [R=404,L]

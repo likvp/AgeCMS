@@ -112,7 +112,7 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
             <?php endif; ?>
             <?php if ($unsignedModules !== []): ?>
                 <div class="notice error" role="alert"><?= icon('warning-circle') ?><div>
-                    <p><b>Работают модули без подписи:</b> <?= h(implode(', ', $unsignedModules)) ?>. Это свой код, сайт его не проверял. Если вы его не ставили, выключите или удалите его в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>».</p>
+                    <p><b>Работают модули без подписи:</b> <?= h(implode(', ', $unsignedModules)) ?>. Для своих модулей это нормально: сайт не проверял их код. Чтобы плашка исчезла, нажмите «Подписать этим сайтом» у модуля в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>». Если вы его не ставили, выключите или удалите его там же.</p>
                 </div></div>
             <?php endif; ?>
             <?php if ($newCore !== null && $section !== 'system'): ?>

@@ -95,7 +95,7 @@ final class ModuleSettings
                 self::parse($info['manifest']);
             } catch (AgeCMSException $e) {
                 $modules[$name] = ['status' => 'blocked', 'reason' => $e->getMessage(), 'manifest' => null, 'signed' => null];
-                Logger::log('warning', 'module.blocked', ['module' => $name, 'reason' => $e->getMessage()]);
+                Logger::moduleBlocked($name, $e->getMessage());
             }
         }
     }
@@ -173,9 +173,19 @@ final class ModuleSettings
         Config::set("module_settings.{$module}", $values);
         Logger::log('info', 'module.settings_saved', ['module' => $module, 'changed' => $changed]);
         if ($changed !== []) {
-            Audit::record(Audit::MODULES, "Настройки модуля {$module}: изменено " . implode(', ', $changed));
+            Audit::record(Audit::MODULES, "Настройки модуля {$module}: изменено " . implode(', ', self::labels($module, $changed)));
         }
         return $changed;
+    }
+
+    /** Names a person reads for the keys of settings (the label of the field; the key itself when the field is unknown). @param list<string> $keys @return list<string> */
+    public static function labels(string $module, array $keys): array
+    {
+        $names = [];
+        foreach (self::fields($module) as $f) {
+            $names[$f['key']] = (string)$f['label'];
+        }
+        return array_map(static fn(string $k): string => $names[$k] ?? $k, $keys);
     }
 
     /** @param array<string,mixed> $f */

@@ -30,6 +30,42 @@ final class SchemaValidatorTest extends TestCase
         $this->assertThrows(ValidationException::class, fn() => SchemaValidator::document($doc), $part);
     }
 
+    public function testPathsThatClimbOutAndLoginsInAddressesAreRejected(): void
+    {
+        $this->freshSite();
+        $image = static fn(string $src): array => ['id' => 'img_1', 'type' => 'image', 'data' => ['src' => $src, 'alt' => 'x']];
+        $this->assertSame('/assets/uploads/a.webp', SchemaValidator::document($this->doc([$image('/assets/uploads/a.webp')]))['blocks'][0]['data']['src']);
+        $this->assertSame('/assets/uploads/a.webp?v=2#x', SchemaValidator::document($this->doc([$image('/assets/uploads/a.webp?v=2#x')]))['blocks'][0]['data']['src']);
+        $this->assertSame('https://cdn.example/a/b.webp', SchemaValidator::document($this->doc([$image('https://cdn.example/a/b.webp')]))['blocks'][0]['data']['src']);
+        foreach (['/assets/uploads/../../data/data.sqlite', '/assets/uploads/%2e%2e/%2e%2e/data/data.sqlite', '/assets/uploads/%252e%252e/x', '/assets/uploads/./a.webp', '/assets/uploads/..'] as $bad) {
+            $this->rejects($this->doc([$image($bad)]), "must not contain '..'");
+        }
+        $this->rejects($this->doc([$image('/assets/uploads/a\\b.webp')]), 'must be an http(s) URL');
+        $this->rejects($this->doc([$image('/assets/uploads/a%5Cb.webp')]), "must not contain '..' or a backslash");
+        $this->rejects($this->doc([$this->hero()], ['og_image' => '/assets/uploads/../../data/data.sqlite']), "og_image must not contain '..'");
+        $this->assertSame('/assets/uploads/a.webp', SchemaValidator::document($this->doc([$this->hero()], ['og_image' => '/assets/uploads/a.webp']))['og_image']);
+
+        // A login or password in an address is how a link pretends to lead to another host.
+        $this->rejects($this->doc([$this->hero()], ['canonical_url' => 'https://user:pw@evil.example/']), 'login or password');
+        $this->rejects($this->doc([$this->hero()], ['og_image' => 'https://example.test@evil.example/a.png']), 'login or password');
+        $this->rejects($this->doc([$this->hero(['h1' => 'A', 'cta_url' => 'https://user@evil.example/'])]), 'login or password');
+        $this->assertSame('https://example.test/a@b', SchemaValidator::document($this->doc([$this->hero()], ['canonical_url' => 'https://example.test/a@b']))['canonical_url'], 'an @ in the path is fine');
+        $this->assertSame('mailto:a@b.example', SchemaValidator::document($this->doc([$this->hero(['h1' => 'A', 'cta_url' => 'mailto:a@b.example'])]))['blocks'][0]['data']['cta_url']);
+    }
+
+    public function testTagsInPlainFieldsAreKeptAsTextAndShownEscaped(): void
+    {
+        $this->freshSite();
+        $evil = '<script>alert(1)</script> <b>x</b>';
+        $doc = SchemaValidator::document($this->doc([$this->hero(['h1' => $evil, 'subtitle' => $evil])], ['title' => $evil, 'meta_description' => $evil]));
+        $this->assertSame($evil, $doc['blocks'][0]['data']['h1'], 'a plain field is not rewritten behind the back of the author');
+        $this->assertSame($evil, $doc['title']);
+        \AgeCMS\Queue::submit($this->admin(), 'create_page', ['slug' => 'plain', 'fields' => $doc]);
+        $html = \AgeCMS\Renderer::renderSlug('plain', false)['html'];
+        $this->assertNotContains('<script>alert(1)', $html, 'never printed as a tag');
+        $this->assertContains('&lt;script&gt;alert(1)&lt;/script&gt;', $html, 'printed as letters');
+    }
+
     public function testHallucinatedStructureIsRejected(): void
     {
         $this->freshSite();

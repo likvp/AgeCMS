@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # AgeCMS installer for Debian and Ubuntu: PHP with every extension, nginx (or the Apache already running),
-# the site itself, file ownership, the virtual host, a Let's Encrypt certificate and a daily backup.
+# Node.js and Chrome for the importer's "exact copy" mode, the site itself, file ownership, the virtual host,
+# a Let's Encrypt certificate and a daily backup.
 #
 #   curl -fsSL https://raw.githubusercontent.com/likvp/AgeCMS/main/install.sh | sudo bash -s -- example.com
 #
 # Options (after the domain): --name="Мой сайт"  --email=you@example.com  --admin=admin  --password=...
-#   --dir=/var/www/example.com  --web=nginx|apache  --php=8.3  --no-ssl  --no-demo  --branch=main
+#   --dir=/var/www/example.com  --web=nginx|apache  --php=8.3  --no-ssl  --no-demo  --no-capture  --branch=main
+# --no-capture skips Node.js and Chrome (about 1 GB and a few minutes); the site works without them, only copying a site
+# by its address in "exact copy" mode needs them (bin/install-capture.sh adds them later).
 # Without a domain the site is set up on the server's IP over plain http.
 # The whole script is one function, so `curl | bash` reads it completely before anything runs.
 
@@ -13,7 +16,8 @@ main() {
     set -euo pipefail
 
     local REPO="${AGECMS_REPO:-https://github.com/likvp/AgeCMS.git}"
-    local BRANCH="main" DOMAIN="" NAME="" EMAIL="" ADMIN="admin" PASSWORD="" DIR="" WEB="" PHPV="" SSL=1 DEMO=1
+    local BRANCH="main" DOMAIN="" NAME="" EMAIL="" ADMIN="admin" PASSWORD="" DIR="" WEB="" PHPV="" SSL=1 DEMO=1 CAPTURE=1
+    local CAPTURE_STATE="skipped" CAPTURE_NOTE="отключено параметром --no-capture" CAPTURE_STATUS=""
     local LOG=/var/log/agecms-install.log
 
     local arg
@@ -29,7 +33,8 @@ main() {
             --branch=*) BRANCH="${arg#*=}" ;;
             --no-ssl) SSL=0 ;;
             --no-demo) DEMO=0 ;;
-            -h|--help) sed -n '2,10p' "${BASH_SOURCE[0]:-/dev/null}" 2>/dev/null || true; return 0 ;;
+            --no-capture) CAPTURE=0 ;;
+            -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]:-/dev/null}" 2>/dev/null || true; return 0 ;;
             -*) die "неизвестный параметр $arg" ;;
             *) DOMAIN="$arg" ;;
         esac
@@ -37,7 +42,10 @@ main() {
 
     [ "$(id -u)" -eq 0 ] || die "запустите от root: ... | sudo bash -s -- ваш-домен"
     command -v apt-get >/dev/null || die "установщик поддерживает Debian и Ubuntu. На другой системе поставьте вручную по AGENTS.md"
+    # os-release defines NAME, which would overwrite the site name given with --name.
+    local site_name="$NAME"
     . /etc/os-release
+    NAME="$site_name"
     : > "$LOG"
     export DEBIAN_FRONTEND=noninteractive
 
@@ -116,6 +124,17 @@ main() {
     fi
     chown -R www-data:www-data "$DIR"
 
+    # Node.js and Chrome for the "exact copy" import. Whatever goes wrong here never stops the site from being installed.
+    if [ "$CAPTURE" -eq 1 ] && [ -f "$DIR/bin/install-capture.sh" ]; then
+        CAPTURE_STATUS="$(mktemp)"
+        CAPTURE_STATE="failed"; CAPTURE_NOTE="установка не завершилась"
+        bash "$DIR/bin/install-capture.sh" --dir="$DIR" --user=www-data --php="$PHP" --status-file="$CAPTURE_STATUS" || true
+        capture_read
+    elif [ "$CAPTURE" -eq 1 ]; then
+        CAPTURE_STATE="skipped"; CAPTURE_NOTE="в этой версии нет bin/install-capture.sh"
+    fi
+    [ "$CAPTURE_STATE" = ready ] || [ "$CAPTURE" -eq 0 ] || warn "Node.js и Chrome не поставились ($CAPTURE_NOTE): сайт установится и будет работать, режим «Точная копия» для адреса сайта недоступен"
+
     step "Проверка среды"
     local code=0
     runuser -u www-data -- "$PHP" "$DIR/bin/requirements.php" >>"$LOG" 2>&1 || code=$?
@@ -181,6 +200,13 @@ APACHE
     pass="$(printf '%s\n' "$out" | awk '/^Password:/ {print $2}')"
     [ -n "$pass" ] || pass="$PASSWORD"
 
+    # The site exists now: write the paths of Node.js and Chrome into its settings and try the capture the way PHP-FPM will.
+    if [ "$CAPTURE_STATE" = ready ]; then
+        bash "$DIR/bin/install-capture.sh" --configure-only --dir="$DIR" --user=www-data --php="$PHP" --status-file="$CAPTURE_STATUS" >>"$LOG" 2>&1 || true
+        capture_read
+        [ "$CAPTURE_STATE" = ready ] || warn "Захват сайтов не прошёл самопроверку: $CAPTURE_NOTE"
+    fi
+
     if [ -d /etc/cron.d ]; then
         printf '%s\n' "# AgeCMS $DOMAIN: daily database backup" "17 3 * * * www-data $PHP $DIR/bin/backup.php >/dev/null 2>&1" > "/etc/cron.d/agecms-${DOMAIN//./-}"
     fi
@@ -197,6 +223,10 @@ APACHE
     printf '  Логин:    %s\n' "$ADMIN"
     printf '  Пароль:   \033[1m%s\033[0m   (показан один раз, сохраните сейчас)\n\n' "$pass"
     printf '  Файлы %s, PHP %s, %s, бэкап базы каждую ночь.\n' "$DIR" "$PHPV" "$WEB"
+    case "$CAPTURE_STATE" in
+        ready) printf '  Захват сайтов: готов (%s).\n' "$CAPTURE_NOTE" ;;
+        *) printf '  Захват сайтов: %s (%s). Сайт работает без него: импорт по адресу делает страницы AgeCMS,\n  пакет «Точной копии» можно загрузить файлом. Поставить позже: sudo bash %s/bin/install-capture.sh\n' "$([ "$CAPTURE_STATE" = skipped ] && echo пропущен || echo 'не готов')" "$CAPTURE_NOTE" "$DIR" ;;
+    esac
     printf '  Подключить ИИ-агента: админка, «Система», «Получить текст для агента».\n\n'
 }
 
@@ -210,6 +240,15 @@ run() { "$@" </dev/null >>"${LOG:-/dev/null}" 2>&1 || { tail -15 "${LOG:-/dev/nu
 apt_install() {
     if [ -z "${APT_UPDATED:-}" ]; then run apt-get -o DPkg::Lock::Timeout=300 update; APT_UPDATED=1; fi
     run apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends "$@"
+}
+
+# Reads what bin/install-capture.sh wrote into its status file: state and a sentence.
+capture_read() {
+    local line
+    line="$(cat "$CAPTURE_STATUS" 2>/dev/null || true)"
+    [ -n "$line" ] || return 0
+    CAPTURE_STATE="$(printf '%s' "$line" | cut -f1)"
+    CAPTURE_NOTE="$(printf '%s' "$line" | cut -f3)"
 }
 
 # PHP 8.1+ for distributions that ship an older one: ppa:ondrej/php on Ubuntu, packages.sury.org on Debian.

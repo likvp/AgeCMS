@@ -8,6 +8,7 @@ modules/*/manifest.json.sig
 .DS_Store
 *.log
 /dist/
+/tools/capture/node_modules/
 
 # Рабочие документы, хранятся только локально
 /docs/ТЗ.md

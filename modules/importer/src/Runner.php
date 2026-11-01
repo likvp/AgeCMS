@@ -13,6 +13,7 @@ use AgeCMS\CopyPage;
 use AgeCMS\Pages;
 use AgeCMS\Theme;
 use AgeCMS\ValidationException;
+use AgeCMS\Modules\Importer\Copy\CaptureFlow;
 use AgeCMS\Modules\Importer\Copy\CopyBuilder;
 use AgeCMS\Modules\Importer\Copy\CopyFiles;
 use AgeCMS\Modules\Importer\Html\Sanitizer;
@@ -53,11 +54,21 @@ final class Runner
      * @param array<string,mixed> $options
      * @param string|null $name what to call a file in the admin and the history (the name it was uploaded with); the
      *                          job keeps its own copy, so the path says nothing to a person
+     * @param bool $uploaded the file was brought by the caller itself (uploaded in the admin, picked from data/import, decoded from
+     *                       an agent's base64): only then a path is accepted from anyone but the command line, so a token
+     *                       cannot make the server read a file of its own choice
      */
-    public static function create(string $input, array $options, Actor $actor, ?string $name = null): int
+    public static function create(string $input, array $options, Actor $actor, ?string $name = null, bool $uploaded = false): int
     {
+        if (!$uploaded && $actor->type !== 'cli' && trim($input) !== '' && (is_file(trim($input)) || is_dir(trim($input)))) {
+            throw new ImportException('Файл по пути на сервере принимает только консоль. Загрузите файл в админке или положите его в папку data/import.');
+        }
         $src = Importer::source($input);
         $options = Importer::options($options);
+        if ($options['mode'] === 'exact' && $src['type'] === 'url') {
+            // The server captures the site in Chrome in the background; the first step is a quick look.
+            return CaptureFlow::create($src['source'], $options, $actor);
+        }
         $note = '';
         if (in_array($src['type'], ['capture_zip', 'capture_dir'], true)) {
             // A capture package holds finished pages, not content to put into blocks.
@@ -116,6 +127,7 @@ final class Runner
         try {
             match ($job['status']) {
                 'analyzing' => $this->analyze($deadline),
+                'scouting', 'capturing' => CaptureFlow::poll($job),
                 'applying' => $this->apply($deadline),
                 'rolling_back' => $this->rollback($deadline),
                 default => null,
@@ -175,6 +187,10 @@ final class Runner
         $this->job = Jobs::get($job['id']) ?? $job;
         self::replan($this->job['id']);
         Jobs::update($job['id'], ['status' => 'ready']);
+        if (!empty($job['options']['auto_apply'])) {
+            // One-button import: nobody waits to look at the plan, the report and the rollback are there afterwards.
+            self::startApply((int)$job['id'], null, self::actor($this->job));
+        }
     }
 
     /**
@@ -242,6 +258,11 @@ final class Runner
     public static function startApply(int $jobId, ?array $selection, Actor $actor): array
     {
         $job = Jobs::get($jobId) ?? throw new ImportException('Задание импорта не найдено.');
+        if ($job['status'] === 'scouted') {
+            // A site that was only looked at: the transfer starts with the capture, and goes on by itself when it ends.
+            CaptureFlow::start($jobId, $actor, ['auto_apply' => true]);
+            return Jobs::get($jobId) ?? $job;
+        }
         if ($job['status'] !== 'ready') {
             throw new ImportException('Задание сейчас в состоянии «' . self::statusText($job['status']) . '», импортировать можно только после анализа.');
         }
@@ -587,7 +608,7 @@ final class Runner
             foreach ($wanted as $r) {
                 $check = Compat::checkRedirect($r['from'], $r['to']);
                 if (is_string($check)) {
-                    $result['redirects']['refused'][] = $r + ['why' => $check];
+                    $result['redirects']['refused'][] = $r + ['why' => Compat::redirectWhy($check)];
                     continue;
                 }
                 $key = is_array($check) ? $check[0] : $r['from'];
@@ -605,7 +626,7 @@ final class Runner
                     }
                 } catch (AgeCMSException $e) {
                     foreach ($batch as $r) {
-                        $result['redirects']['refused'][] = $r + ['why' => mb_substr($e->getMessage(), 0, 200)];
+                        $result['redirects']['refused'][] = $r + ['why' => Compat::redirectWhy(mb_substr($e->getMessage(), 0, 200))];
                     }
                 }
             }
@@ -778,6 +799,7 @@ final class Runner
     public static function statusText(string $status): string
     {
         return [
+            'scouting' => 'смотрю сайт', 'scouted' => 'сайт осмотрен', 'capturing' => 'идёт захват в Chrome', 'cancelled' => 'остановлено',
             'analyzing' => 'идёт анализ', 'ready' => 'готово к переносу', 'applying' => 'идёт перенос', 'done' => 'перенесено',
             'rolling_back' => 'идёт отмена', 'rolled_back' => 'отменено', 'failed' => 'ошибка',
         ][$status] ?? $status;

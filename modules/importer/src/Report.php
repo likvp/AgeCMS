@@ -176,6 +176,8 @@ final class Report
                 'create' => $count(static fn(array $r): bool => $r['action'] === 'create' && $r['selected']),
                 'update' => $count(static fn(array $r): bool => $r['action'] === 'update_home' && $r['selected']),
                 'skip' => $count(static fn(array $r): bool => $r['action'] === 'skip' || !$r['selected']),
+                'sections' => $count(static fn(array $r): bool => $r['new'] && $r['action'] === 'create' && $r['selected']),
+                'sections_skipped' => $count(static fn(array $r): bool => $r['new'] && ($r['action'] === 'skip' || !$r['selected'])),
                 'done' => $count(static fn(array $r): bool => $r['status'] === 'done'),
                 'failed' => $count(static fn(array $r): bool => $r['status'] === 'failed'),
                 'pending' => $count(static fn(array $r): bool => $r['status'] === 'pending'),
@@ -237,7 +239,7 @@ final class Report
             $out[] = 'Сайт: ' . $r['site']['title'];
         }
         $c = $r['counts'];
-        $out[] = sprintf('Найдено страниц: %d (записей блога: %d). Будет создано: %d, заменено: %d, пропущено: %d. Потерь: %d. Редиректов: %d.', $c['pages'], $c['posts'], $c['create'], $c['update'], $c['skip'], $c['losses'], $c['redirects']);
+        $out[] = sprintf('Найдено страниц: %d (записей блога: %d). Будет создано страниц: %d%s, заменено: %d, не переносится: %d. Потерь: %d. Редиректов: %d.', $c['pages'], $c['posts'], $c['create'], $c['sections'] > 0 ? ' (из них новых разделов: ' . $c['sections'] . ')' : '', $c['update'], $c['skip'] - $c['sections_skipped'], $c['losses'], $c['redirects']);
         if (($r['mode'] ?? '') === 'exact' && isset($r['copy'])) {
             $k = $r['copy'];
             $out[] = sprintf('Режим: точная копия. Страниц %d, файлов %d, размер около %s. Счётчики и чаты не переносятся (%s). Форм: %d, не подключено: %d.',
@@ -316,9 +318,10 @@ final class Report
         $res = $r['result'] ?? [];
         if (isset($res['redirects'])) {
             $out[] = '';
-            $out[] = 'Редиректов добавлено: ' . count($res['redirects']['added'] ?? []) . ', не принято: ' . count($res['redirects']['refused'] ?? []);
+            $back = ($r['status'] ?? '') === 'rolled_back';
+            $out[] = ($back ? 'Редиректов было добавлено: ' : 'Редиректов добавлено: ') . count($res['redirects']['added'] ?? []) . ($back ? ' (при отмене убраны)' : '') . ', не принято: ' . count($res['redirects']['refused'] ?? []);
             foreach (array_slice((array)($res['redirects']['refused'] ?? []), 0, 20) as $rf) {
-                $out[] = '  - ' . $rf['from'] . ': ' . $rf['why'];
+                $out[] = '  - ' . $rf['from'] . ': ' . Compat::redirectWhy((string)$rf['why']);
             }
             if (($res['redirects']['note'] ?? '') !== '') {
                 $out[] = '  ' . $res['redirects']['note'];

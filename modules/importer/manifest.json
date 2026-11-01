@@ -8,12 +8,17 @@
         {"path": "/", "title": "Импорт сайта", "permission": "system.manage", "methods": ["GET", "POST"]},
         {"path": "/job", "title": "Задание импорта", "permission": "system.manage", "methods": ["GET", "POST"], "menu": false},
         {"path": "/copy", "title": "Правка копии страницы", "permission": "system.manage", "methods": ["GET", "POST"], "menu": false},
+        {"path": "/copy-edit", "title": "Сохранение правки текста на странице-копии", "permission": "content.write", "methods": ["POST"], "menu": false},
         {"path": "/upload", "title": "Загрузка файла импорта", "permission": "system.manage", "methods": ["POST"], "menu": false, "upload": {"kinds": ["xml", "zip"], "max_kb": 51200, "max_files": 1}}
     ],
     "settings": [
         {"key": "page_limit", "label": "Страниц за один импорт", "type": "number", "min": 1, "max": 2000, "default": 200, "help": "Сколько страниц брать с сайта, если в форме не указано другое."},
         {"key": "delay_ms", "label": "Пауза между запросами, мс", "type": "number", "min": 0, "max": 10000, "default": 500, "help": "Чтобы не нагружать старый сайт. 500 мс подходят почти всегда."},
         {"key": "chunk", "label": "Страниц за один шаг", "type": "number", "min": 1, "max": 20, "default": 5, "help": "На хостинге с коротким временем запроса уменьшите до 2-3."},
-        {"key": "respect_robots", "label": "Соблюдать запреты robots.txt", "type": "bool", "default": true, "help": "Адреса, закрытые для всех роботов, не открываются."}
+        {"key": "respect_robots", "label": "Соблюдать запреты robots.txt", "type": "bool", "default": true, "help": "Адреса, закрытые для всех роботов, не открываются."},
+        {"key": "capture_pages", "label": "Страниц в «Точной копии»", "type": "number", "min": 1, "max": 2000, "default": 50, "help": "Предел страниц, которые Chrome откроет на чужом сайте за один захват. Каждая страница это визит браузера, поэтому по умолчанию их немного."},
+        {"key": "capture_mb", "label": "Предел объёма захвата, МБ", "type": "number", "min": 10, "max": 20000, "default": 500, "help": "Сколько всего можно скачать с чужого сайта за один захват. Дальше захват останавливается."},
+        {"key": "capture_minutes", "label": "Предел времени захвата, мин", "type": "number", "min": 1, "max": 720, "default": 30, "help": "Захват, который не уложился, останавливается."},
+        {"key": "capture_memory_mb", "label": "Предел памяти захвата, МБ", "type": "number", "min": 512, "max": 32768, "default": 2048, "help": "Память Chrome и инструмента вместе. Больше предела: захват останавливается."}
     ]
 }

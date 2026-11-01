@@ -49,8 +49,15 @@ final class Module implements AdminModuleInterface
             'delay_ms' => (int)($settings['delay_ms'] ?? Importer::DEFAULTS['delay_ms']),
             'chunk' => (int)($settings['chunk'] ?? Importer::DEFAULTS['chunk']),
             'robots' => (bool)($settings['respect_robots'] ?? true),
+            'capture_mb' => (int)($settings['capture_mb'] ?? 500),
+            'capture_minutes' => (int)($settings['capture_minutes'] ?? 30),
+            'capture_memory_mb' => (int)($settings['capture_memory_mb'] ?? 2048),
         ];
-        foreach (['limit', 'conflict', 'replace_home', 'menus', 'section', 'mode'] as $k) {
+        // An exact copy takes fewer pages by default: every page is a browser visit, and the limit is the owner's protection.
+        if (($args['mode'] ?? '') === 'exact') {
+            $o['limit'] = (int)($settings['capture_pages'] ?? 50);
+        }
+        foreach (['limit', 'conflict', 'replace_home', 'menus', 'section', 'mode', 'auto_apply'] as $k) {
             if (array_key_exists($k, $args)) {
                 $o[$k] = $args[$k];
             }
@@ -98,12 +105,13 @@ final class Module implements AdminModuleInterface
             file_put_contents($tmp, $bytes);
             $input = $tmp;
         }
+        $uploaded = $tmp !== null;
         if ($input === '') {
             throw new ImportException('Передайте url или file_base64 с type.');
         }
         try {
             $options = self::options($args);
-            $id = Runner::create($input, $options, $actor, $name);
+            $id = Runner::create($input, $options, $actor, $name, $uploaded);
         } finally {
             if ($tmp !== null) {
                 @unlink($tmp);
@@ -137,6 +145,10 @@ final class Module implements AdminModuleInterface
         (new Runner())->step($id, $budget);
         $r = Report::job($id);
         $next = match ($r['status']) {
+            'scouting' => 'Сервер осматривает сайт в Chrome: вызовите import_status снова через несколько секунд.',
+            'scouted' => 'Сайт осмотрен (поле scout: платформа, число страниц, оценка объёма). Покажите это владельцу и после согласия вызовите import_apply: начнётся захват в Chrome, он идёт в фоне и сам переходит к переносу; вызывайте import_status.',
+            'capturing' => 'Захват идёт в фоне (поле capture: страница, число страниц, объём). Вызывайте import_status, пока статус не станет applying или done.',
+            'cancelled' => 'Захват остановлен: ' . $r['error'],
             'analyzing' => 'Анализ ещё идёт: вызовите import_status снова.',
             'ready' => 'Покажите владельцу план (pages: адреса, блоки, потери) и после согласия вызовите import_apply (pages: список old_path или id, чтобы взять не все).',
             'applying' => 'Перенос идёт порциями: вызывайте import_status, пока status не станет done.',

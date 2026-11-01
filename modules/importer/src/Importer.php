@@ -56,8 +56,11 @@ final class Importer
         return $o;
     }
 
-    /** What to say when the mode "exact copy" is asked for a source that is not a capture package. */
-    public static function captureHelp(string $type): string
+    /**
+     * What to say when the mode "exact copy" cannot be done here: the capture of a site by its address needs Node.js and Chrome on the
+     * server (or a package made elsewhere). $problem is why the server cannot do it, in words of a person.
+     */
+    public static function captureHelp(string $type, string $problem = ''): string
     {
         $what = match ($type) {
             'url' => 'адрес сайта',
@@ -65,8 +68,11 @@ final class Importer
             'html_file' => 'сохранённая страница',
             default => 'этот источник',
         };
-        return 'Для режима «Точная копия» нужен пакет захвата: страницы берутся такими, какими их рисует Chrome, а у сервера сайта браузера нет. '
-            . 'Сделайте пакет на своём компьютере: в папке tools/capture выполните «npm install», затем «node capture.mjs ' . ($type === 'url' ? 'https://адрес-сайта' : 'ПУТЬ') . ' --zip», и загрузите получившийся zip (' . $what . ' захват не заменяет). '
+        $head = $type === 'url' && $problem !== ''
+            ? 'Точную копию по адресу этот сервер сделать не может: ' . rtrim($problem, '. ') . '. '
+            : 'Для режима «Точная копия» нужен пакет захвата: страницы берутся такими, какими их рисует Chrome. ';
+        return $head
+            . 'Можно сделать пакет на своём компьютере: в папке tools/capture выполните «npm install», затем «node capture.mjs ' . ($type === 'url' ? 'https://адрес-сайта' : 'ПУТЬ') . ' --zip», и загрузите получившийся zip (' . $what . ' захват не заменяет). '
             . 'В консоли это делает одна команда: «php modules/importer/bin/import.php ' . ($type === 'url' ? 'https://адрес-сайта' : 'ПУТЬ') . ' --mode=exact» (нужны Node.js и Chrome). Если важнее редактирование текста в блоках, выберите режим «В блоки темы».';
     }
 

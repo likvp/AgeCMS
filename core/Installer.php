@@ -136,6 +136,8 @@ final class Installer
             $row('curl', extension_loaded('curl'), 'recommended', 'вебхуки, Telegram, IndexNow, проверка новых версий', 'Debian/Ubuntu: apt install php' . $v . '-curl; на хостинге включить curl'),
             $row('dom', class_exists(\DOMDocument::class), 'recommended', 'текст с форматированием (поле richtext, статьи и записи блога): без dom от HTML остаётся только текст', 'Debian/Ubuntu: apt install php' . $v . '-xml, RHEL/Remi: php-xml, Alpine: php' . PHP_MAJOR_VERSION . PHP_MINOR_VERSION . '-dom, образ php: входит в сборку; на хостинге включить dom (xml)'),
             $row('zip', extension_loaded('zip'), 'recommended', 'резервные копии и установка модулей из архива', 'Debian/Ubuntu: apt install php' . $v . '-zip; на хостинге включить zip'),
+            // proc_open, Node.js and Chrome: the "exact copy" mode of the importer (tools/capture).
+            ...CaptureEnv::rows(),
         ];
     }
 

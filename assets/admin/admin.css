@@ -294,6 +294,7 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 .itm-h b { font: 600 0.75rem var(--mono); color: var(--muted); flex: 1; }
 .add { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: transparent; }
 .add select { flex: 1; max-width: 260px; }
+.add small { flex: 2; min-width: 0; }
 .mrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 0 0 8px; }
 .mrow .actions { gap: 0; }
 @media (max-width: 620px) { .mrow { grid-template-columns: 1fr auto; } .mrow .u { grid-column: 1; } }
@@ -428,3 +429,14 @@ details.rename[open] > summary { border-bottom: 1px solid var(--line, #e4e4e8); 
 .rich-ed img { max-width: 100%; height: auto; }
 .rich-ed a { color: var(--accent); }
 .redir-from { word-break: break-all; }
+
+/* Importer: long titles wrap inside their cell, the column of losses stays visible, the capture progress. */
+.imp-tbl td.imp-title { overflow-wrap: anywhere; word-break: break-word; min-width: 11rem; max-width: 24rem; }
+.imp-tbl td.imp-old { overflow-wrap: anywhere; word-break: break-all; min-width: 8rem; max-width: 18rem; }
+.imp-tbl td.imp-loss, .imp-tbl th.imp-loss { white-space: nowrap; }
+.imp-stats { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 10px 0; }
+.imp-stats div { min-width: 7rem; }
+.imp-stats b { display: block; font: 600 1.25rem var(--mono); font-variant-numeric: tabular-nums; }
+.imp-stats span { font-size: 0.8rem; color: var(--muted); }
+.imp-cur { overflow-wrap: anywhere; word-break: break-all; }
+.panel-b progress { width: 100%; }

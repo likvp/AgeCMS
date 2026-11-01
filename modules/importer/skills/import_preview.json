@@ -1,6 +1,6 @@
 {
     "name": "import_preview",
-    "description": "Start importing a site into this one and get the plan without changing anything: pages found, old address -> new address, blocks of each page, what is lost (Zero Block, embeds, forms), redirects and menus. Source: url of a live site, or file_base64 with type wxr (WordPress Tools > Export XML) or tilda_zip (Tilda project export), up to 50 MB. Returns job_id; while status is analyzing call import_status again. Show the plan to the owner before import_apply. By default design is not moved, only content (mode blocks). Mode exact keeps the look of the source: it needs a capture package (type capture_zip, made on the owner's computer by tools/capture) that brings the pages of the source with their own styles, scripts and files; counters and chats are dropped. Administrators only.",
+    "description": "Start importing a site into this one and get the plan without changing anything: pages found, old address -> new address, blocks of each page, what is lost (Zero Block, embeds, forms), redirects and menus. Source: url of a live site, or file_base64 with type wxr (WordPress Tools > Export XML) or tilda_zip (Tilda project export), up to 50 MB. Returns job_id; while status is analyzing call import_status again. Show the plan to the owner before import_apply. By default design is not moved, only content (mode blocks). Mode exact keeps the look of the source (pages with their own styles, scripts and files; counters and chats are dropped). With url the server captures the site in Chrome in the background: this call only looks at the home page (status scouting, then scouted with platform, number of pages and a size estimate); show that to the owner, then import_apply starts the capture and, when it ends, the transfer. Needs Node.js and Chrome on the server, otherwise the error says what is missing; a capture package (type capture_zip, made by tools/capture elsewhere) works without them. One capture runs on a site at a time. Public addresses only: private and local ones are refused. Administrators only.",
     "permission": "system.manage",
     "inputSchema": {
         "type": "object",
@@ -8,12 +8,12 @@
             "url": {"type": "string", "description": "Site address, https://old-site.ru"},
             "file_base64": {"type": "string", "description": "Export file in base64 instead of url"},
             "type": {"type": "string", "enum": ["wxr", "tilda_zip", "html", "capture_zip"], "description": "Kind of file_base64; capture_zip is a package made by tools/capture and always imports as an exact copy"},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 2000, "description": "Most pages to take, default from the module settings (200)"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 2000, "description": "Most pages to take, default from the module settings (200 for blocks, 50 for exact)"},
             "conflict": {"type": "string", "enum": ["suffix", "skip"], "description": "When an address is taken on this site: suffix adds -2, skip leaves the page out. Default suffix"},
             "replace_home": {"type": "boolean", "description": "Replace the content of the existing home page with the imported one. Default false"},
             "menus": {"type": "boolean", "description": "Replace header and footer menus with the imported ones. Default true"},
             "section": {"type": "string", "description": "Address of the section for blog posts, e.g. blog. Default: as at the source, or blog"},
-            "mode": {"type": "string", "enum": ["blocks", "exact"], "description": "blocks (default for this skill): content goes into blocks of the active theme. exact: the page looks like the source; needs type capture_zip"},
+            "mode": {"type": "string", "enum": ["blocks", "exact"], "description": "blocks (default for this skill): content goes into blocks of the active theme. exact: the page looks like the source; works with url (captured on the server) or type capture_zip"},
             "details": {"type": "boolean", "description": "Full blocks of every page in the answer"}
         },
         "additionalProperties": false

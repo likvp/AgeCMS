@@ -40,7 +40,7 @@ final class SchemaValidator
             'meta_title' => self::scalar($input, 'meta_title', 'string', 200, false, $errors),
             'meta_description' => self::scalar($input, 'meta_description', 'text', 500, false, $errors),
             'canonical_url' => self::scalar($input, 'canonical_url', 'url', 500, false, $errors),
-            'og_image' => self::scalar($input, 'og_image', 'url', 500, false, $errors),
+            'og_image' => self::scalar($input, 'og_image', 'url', 500, false, $errors, true),
             'is_noindex' => self::flag($input, 'is_noindex', 0, $errors),
             'is_published' => self::flag($input, 'is_published', 1, $errors),
             'sort_order' => self::intValue($input['sort_order'] ?? 0, -100000, 100000, 'sort_order', $errors),
@@ -214,7 +214,7 @@ final class SchemaValidator
                     $errors[] = "{$path} must be a string";
                     return '';
                 }
-                return self::string($value, $type, (int)($spec['max'] ?? ($type === 'text' ? 5000 : ($type === 'url' ? 500 : 200))), $path, $errors);
+                return self::string($value, $type, (int)($spec['max'] ?? ($type === 'text' ? 5000 : ($type === 'url' ? 500 : 200))), $path, $errors, !empty($spec['media']));
             case 'richtext':
                 // HTML through the white list of RichText; max counts the cleaned HTML.
                 if (!is_string($value)) {
@@ -261,8 +261,37 @@ final class SchemaValidator
         }
     }
 
+    /** Whether an http(s) address carries a login or password ("https://user:pw@host/"): it hides the real host from a reader. */
+    public static function hasUserinfo(string $value): bool
+    {
+        return preg_match('~^https?://[^/?#]*@~i', trim($value)) === 1;
+    }
+
+    /**
+     * Whether a path on the site (starting with "/") climbs out of its folder: a "." or ".." segment or a backslash, also
+     * written percent-encoded. Links of other kinds are not paths of the site and are never judged here.
+     */
+    public static function pathEscapes(string $value): bool
+    {
+        if ($value === '' || $value[0] !== '/') {
+            return false;
+        }
+        $path = rawurldecode(explode('#', explode('?', $value, 2)[0], 2)[0]);
+        // Decoded twice: "%252e%252e" must not pass as a harmless name either.
+        $path = rawurldecode($path);
+        if (str_contains($path, '\\')) {
+            return true;
+        }
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '..' || $segment === '.') {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** @param list<string> $errors */
-    private static function string(string $value, string $type, int $max, string $path, array &$errors): string
+    private static function string(string $value, string $type, int $max, string $path, array &$errors, bool $local = false): string
     {
         $value = str_replace("\r\n", "\n", $value);
         $pattern = $type === 'text' ? '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/' : '/[\x00-\x1F\x7F]/';
@@ -274,6 +303,10 @@ final class SchemaValidator
         }
         if ($type === 'url' && $value !== '' && preg_match(self::URL_PATTERN, $value) !== 1) {
             $errors[] = "{$path} must be an http(s) URL, a relative path, #anchor, mailto: or tel:";
+        } elseif ($type === 'url' && self::hasUserinfo($value)) {
+            $errors[] = "{$path} must not contain a login or password in the address";
+        } elseif ($type === 'url' && $local && self::pathEscapes($value)) {
+            $errors[] = "{$path} must not contain '..' or a backslash in the path";
         }
         return trim($value);
     }
@@ -282,14 +315,14 @@ final class SchemaValidator
      * @param array<string,mixed> $input
      * @param list<string> $errors
      */
-    private static function scalar(array $input, string $key, string $type, int $max, bool $required, array &$errors): string
+    private static function scalar(array $input, string $key, string $type, int $max, bool $required, array &$errors, bool $local = false): string
     {
         $value = $input[$key] ?? '';
         if (!is_string($value)) {
             $errors[] = "{$key} must be a string";
             return '';
         }
-        $value = self::string($value, $type, $max, $key, $errors);
+        $value = self::string($value, $type, $max, $key, $errors, $local);
         if ($required && $value === '') {
             $errors[] = "{$key} is required";
         }

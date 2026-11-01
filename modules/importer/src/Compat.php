@@ -65,6 +65,31 @@ final class Compat
         return \AgeCMS\Redirects::check($from, $to);
     }
 
+    /** The reason a redirect was refused, in Russian: the core states it in English. */
+    public static function redirectWhy(string $why): string
+    {
+        $rules = [
+            '~^\'(.*)\' is the address of an existing page$~s' => 'адрес «$1» уже занят существующей страницей',
+            '~^\'(.*)\' is an address of the system$~s' => 'адрес «$1» служебный адрес сайта',
+            '~^\'(.*)\' is an address of a module$~s' => 'адрес «$1» принадлежит модулю',
+            '~^\'(.*)\' already leads to another page since that page moved$~s' => 'адрес «$1» уже ведёт на другую страницу: та страница переезжала',
+            '~^\'(.*)\' is the home page$~s' => 'адрес «$1» это главная страница',
+            '~^\'(.*)\' would lead to itself$~s' => 'адрес «$1» вёл бы сам на себя',
+            '~^\'(.*)\' is not an address.*$~s' => '«$1» не похоже на адрес',
+            '~^\'(.*)\' must not contain \'\.\.\' or a backslash in the path$~s' => 'в адресе «$1» не должно быть «..» и обратной косой черты',
+            '~^\'(.*)\' is not an existing page$~s' => 'страницы «$1» на сайте нет',
+            '~^\'(.*)\' must be the path of a page, without \?query or #anchor$~s' => '«$1» должен быть путём страницы без параметров и якоря',
+            '~^from and to must be non-empty strings$~' => 'не указан старый или новый адрес',
+        ];
+        foreach ($rules as $re => $to) {
+            $out = preg_replace($re, $to, $why, -1, $n);
+            if ($n > 0 && is_string($out)) {
+                return $out;
+            }
+        }
+        return $why;
+    }
+
     /** Stores a local image file in the media library; one picture is one file (the name is a hash of the content). */
     public static function importFile(string $path): string
     {

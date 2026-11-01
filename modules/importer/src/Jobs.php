@@ -9,12 +9,15 @@ use PDO;
 
 /**
  * Storage of import jobs and their pages (tables mod_importer_jobs, mod_importer_items and mod_importer_media, created on the first import).
- * Statuses of a job: analyzing, ready, applying, done, rolling_back, rolled_back, failed.
+ * Statuses of a job: scouting (a quick look at the site by the capture tool), scouted (waiting for the owner to start the transfer),
+ * capturing (the capture tool works in the background), analyzing, ready, applying, done, rolling_back, rolled_back, failed, cancelled.
  * Statuses of a page: new (found), pending (to create), done, skipped, failed, rolled_back, kept (left on rollback).
  */
 final class Jobs
 {
-    public const ACTIVE = ['analyzing', 'applying', 'rolling_back'];
+    public const ACTIVE = ['analyzing', 'applying', 'rolling_back', 'scouting', 'capturing'];
+    /** The statuses in which the capture tool runs in the background; only one such job at a time on a site. */
+    public const CAPTURING = ['scouting', 'capturing'];
 
     /**
      * The tables are created on the first import, not by a module migration: a migration runs on every site that has
@@ -99,14 +102,59 @@ SQL;
     private const ITEM_JSON = ['page', 'plan', 'doc', 'losses'];
 
     /** @param array<string,mixed> $options */
-    public static function create(string $source, string $type, array $options, Actor $actor, string $platform = ''): int
+    public static function create(string $source, string $type, array $options, Actor $actor, string $platform = '', string $status = 'analyzing'): int
     {
         self::ensure();
         $now = ag_now();
-        return (int)Database::write(static function (PDO $pdo) use ($source, $type, $options, $actor, $platform, $now): int {
+        $exclusive = in_array($status, self::CAPTURING, true);
+        return (int)Database::write(static function (PDO $pdo) use ($source, $type, $options, $actor, $platform, $now, $status, $exclusive): int {
+            if ($exclusive) {
+                // Checked and inserted in one write: two people pressing the button together do not start two browsers.
+                $busy = $pdo->query("SELECT id FROM mod_importer_jobs WHERE status IN ('scouting', 'capturing') ORDER BY id LIMIT 1")->fetchColumn();
+                if ($busy !== false) {
+                    throw new ImportException('Захват другого сайта уже идёт (задание ' . (int)$busy . '). Дождитесь его конца или остановите его, потом начните этот.');
+                }
+            }
             $pdo->prepare('INSERT INTO mod_importer_jobs (source, source_type, platform, status, options_json, actor_json, token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                ->execute([$source, $type, $platform, 'analyzing', self::enc($options), self::enc(['type' => $actor->type, 'name' => $actor->name, 'role' => $actor->role]), bin2hex(random_bytes(16)), $now, $now]);
+                ->execute([$source, $type, $platform, $status, self::enc($options), self::enc(['type' => $actor->type, 'name' => $actor->name, 'role' => $actor->role]), bin2hex(random_bytes(16)), $now, $now]);
             return (int)$pdo->lastInsertId();
+        });
+    }
+
+    /** The job whose capture tool is running (or being started), if any; $except is a job that does not count. @return array<string,mixed>|null */
+    public static function capturing(?int $except = null): ?array
+    {
+        if (!self::exists()) {
+            return null;
+        }
+        $row = Database::row("SELECT * FROM mod_importer_jobs WHERE status IN ('scouting', 'capturing') AND id <> ? ORDER BY id LIMIT 1", [$except ?? 0]);
+        return $row === null ? null : self::decode($row);
+    }
+
+    /**
+     * Moves a job to $to only when it is in $from now (one writer wins), so a double click or two people do not start the same step twice.
+     * @param list<string> $from
+     */
+    public static function transition(int $id, array $from, string $to, array $fields = []): bool
+    {
+        $set = ['status = ?', 'updated_at = ?'];
+        $values = [$to, ag_now()];
+        foreach ($fields as $k => $v) {
+            if (in_array($k, self::JSON, true)) {
+                $set[] = "{$k}_json = ?";
+                $values[] = self::enc($v);
+            } else {
+                $set[] = "{$k} = ?";
+                $values[] = $v;
+            }
+        }
+        $values[] = $id;
+        $in = implode(',', array_fill(0, count($from), '?'));
+        $values = array_merge($values, $from);
+        return (bool)Database::write(static function (PDO $pdo) use ($set, $values, $in): bool {
+            $stmt = $pdo->prepare('UPDATE mod_importer_jobs SET ' . implode(', ', $set) . " WHERE id = ? AND status IN ({$in})");
+            $stmt->execute($values);
+            return $stmt->rowCount() === 1;
         });
     }
 
@@ -155,7 +203,7 @@ SQL;
         if (!self::exists()) {
             return null;
         }
-        $row = Database::row("SELECT * FROM mod_importer_jobs WHERE status IN ('analyzing', 'applying', 'rolling_back') AND lock_until < ? ORDER BY id LIMIT 1", [time()]);
+        $row = Database::row("SELECT * FROM mod_importer_jobs WHERE status IN ('analyzing', 'applying', 'rolling_back', 'scouting', 'capturing') AND lock_until < ? ORDER BY id LIMIT 1", [time()]);
         return $row === null ? null : self::decode($row);
     }
 

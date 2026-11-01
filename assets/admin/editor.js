@@ -263,7 +263,16 @@
         setDirty();
     }
 
+    // A field control with the hint of the theme (if it has one) under it.
     function field(spec, obj, key, label) {
+        var node = fieldNode(spec, obj, key, label);
+        if (spec.hint && node && spec.type !== 'list') {
+            node.appendChild(el('small', { class: 'muted', text: spec.hint }));
+        }
+        return node;
+    }
+
+    function fieldNode(spec, obj, key, label) {
         var type = spec.type || 'string';
         var title = label + (spec.required ? ' *' : '');
         var control;
@@ -286,7 +295,7 @@
             control.value = obj[key] === undefined ? '' : obj[key];
         } else if (type === 'enum') {
             control = el('select', { class: 'in', onchange: function (e) { setValue(obj, key, spec, e.target.value); } },
-                (spec.required ? [] : [el('option', { value: '', text: '-' })]).concat(spec.values.map(function (v) { return el('option', { value: v, text: v }); })));
+                (spec.required ? [] : [el('option', { value: '', text: '-' })]).concat(spec.values.map(function (v) { return el('option', { value: v, text: (spec.labels && spec.labels[v]) || v }); })));
             control.value = obj[key] || (spec.required ? spec.values[0] : '');
             if (spec.required && obj[key] === undefined) { obj[key] = spec.values[0]; }
         } else {
@@ -313,7 +322,7 @@
     }
 
     function fieldsOf(specs, obj) {
-        return Object.keys(specs).map(function (name) { return field(specs[name], obj, name, name); });
+        return Object.keys(specs).map(function (name) { return field(specs[name], obj, name, specs[name].label || name); });
     }
 
     function listField(spec, obj, key, title) {
@@ -393,8 +402,8 @@
         var seo = el('section', { class: 'panel' }, [
             el('div', { class: 'panel-h' }, [el('h2', { text: 'SEO и соцсети' })]),
             el('div', { class: 'panel-b' }, [
-                field({ type: 'string', max: 200 }, page, 'meta_title', 'Title'),
-                field({ type: 'text', max: 500 }, page, 'meta_description', 'Description'),
+                field({ type: 'string', max: 200 }, page, 'meta_title', 'Заголовок для поисковиков (title)'),
+                field({ type: 'text', max: 500 }, page, 'meta_description', 'Описание для поисковиков (description)'),
                 field({ type: 'string', max: 500 }, page, 'canonical_url', 'Canonical, если нужен другой адрес'),
                 field({ type: 'string', max: 500, media: true }, page, 'og_image', 'Картинка для соцсетей')
             ])
@@ -403,10 +412,18 @@
         // left column: blocks
         var blocksBody = el('div');
         var typeSelect = el('select', { class: 'in', 'aria-label': 'Тип нового блока' }, Object.keys(data.blockTypes).map(function (t) {
-            return el('option', { value: t, text: data.blockTypes[t].title || t });
+            return el('option', { value: t, text: data.blockTypes[t].title || t, title: data.blockTypes[t].hint || '' });
         }));
+        var typeHint = el('small', { class: 'muted' });
+        function showTypeHint() {
+            var t = data.blockTypes[typeSelect.value];
+            typeHint.textContent = t && t.hint ? t.hint : '';
+        }
+        typeSelect.addEventListener('change', showTypeHint);
+        showTypeHint();
         var addRow = el('div', { class: 'add' }, [
             typeSelect,
+            typeHint,
             textBtn('Добавить блок', function () {
                 var t = typeSelect.value;
                 var id = newBlockId(t, page.blocks);

@@ -40,10 +40,20 @@ final class HttpFetcher implements Fetcher
         self::$allowPrivate = $on && PHP_SAPI === 'cli';
     }
 
+    /**
+     * Whether a source on this machine or in the local network is allowed right now: the command line with --allow-private, or the
+     * built-in development server (php -S) started by a developer with AGECMS_IMPORT_ALLOW_PRIVATE=1. A server of a real site
+     * (php-fpm, Apache) never allows it, whatever the environment says.
+     */
+    public static function privateAllowed(): bool
+    {
+        return self::$allowPrivate || (PHP_SAPI === 'cli-server' && getenv('AGECMS_IMPORT_ALLOW_PRIVATE') === '1');
+    }
+
     /** @return array{host:string,port:int,ip:string,url:string}|null */
     private static function target(string $url): ?array
     {
-        if (!self::$allowPrivate) {
+        if (!self::privateAllowed()) {
             return Http::guard($url, true);
         }
         $p = parse_url($url);

@@ -6,7 +6,7 @@ declare(strict_types=1);
 // (for example {"jsonrpc":"2.0","method":"get_site_structure","id":1}).
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{Actor, Api, Background, AgeCMSException, AntiSpam, Auth, Config, Http, Logger, NotInstalledException, Seo, ValidationException};
+use AgeCMS\{Actor, Api, Background, AgeCMSException, AntiSpam, Auth, Config, Http, Logger, NotInstalledException, Seo, Updates, ValidationException};
 
 // After the answer is sent: finish queued work, ping search engines, re-cache the pages that changed. No cron needed.
 Background::afterResponse(true);
@@ -33,7 +33,7 @@ function handle(array $request, Actor $actor): ?array
             $method === 'initialize' => [
                 'protocolVersion' => '2025-03-26',
                 'capabilities' => ['tools' => ['listChanged' => false]],
-                'serverInfo' => ['name' => 'agecms', 'version' => '1.0.0'],
+                'serverInfo' => ['name' => 'agecms', 'version' => Updates::version()],
                 'instructions' => 'Call get_site_structure first. Read ' . Seo::siteUrl() . '/AGENT.md for the rules. Changes are validated, versioned and rate-limited; mass edits trip a circuit breaker.',
             ],
             $method === 'ping' => new stdClass(),

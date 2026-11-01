@@ -95,6 +95,14 @@ final class RedirectsTest extends HttpCase
         $refuse(['from' => '/_/lead', 'to' => '/about'], 'system');
         $refuse(['from' => '/index', 'to' => '/about'], 'system');
         $refuse(['from' => '', 'to' => '/about'], 'non-empty');
+        // A login or password in the target hides the real host; ".." and backslashes in a path never lead anywhere sensible.
+        $refuse(['from' => '/old', 'to' => 'https://user:pw@evil.example/'], 'login or password');
+        $refuse(['from' => '/old', 'to' => 'https://example.test@evil.example/'], 'login or password');
+        $refuse(['from' => '/old', 'to' => 'https://evil.example@example.test/about'], 'login or password');
+        $refuse(['from' => '/old/../x', 'to' => '/about'], "'..'");
+        $refuse(['from' => '/old/%2e%2e/x', 'to' => '/about'], "'..'");
+        $refuse(['from' => '/old', 'to' => '/blog/../about'], "'..'");
+        $refuse(['from' => '/old', 'to' => '/blog\\post'], 'backslash');
         $refuse(['from' => '/x'], 'non-empty');
 
         // A source may never be a target page, so a chain cannot form: /a -> /about, then /about would have to be a source.

@@ -122,6 +122,8 @@ final class HttpIntegrationTest extends HttpCase
 
         $init = $this->rpc($editor, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => []]);
         $this->assertSame('agecms', $init['json']['result']['serverInfo']['name']);
+        $this->assertSame(\AgeCMS\Updates::version(), $init['json']['result']['serverInfo']['version'], 'the server reports the version of the core');
+        $this->assertTrue(preg_match('/^\d+\.\d+\.\d+$/', $init['json']['result']['serverInfo']['version']) === 1);
 
         $names = fn(string $t) => array_column($this->rpc($t, ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list'])['json']['result']['tools'], 'name');
         $this->assertTrue(in_array('get_page', $names($viewer), true));
@@ -239,6 +241,21 @@ final class HttpIntegrationTest extends HttpCase
     private function form(array $data, string $csrf): array
     {
         return $this->http('POST', '/admin/index.php', http_build_query($data + ['csrf' => $csrf]), ['Content-Type' => 'application/x-www-form-urlencoded'], true);
+    }
+
+    public function testUnsignedModuleBannerSaysWhatToDo(): void
+    {
+        $this->boot();
+        \AgeCMS\ModuleInstaller::install([
+            'manifest.json' => json_encode(['name' => 'hi_unsigned', 'entry' => 'Module.php', 'class' => 'AgeCMS\\Modules\\HiUnsigned\\Module']),
+            'Module.php' => "<?php\nnamespace AgeCMS\\Modules\\HiUnsigned;\nuse AgeCMS\\ModuleInterface;\nfinal class Module implements ModuleInterface\n{\n    public function register(): void {}\n    public function callSkill(string \$skill, array \$args, \\AgeCMS\\Actor \$actor): array { return []; }\n}\n",
+        ], false, 'test');
+        $this->adminLogin();
+        $page = $this->http('GET', '/admin/?s=system', null, [], true)['body'];
+        $this->assertContains('Работают модули без подписи:</b> hi_unsigned', $page);
+        $this->assertContains('Для своих модулей это нормально', $page, 'the banner says it is fine for own modules');
+        $this->assertContains('Подписать этим сайтом', $page, 'and offers the button that removes it');
+        $this->assertContains('name="action" value="module_sign"', $page);
     }
 
     public function testAdminSectionsPageCreationAndSettings(): void

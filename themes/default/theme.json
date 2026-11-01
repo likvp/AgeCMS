@@ -19,88 +19,90 @@
     },
     "blocks": {
         "hero": {
-            "title": "Hero",
+            "title": "Главный экран: большой заголовок, подзаголовок и кнопка",
             "preview": "previews/hero.svg",
             "fields": {
-                "h1": {"type": "string", "max": 200, "required": true},
-                "subtitle": {"type": "text", "max": 500},
-                "cta_text": {"type": "string", "max": 60},
-                "cta_url": {"type": "url"}
+                "h1": {"type": "string", "max": 200, "required": true, "label": "Главный заголовок"},
+                "subtitle": {"type": "text", "max": 500, "label": "Подзаголовок"},
+                "cta_text": {"type": "string", "max": 60, "label": "Текст кнопки", "hint": "Пусто: кнопки нет."},
+                "cta_url": {"type": "url", "label": "Куда ведёт кнопка", "hint": "Адрес страницы (/kontakty), ссылка https:// или #якорь."}
             }
         },
         "text": {
-            "title": "Text",
+            "title": "Текст: заголовок и обычный текст без оформления",
             "preview": "previews/text.svg",
             "fields": {
-                "heading": {"type": "string", "max": 200},
-                "body": {"type": "text", "max": 8000, "required": true}
+                "heading": {"type": "string", "max": 200, "label": "Заголовок"},
+                "body": {"type": "text", "max": 8000, "required": true, "label": "Текст", "hint": "Абзацы разделяйте пустой строкой."}
             }
         },
         "features": {
-            "title": "Bento features",
+            "title": "Плитки: сетка карточек с короткими пунктами",
             "preview": "previews/features.svg",
             "fields": {
-                "heading": {"type": "string", "max": 200},
+                "heading": {"type": "string", "max": 200, "label": "Заголовок"},
                 "items": {
                     "type": "list",
                     "max": 12,
+                    "label": "Плитки",
                     "of": {
-                        "title": {"type": "string", "max": 100, "required": true},
-                        "text": {"type": "text", "max": 400},
-                        "size": {"type": "enum", "values": ["normal", "wide"]}
+                        "title": {"type": "string", "max": 100, "required": true, "label": "Заголовок плитки"},
+                        "text": {"type": "text", "max": 400, "label": "Текст"},
+                        "size": {"type": "enum", "values": ["normal", "wide"], "label": "Размер", "labels": {"normal": "Обычная", "wide": "Широкая"}}
                     }
                 }
             }
         },
         "image": {
-            "title": "Image",
+            "title": "Картинка: фото с подписью",
             "preview": "previews/image.svg",
             "fields": {
-                "src": {"type": "url", "media": true, "required": true},
-                "alt": {"type": "string", "max": 200, "required": true},
-                "caption": {"type": "string", "max": 300},
-                "wide": {"type": "bool"}
+                "src": {"type": "url", "media": true, "required": true, "label": "Картинка"},
+                "alt": {"type": "string", "max": 200, "required": true, "label": "Описание картинки", "hint": "Что на фото, коротко: его читают поисковики и программы для слабовидящих."},
+                "caption": {"type": "string", "max": 300, "label": "Подпись под картинкой"},
+                "wide": {"type": "bool", "label": "На всю ширину"}
             }
         },
         "faq": {
-            "title": "FAQ",
+            "title": "Вопросы и ответы: список для раздела FAQ",
             "preview": "previews/faq.svg",
             "fields": {
-                "heading": {"type": "string", "max": 200},
+                "heading": {"type": "string", "max": 200, "label": "Заголовок"},
                 "items": {
                     "type": "list",
                     "max": 30,
+                    "label": "Вопросы и ответы",
                     "of": {
-                        "q": {"type": "string", "max": 200, "required": true},
-                        "a": {"type": "text", "max": 1500, "required": true}
+                        "q": {"type": "string", "max": 200, "required": true, "label": "Вопрос"},
+                        "a": {"type": "text", "max": 1500, "required": true, "label": "Ответ"}
                     }
                 }
             }
         },
         "article": {
-            "title": "Article: статья или запись блога с форматированием",
+            "title": "Статья: запись блога или длинный текст с форматированием",
             "preview": "previews/article.svg",
             "fields": {
-                "heading": {"type": "string", "max": 200},
-                "body": {"type": "richtext", "max": 200000, "required": true}
+                "heading": {"type": "string", "max": 200, "label": "Заголовок"},
+                "body": {"type": "richtext", "max": 200000, "required": true, "label": "Текст", "hint": "Форматированный текст: заголовки, списки, ссылки, картинки."}
             }
         },
         "child_pages": {
-            "title": "Child pages: карточки вложенных страниц",
+            "title": "Вложенные страницы: карточки страниц, лежащих внутри",
             "preview": "previews/child_pages.svg",
             "fields": {
-                "heading": {"type": "string", "max": 200},
+                "heading": {"type": "string", "max": 200, "label": "Заголовок"},
                 "parent": {"type": "string", "max": 120, "label": "Чьи вложенные страницы", "hint": "Адрес страницы, например blog. Пусто: страницы, вложенные в эту."}
             }
         },
         "lead_form": {
-            "title": "Lead form",
+            "title": "Форма заявки: имя, телефон, сообщение и кнопка",
             "preview": "previews/lead_form.svg",
             "fields": {
-                "heading": {"type": "string", "max": 200},
-                "subtitle": {"type": "text", "max": 300},
-                "button_text": {"type": "string", "max": 60},
-                "success_text": {"type": "string", "max": 200}
+                "heading": {"type": "string", "max": 200, "label": "Заголовок"},
+                "subtitle": {"type": "text", "max": 300, "label": "Подзаголовок"},
+                "button_text": {"type": "string", "max": 60, "label": "Текст кнопки"},
+                "success_text": {"type": "string", "max": 200, "label": "Текст после отправки"}
             }
         }
     }

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 import { isTrackerUrl } from './trackers.mjs';
 import { UA_SUFFIX, sleep } from './util.mjs';
+import { safeGet, urlProblem, guardState } from './netguard.mjs';
 
 export const VIEWPORTS = {
   desktop: { width: 1280, height: 900, deviceScaleFactor: 1, isMobile: false, hasTouch: false },
@@ -17,16 +18,82 @@ const CHROME_PATHS = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
 ];
 
-/** Path of an installed Chrome/Chromium, or null. */
+/** Path of an installed Chrome/Chromium, or null. Order: the path given, AGECMS_CHROME, CHROME_PATH, the usual places. */
 export function findChrome(preferred) {
-  for (const p of [preferred, process.env.CHROME_PATH, ...CHROME_PATHS]) {
+  if (typeof preferred === 'string' && preferred !== '' && !fs.existsSync(preferred)) {
+    const e = new Error('Chrome не найден по указанному пути: ' + preferred);
+    e.code = 'no_chrome';
+    throw e;
+  }
+  for (const p of [preferred, process.env.AGECMS_CHROME, process.env.CHROME_PATH, ...CHROME_PATHS]) {
     if (p && fs.existsSync(p)) return p;
   }
   return null;
 }
 
-export async function launch(chromePath, headless = true) {
-  return chromium.launch({ executablePath: chromePath, headless, args: ['--disable-blink-features=AutomationControlled', '--hide-scrollbars', '--force-color-profile=srgb', '--font-render-hinting=none', '--disable-dev-shm-usage'] });
+/** The environment Chrome gets: no secrets of the site or of the server, only what a browser needs to run. */
+export function chromeEnv() {
+  const keep = ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'FONTCONFIG_PATH', 'FONTCONFIG_FILE', 'SYSTEMROOT', 'WINDIR', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'PLAYWRIGHT_BROWSERS_PATH'];
+  const env = {};
+  for (const k of keep) if (process.env[k] !== undefined) env[k] = process.env[k];
+  return env;
+}
+
+const SANDBOX_ERROR = /sandbox|namespace|setuid|zygote|clone\(|CLONE_NEWUSER|user_namespace|Operation not permitted/i;
+
+/**
+ * Starts Chrome the way the capture needs it: its own temporary profile (Playwright makes one and removes it), the sandbox ON,
+ * all traffic through the guard proxy, no secrets in its environment. Tries, in this order: the Chrome that was named or found,
+ * the "chrome" channel of Playwright, the Chromium that Playwright keeps in PLAYWRIGHT_BROWSERS_PATH.
+ * When the sandbox cannot start (a container, restricted user namespaces) and the process does not run as root, it starts
+ * once more without the sandbox and says so in `browser.agInfo.warnings`.
+ *
+ * @param {object} o {chromePath, explicit, headless, proxy:{server,username,password}|null, sandbox:'auto'|'on', args:string[]}
+ */
+export async function launch(o = {}) {
+  const headless = o.headless !== false;
+  const args = ['--disable-blink-features=AutomationControlled', '--hide-scrollbars', '--force-color-profile=srgb', '--font-render-hinting=none', '--disable-dev-shm-usage',
+    '--disable-quic', '--force-webrtc-ip-handling-policy=disable_non_proxied_udp', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--no-first-run',
+    '--no-default-browser-check', '--disable-extensions', '--disable-notifications', '--mute-audio', '--js-flags=--max-old-space-size=1024',
+    '--disable-features=Translate,MediaRouter,OptimizationHints,DnsOverHttps', ...(o.args || [])];
+  if (o.proxy) args.push('--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1');
+  const attempts = [];
+  if (o.chromePath) attempts.push({ via: 'path', executablePath: o.chromePath });
+  if (!(o.explicit && o.chromePath)) {
+    attempts.push({ via: 'channel', channel: 'chrome' });
+    attempts.push({ via: 'playwright' });
+  }
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  let lastError = null;
+  const errors = [];
+  for (const a of attempts) {
+    lastError = null;
+    for (const sandbox of [true, false]) {
+      if (sandbox === false && (o.sandbox === 'on' || !lastError || !SANDBOX_ERROR.test(String(lastError.message || lastError)))) break;
+      if (sandbox === false && isRoot) {
+        const e = new Error('Chrome не запускается без песочницы от имени root. Запустите захват от обычного пользователя (например, от пользователя веб-сервера).');
+        e.code = 'root_no_sandbox';
+        throw e;
+      }
+      try {
+        const browser = await chromium.launch({
+          headless, args, chromiumSandbox: sandbox, env: chromeEnv(), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, timeout: 40000,
+          ...(a.executablePath ? { executablePath: a.executablePath } : {}), ...(a.channel ? { channel: a.channel } : {}),
+          ...(o.proxy ? { proxy: { server: o.proxy.server, username: o.proxy.username, password: o.proxy.password, bypass: '<-loopback>' } } : {}),
+        });
+        browser.agInfo = { via: a.via, sandbox, warnings: sandbox ? [] : ['Chrome запущен без песочницы: в этой системе она недоступна. Захват идёт под защитой проверки адресов, но лучше включить песочницу (пользовательские пространства имён) или запускать Chrome в контейнере.'] };
+        return browser;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (lastError) errors.push(lastError);
+  }
+  const shown = attempts[0] && attempts[0].via === 'path' ? errors[0] : errors[errors.length - 1];
+  const msg = String(shown && shown.message || shown || '').split('\n').find((l) => l.trim() !== '' && !/^browserType\.launch/.test(l.trim())) || 'неизвестная причина';
+  const err = new Error('Chrome не запустился: ' + msg.trim().slice(0, 300));
+  err.code = 'no_chrome';
+  throw err;
 }
 
 export function decodeHtml(buf, contentType = '') {
@@ -46,15 +113,30 @@ export async function makeContext(browser, kind, { store, log, state, userAgent,
   const vp = VIEWPORTS[kind];
   const ctx = await browser.newContext({
     viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.deviceScaleFactor, isMobile: vp.isMobile, hasTouch: vp.hasTouch,
-    userAgent, locale: 'ru-RU', ignoreHTTPSErrors: false, serviceWorkers: 'block', extraHTTPHeaders: extraHeaders || {},
+    userAgent, locale: 'ru-RU', ignoreHTTPSErrors: false, serviceWorkers: 'block', extraHTTPHeaders: extraHeaders || {}, acceptDownloads: false,
   });
+  // A window that a page opens for itself is closed at once: the capture works with its own pages only.
+  ctx.on('page', (p) => { p.opener().then((o) => { if (o) p.close().catch(() => {}); }).catch(() => {}); });
   const pending = new Set();
   ctx.agPending = pending;
   const KEEP = new Set(['stylesheet', 'script', 'font', 'image', 'media', 'other', 'texttrack']);
   await ctx.route('**/*', async (route) => {
     const req = route.request();
     const url = req.url();
-    if (!/^https?:/i.test(url)) return route.continue();
+    if (!/^https?:/i.test(url)) {
+      // data:, blob: and about: never leave the browser; every other scheme (file:, ftp:, chrome:, ws:) is refused.
+      return /^(data|blob|about):/i.test(url) ? route.continue() : route.abort('blockedbyclient');
+    }
+    // Second line behind the proxy: an address of the internal network is not even tried; a chain of redirects is cut.
+    const refused = urlProblem(url, guardState());
+    if (refused) {
+      state.refused = state.refused || [];
+      if (state.refused.length < 100) state.refused.push({ url: url.slice(0, 200), why: refused });
+      return route.abort('blockedbyclient');
+    }
+    let hops = 0;
+    for (let r = req.redirectedFrom(); r; r = r.redirectedFrom()) hops++;
+    if (hops > 10) return route.abort('blockedbyclient');
     if (isTrackerUrl(url)) {
       state.blocked.add(url.split('?')[0]);
       return route.abort('blockedbyclient');
@@ -122,6 +204,15 @@ export async function settle(page) {
     await sleepIn(400);
   });
   await page.waitForLoadState('networkidle', { timeout: 6000 }).catch(() => {});
+  // Widgets that build themselves after the scroll (maps, sliders) keep changing the page for a while on a busy machine:
+  // wait until the document has been quiet for a moment, but never longer than a few seconds (an animated page never is).
+  await page.evaluate(() => new Promise((resolve) => {
+    let timer = setTimeout(done, 900);
+    const stop = setTimeout(done, 4000);
+    const obs = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(done, 900); });
+    obs.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+    function done() { clearTimeout(timer); clearTimeout(stop); obs.disconnect(); resolve(); }
+  })).catch(() => {});
 }
 
 /**
@@ -129,9 +220,20 @@ export async function settle(page) {
  * @returns {Promise<{page, status:number, raw:string, finalUrl:string, headers:object}>}
  */
 export async function openPage(ctx, url, { timeout = 45000 } = {}) {
-  const page = await ctx.newPage();
+  let page = await ctx.newPage();
   page.on('dialog', (d) => d.dismiss().catch(() => {}));
-  const resp = await page.goto(url, { waitUntil: 'load', timeout });
+  let resp;
+  try {
+    resp = await page.goto(url, { waitUntil: 'load', timeout });
+  } catch (e) {
+    // A slow or overloaded site: one more try after a pause (a refusal by the address check is final, see netguard).
+    if (!/timeout|ERR_TIMED_OUT|ERR_CONNECTION_(RESET|CLOSED|TIMED_OUT)|ERR_EMPTY_RESPONSE/i.test(String(e && e.message))) throw e;
+    await page.close().catch(() => {});
+    await new Promise((r) => setTimeout(r, 4000));
+    page = await ctx.newPage();
+    page.on('dialog', (d) => d.dismiss().catch(() => {}));
+    resp = await page.goto(url, { waitUntil: 'load', timeout });
+  }
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   let raw = '';
   let headers = {};
@@ -183,28 +285,9 @@ export async function compareShots(page, a, b) {
   }, [a.toString('base64'), b.toString('base64')]);
 }
 
-/** A file in full through Node (videos come in ranges through the browser; CSS references that nothing loaded). */
-export async function fetchFull(url, { maxBytes, userAgent, referer, timeout = 40000 }) {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeout);
-  try {
-    const r = await fetch(url, { signal: ctl.signal, redirect: 'follow', headers: { 'user-agent': userAgent, referer: referer || '', accept: '*/*', 'accept-language': 'ru-RU,ru;q=0.9' } });
-    if (!r.ok) return { ok: false, status: r.status };
-    const len = Number(r.headers.get('content-length') || 0);
-    if (len > maxBytes) return { ok: false, status: 413, why: 'слишком большой файл' };
-    const chunks = [];
-    let size = 0;
-    for await (const c of r.body) {
-      size += c.length;
-      if (size > maxBytes) { ctl.abort(); return { ok: false, status: 413, why: 'слишком большой файл' }; }
-      chunks.push(c);
-    }
-    return { ok: true, status: r.status, body: Buffer.concat(chunks), contentType: r.headers.get('content-type') || '', finalUrl: r.url };
-  } catch (e) {
-    return { ok: false, status: 0, why: String(e && e.message || e).slice(0, 100) };
-  } finally {
-    clearTimeout(timer);
-  }
+/** A file in full through Node (videos come in ranges through the browser; CSS references that nothing loaded). Same address checks as the proxy. */
+export function fetchFull(url, { maxBytes, userAgent, referer, timeout = 40000 }) {
+  return safeGet(url, { maxBytes, userAgent, referer, timeout });
 }
 
 export const mobileUserAgent = (base) => base.replace(/\(([^)]*)\)/, '(Linux; Android 13; Pixel 7)').replace(/Chrome\/([\d.]+) Safari/, 'Chrome/$1 Mobile Safari');

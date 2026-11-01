@@ -1,0 +1,20 @@
+/* Text editor on a copied page (assets/copy-edit.js). The page has its own styles, so every rule here names what it needs. */
+.ag-copy-edit-link { position: fixed; left: 16px; bottom: 16px; z-index: 2147482000; padding: 10px 16px; border-radius: 24px; background: #17171a; color: #fff !important; border: 2px solid #f5b301; font: 600 14px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-decoration: none !important; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }
+.ag-copy-edit-link:hover { background: #f5b301; color: #17171a !important; }
+.ag-ce-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147482000; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; background: #17171a; color: #fff; border-top: 2px solid #f5b301; font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: normal; text-transform: none; text-align: left; }
+.ag-ce-bar * { box-sizing: border-box; font-family: inherit; letter-spacing: normal; text-transform: none; }
+.ag-ce-bar b { font-weight: 700; }
+.ag-ce-bar .ag-ce-tip { color: #b9b9c2; flex: 1 1 260px; min-width: 0; }
+.ag-ce-bar .ag-ce-status { color: #f5b301; flex: 1 1 100%; }
+.ag-ce-bar .ag-ce-status.err { color: #ff8a80; }
+.ag-ce-bar button, .ag-ce-bar a.ag-ce-exit { padding: 7px 14px; border-radius: 6px; border: 1px solid #55555e; background: #2a2a30; color: #fff; font-size: 14px; cursor: pointer; text-decoration: none; }
+.ag-ce-bar button.primary { background: #f5b301; border-color: #f5b301; color: #17171a; font-weight: 700; }
+.ag-ce-bar button:disabled { opacity: .45; cursor: default; }
+.ag-ce-bar input { padding: 6px 10px; border-radius: 6px; border: 1px solid #55555e; background: #0f0f12; color: #fff; font-size: 14px; min-width: 240px; }
+.ag-ce-bar label { display: flex; align-items: center; gap: 6px; }
+.ag-ce-bar [hidden] { display: none !important; }
+[data-ag-e].ag-ce-hot { outline: 2px dashed #f5b301 !important; outline-offset: 2px; cursor: text !important; }
+[data-ag-e].ag-ce-on { outline: 2px solid #f5b301 !important; outline-offset: 2px; background-color: rgba(245, 179, 1, .12) !important; }
+[data-ag-e].ag-ce-dirty { outline: 2px solid #2e9e5b !important; outline-offset: 2px; }
+img[data-ag-e].ag-ce-hot { cursor: pointer !important; }
+body { padding-bottom: 96px; }

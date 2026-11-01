@@ -182,6 +182,9 @@ final class Redirects
         if ($path === '/' && $query === '') {
             return "'{$from}' is the home page";
         }
+        if (SchemaValidator::pathEscapes($path)) {
+            return "'{$from}' must not contain '..' or a backslash in the path";
+        }
         $first = explode('/', ltrim($path, '/'))[0];
         if (in_array($path, self::SYSTEM_PATHS, true) || in_array($first, Pages::RESERVED, true)) {
             return "'{$key}' is an address of the system";
@@ -211,6 +214,9 @@ final class Redirects
     private static function targetOf(string $to): string
     {
         $site = strtolower((string)parse_url(Seo::siteUrl(), PHP_URL_HOST));
+        if (SchemaValidator::hasUserinfo($to)) {
+            return "error:'{$to}' must not contain a login or password in the address";
+        }
         if (preg_match('~^https?://~i', $to) === 1) {
             $host = strtolower((string)parse_url($to, PHP_URL_HOST));
             if ($host === '') {
@@ -227,6 +233,9 @@ final class Redirects
         }
         if (str_contains($to, '?') || str_contains($to, '#')) {
             return "error:'{$to}' must be the path of a page, without ?query or #anchor";
+        }
+        if (SchemaValidator::pathEscapes('/' . ltrim($to, '/'))) {
+            return "error:'{$to}' must not contain '..' or a backslash in the path";
         }
         $slug = Cache::slugForPath(rawurldecode($to));
         if ($slug === null || Pages::row($slug) === null) {
