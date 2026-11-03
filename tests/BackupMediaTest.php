@@ -32,6 +32,30 @@ final class BackupMediaTest extends TestCase
         $this->assertSame(2, count(Backup::list()), 'only the newest backups are kept');
     }
 
+    public function testSnapshotByFileCopyIsConsistentForSqliteWithoutVacuumInto(): void
+    {
+        $this->freshSite();
+        $this->createPage('a');
+        $this->createPage('b');
+        $copy = TEST_TMP . '/by-copy.sqlite';
+        $this->assertSame('copy', Backup::snapshot($copy, true));
+        $db = new PDO('sqlite:' . $copy);
+        $this->assertSame('2', (string)$db->query('SELECT COUNT(*) FROM pages')->fetchColumn(), 'the pages written just before are in the copy');
+        $this->assertSame('ok', $db->query('PRAGMA integrity_check')->fetchColumn());
+        $this->assertSame('2', (string)$db->query('SELECT COUNT(*) FROM revisions')->fetchColumn());
+        $this->createPage('c');
+        $this->assertSame('3', (string)Database::value('SELECT COUNT(*) FROM pages'), 'the site keeps writing after the copy');
+    }
+
+    public function testRequirementsNameOldSqlite(): void
+    {
+        $this->freshSite();
+        $row = array_values(array_filter(\AgeCMS\Installer::checks(), static fn(array $c): bool => $c['label'] === 'SQLite 3.27 или новее'));
+        $this->assertSame(1, count($row));
+        $this->assertSame(Backup::hasVacuumInto(), $row[0]['ok']);
+        $this->assertSame('recommended', $row[0]['level']);
+    }
+
     public function testBackupDoesNotContainConfigSecrets(): void
     {
         $this->freshSite();

@@ -6,7 +6,7 @@ namespace AgeCMS;
 use ZipArchive;
 
 /**
- * Consistent database snapshots (VACUUM INTO, safe while the site is live), zipped into data/backups/ together with the files of copied pages (CopyPage).
+ * Consistent database snapshots (VACUUM INTO, safe while the site is live; SQLite older than 3.27 copies the file under the write lock), zipped into data/backups/ together with the files of copied pages (CopyPage).
  * data/config.php is not included: it holds the secrets and stays on the server.
  */
 final class Backup
@@ -27,7 +27,7 @@ final class Backup
         }
         $stamp = ($kind === 'auto' ? 'auto-' : '') . gmdate('Ymd-His');
         $snapshot = "{$dir}/agecms-{$stamp}.sqlite";
-        Database::pdo()->exec("VACUUM INTO '" . str_replace("'", "''", $snapshot) . "'");
+        self::snapshot($snapshot);
 
         if (class_exists(ZipArchive::class)) {
             $target = "{$dir}/agecms-{$stamp}.zip";
@@ -58,6 +58,50 @@ final class Backup
         @chmod($target, 0600);
         self::prune($kind === 'auto' ? (int)Config::get('backup.keep_auto', 5) : (int)Config::get('backup.keep', 7), $kind);
         return $target;
+    }
+
+    /** SQLite has VACUUM INTO from 3.27; older builds (some shared hosts run 3.26) need the file copy below. */
+    public static function hasVacuumInto(): bool
+    {
+        return version_compare((string)Database::value('SELECT sqlite_version()'), '3.27.0', '>=');
+    }
+
+    /**
+     * Writes a consistent copy of the database to $path. VACUUM INTO where SQLite has it; otherwise (or when it fails,
+     * or when $viaCopy is set) the WAL is folded into the main file and the file is copied while writers are held back.
+     */
+    public static function snapshot(string $path, bool $viaCopy = false): string
+    {
+        $pdo = Database::pdo();
+        if (!$viaCopy && self::hasVacuumInto()) {
+            try {
+                $pdo->exec("VACUUM INTO '" . str_replace("'", "''", $path) . "'");
+                return 'vacuum';
+            } catch (\PDOException $e) {
+                @unlink($path);
+                Logger::log('warning', 'backup.vacuum_failed', ['error' => $e->getMessage()]);
+            }
+        }
+        $copied = false;
+        for ($attempt = 0; $attempt < 10 && !$copied; $attempt++) {
+            // TRUNCATE empties the WAL; a reader holding it open makes SQLite report busy, then we wait and try again.
+            $row = $pdo->query('PRAGMA wal_checkpoint(TRUNCATE)')->fetch(\PDO::FETCH_NUM) ?: [1];
+            if ((int)$row[0] === 0) {
+                // No writer can get in while the file is copied, and the WAL is empty again after the checkpoint.
+                $copied = (bool)Database::write(static function (\PDO $db) use ($path): bool {
+                    return @copy(Database::file(), $path);
+                });
+            }
+            if (!$copied) {
+                usleep(200000);
+            }
+        }
+        if (!$copied) {
+            @unlink($path);
+            throw new AgeCMSException('Не удалось сделать копию базы: SQLite ' . Database::value('SELECT sqlite_version()') . ' без VACUUM INTO, а файл базы занят');
+        }
+        Logger::log('warning', 'backup.file_copy', ['sqlite' => (string)Database::value('SELECT sqlite_version()')]);
+        return 'copy';
     }
 
     /** @return list<array{file:string,size:int,created:string,auto:bool}> newest first */

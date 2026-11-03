@@ -120,6 +120,14 @@ final class Installer
             }
         }
         $webp = extension_loaded('gd') && function_exists('imagewebp');
+        $sqliteVersion = '';
+        if (extension_loaded('pdo_sqlite')) {
+            try {
+                $sqliteVersion = (string)(new \PDO('sqlite::memory:'))->query('SELECT sqlite_version()')->fetchColumn();
+            } catch (\Throwable) {
+            }
+        }
+        $sqliteOk = $sqliteVersion !== '' && version_compare($sqliteVersion, '3.27.0', '>=');
         $v = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
         $row = static fn(string $label, bool $ok, string $level, string $note, string $fix = ''): array => ['label' => $label, 'ok' => $ok, 'required' => $level === 'required', 'level' => $level, 'note' => $note, 'fix' => $fix];
         return [
@@ -128,6 +136,7 @@ final class Installer
             $row('SQLite с полнотекстовым поиском (FTS5)', $fts, 'required', 'нужен для поиска по сайту', 'обновить libsqlite3 или сменить сборку PHP; на хостинге написать в поддержку'),
             $row('mbstring', extension_loaded('mbstring'), 'required', 'работа с русским текстом', 'Debian/Ubuntu: apt install php' . $v . '-mbstring'),
             $row('json', extension_loaded('json'), 'required', ''),
+            $row('SQLite 3.27 или новее', $sqliteOk, 'recommended', 'найден ' . $sqliteVersion . ($sqliteOk ? '' : ': бэкап делается копированием файла базы вместо VACUUM INTO, это работает, но на секунды задерживает запись'), 'выбрать более новую версию PHP или SQLite в панели хостинга, на своём сервере обновить libsqlite3'),
             $row('sodium', extension_loaded('sodium'), 'recommended', 'подписи Ed25519: модули разработчиков с ключом Ed25519; кнопка «Обновить» без sodium проверяет запасную подпись через openssl, без обоих не работает', 'Debian/Ubuntu: apt install php' . $v . '-common (модуль sodium входит в него), RHEL/Remi: php-sodium, Alpine: php' . PHP_MAJOR_VERSION . PHP_MINOR_VERSION . '-sodium, образ php: docker-php-ext-install sodium; на хостинге включить sodium в «Расширения PHP» или попросить поддержку'),
             $row('zlib', function_exists('gzdecode'), 'recommended', 'сжатые пакеты обновлений и резервные копии', 'Debian/Ubuntu: apt install php' . $v . '-common; на хостинге включить zlib'),
             $row('PHP может писать в файлы ядра', !array_filter(Updater::preflight(), static fn(string $p): bool => str_starts_with($p, 'PHP не может писать')), 'recommended', 'нужно кнопке «Обновить»: пользователь PHP должен быть владельцем core/, admin/, bin/, assets/ (кроме cache и uploads), themes/default, index.php, .htaccess', 'chown -R пользователь-php:группа каталог-сайта (после git pull от root это нужно повторять), не 0777'),
