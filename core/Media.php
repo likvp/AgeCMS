@@ -170,6 +170,7 @@ final class Media
         foreach (['webp', 'avif'] as $ext) {
             self::move(self::dir() . "/{$base}.{$ext}", self::trashDir() . "/{$base}.{$ext}");
         }
+        Picture::dropCopies($base);
         Logger::log('info', 'media.trashed', ['name' => $name]);
         Audit::record(Audit::MEDIA, "Картинка {$name} перенесена в корзину");
     }

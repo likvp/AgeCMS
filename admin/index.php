@@ -129,6 +129,11 @@ try {
                     $flash = $result['changed'] ? 'Плашка о cookie сохранена, ревизия #' . $result['revision_id'] : 'Без изменений';
                     $section = 'settings';
                     break;
+                case 'consent_save':
+                    $result = Queue::submit($actor, 'set_settings', ['values' => ['lead_consent' => isset($_POST['lead_consent']) ? '1' : '0']]);
+                    $flash = $result['changed'] ? 'Настройка согласия сохранена, ревизия #' . $result['revision_id'] : 'Без изменений';
+                    $section = 'settings';
+                    break;
                 case 'theme_settings_save':
                     // Fields of the active theme (theme.json "settings"), the tab is the section: theme.header.*, theme.footer.*
                     $part = (string)($_POST['tab'] ?? '');
@@ -153,6 +158,7 @@ try {
                     $result = Queue::submit($actor, 'set_settings', ['values' => [
                         'yandex_metrika_id' => trim((string)($_POST['yandex_metrika_id'] ?? '')),
                         'yandex_metrika_options' => implode(',', $options),
+                        'yandex_metrika_load' => isset($_POST['yandex_metrika_now']) ? 'now' : '',
                         'yandex_webmaster' => trim((string)($_POST['yandex_webmaster'] ?? '')),
                         'verification_tags' => (string)($_POST['verification_tags'] ?? ''),
                     ]]);

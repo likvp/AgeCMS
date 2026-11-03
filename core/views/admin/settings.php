@@ -148,6 +148,8 @@ $ymOn = array_filter(explode(',', $settings['yandex_metrika_options'] ?? ($ymId 
             <?php foreach (\AgeCMS\Analytics::METRIKA_OPTIONS as $key => $label): ?>
                 <label class="chk"><input type="checkbox" name="yandex_metrika_options[]" value="<?= h($key) ?>"<?= in_array($key, $ymOn, true) ? ' checked' : '' ?>><span><?= h($label) ?></span></label>
             <?php endforeach; ?>
+            <label class="chk"><input type="checkbox" name="yandex_metrika_now" value="1"<?= ($settings['yandex_metrika_load'] ?? '') === 'now' ? ' checked' : '' ?>><span>Подключать счётчик сразу вместе со страницей</span></label>
+            <small class="hint">По умолчанию счётчик подключается через несколько секунд после загрузки страницы: она быстрее открывается на телефоне, а показатели скорости (Google и Яндекс) лучше. Включите, если важно учесть даже визиты короче нескольких секунд.</small>
             <small class="hint">Вебвизор записывает действия посетителей: скажите об этом в политике конфиденциальности. Поля форм Метрика скрывает сама.</small>
         </div>
         <label class="f"><span>Яндекс Вебмастер <small>(код подтверждения)</small></span><input class="in" type="text" name="yandex_webmaster" value="<?= h($settings['yandex_webmaster'] ?? '') ?>" maxlength="64" placeholder="например 31d36f48e3135250" autocomplete="off" autocapitalize="none" spellcheck="false"><small class="hint">Только сам код из метатега <code>yandex-verification</code> (то, что в <code>content="..."</code>). Тег появится в <code>&lt;head&gt;</code> каждой страницы.</small></label>
@@ -174,6 +176,15 @@ $ymOn = array_filter(explode(',', $settings['yandex_metrika_options'] ?? ($ymId 
         <label class="chk"><input type="checkbox" name="cookie_banner" value="1"<?= SiteSettings::cookieOn($settings) ? ' checked' : '' ?>><span>Показывать плашку</span></label>
         <label class="f"><span>Текст</span><textarea class="in" name="cookie_text" rows="3" maxlength="500" placeholder="<?= h(SiteSettings::COOKIE_TEXT) ?>"><?= h($settings['cookie_text'] ?? '') ?></textarea><small class="hint">Пусто: стандартный текст (он виден в поле серым).</small></label>
         <label class="f"><span>Ссылка на политику</span><input class="in" type="text" name="cookie_policy_url" value="<?= h($settings['cookie_policy_url'] ?? '') ?>" maxlength="500" placeholder="/politika-konfidencialnosti" autocapitalize="none" spellcheck="false"><small class="hint">Страница сайта или полный адрес. Пусто: ссылки «Подробнее» нет.</small></label>
+        <button class="btn primary" type="submit">Сохранить</button>
+    </form>
+</section>
+<section class="panel">
+    <div class="panel-h"><h2>Согласие в заявках</h2><span class="tag <?= SiteSettings::consentRequired($settings) ? 'ok' : 'plain' ?>"><?= SiteSettings::consentRequired($settings) ? 'обязательно' : 'не требуется' ?></span></div>
+    <form method="post" class="panel-b">
+        <?= admin_post_fields($csrf, 'consent_save') . AdminTabs::field($tab) ?>
+        <p class="muted">Если форма сайта просит согласие на обработку персональных данных (флажок с именем <code>consent</code>), сайт записывает в заявку время согласия и адрес, с которого оно пришло: это доказательство по закону о персональных данных (152-ФЗ). Видно в разделе «Заявки» и в письме о заявке.</p>
+        <label class="chk"><input type="checkbox" name="lead_consent" value="1"<?= SiteSettings::consentRequired($settings) ? ' checked' : '' ?>><span>Не принимать заявки без согласия</span></label>
         <button class="btn primary" type="submit">Сохранить</button>
     </form>
 </section>

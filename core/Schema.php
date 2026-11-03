@@ -279,6 +279,17 @@ CREATE TABLE IF NOT EXISTS session_owners (
 ) WITHOUT ROWID;
 SQL);
             },
+            // The visitor's agreement to the processing of personal data (152-FZ): when it was given and from which address.
+            // Empty for leads that came without it (older ones and sites that do not ask for it).
+            8 => static function (PDO $pdo): void {
+                $has = static fn(string $table, string $column): bool => in_array($column, array_column($pdo->query("PRAGMA table_info({$table})")->fetchAll(PDO::FETCH_ASSOC), 'name'), true);
+                if (!$has('leads', 'consent_at')) {
+                    $pdo->exec("ALTER TABLE leads ADD COLUMN consent_at TEXT NOT NULL DEFAULT ''");
+                }
+                if (!$has('leads', 'consent_ip')) {
+                    $pdo->exec("ALTER TABLE leads ADD COLUMN consent_ip TEXT NOT NULL DEFAULT ''");
+                }
+            },
         ];
     }
 }

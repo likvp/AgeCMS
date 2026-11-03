@@ -3,7 +3,7 @@ defined('AGECMS_BOOTED') || exit;
 
 use AgeCMS\Database;
 
-$leads = Database::rows('SELECT created_at, page_slug, name, phone, message FROM leads ORDER BY id DESC LIMIT 50');
+$leads = Database::rows('SELECT created_at, page_slug, name, phone, message, consent_at, consent_ip FROM leads ORDER BY id DESC LIMIT 50');
 $stats = Database::rows('SELECT date, views, unique_visitors, leads_count FROM analytics_daily ORDER BY date DESC LIMIT 7');
 ?>
 <div class="pagehead"><div class="grow"><h1>Заявки</h1><p>Последние 50 обращений с форм сайта.</p></div></div>
@@ -12,10 +12,10 @@ $stats = Database::rows('SELECT date, views, unique_visitors, leads_count FROM a
     <div class="empty"><?= icon('chat-circle-text') ?><b>Заявок пока нет</b><span>Они появятся, когда посетитель заполнит форму на сайте.</span></div>
 <?php else: ?>
     <div class="tbl-scroll"><table class="tbl">
-        <thead><tr><th>Когда</th><th>Страница</th><th>Имя</th><th>Телефон</th><th>Сообщение</th></tr></thead>
+        <thead><tr><th>Когда</th><th>Страница</th><th>Имя</th><th>Телефон</th><th>Сообщение</th><th>Согласие на данные</th></tr></thead>
         <tbody>
         <?php foreach ($leads as $l): ?>
-            <tr><td class="num muted"><?= admin_date($l['created_at']) ?></td><td class="mono">/<?= h($l['page_slug']) ?></td><td><?= h($l['name']) ?></td><td class="num"><?= h($l['phone']) ?></td><td><?= h($l['message']) ?></td></tr>
+            <tr><td class="num muted"><?= admin_date($l['created_at']) ?></td><td class="mono">/<?= h($l['page_slug']) ?></td><td><?= h($l['name']) ?></td><td class="num"><?= h($l['phone']) ?></td><td><?= h($l['message']) ?></td><td class="num muted"><?= $l['consent_at'] !== '' ? admin_date($l['consent_at']) . ($l['consent_ip'] !== '' ? '<br>' . h($l['consent_ip']) : '') : 'нет' ?></td></tr>
         <?php endforeach; ?>
         </tbody>
     </table></div>

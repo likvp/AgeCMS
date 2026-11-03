@@ -96,4 +96,24 @@ final class AnalyticsTest extends TestCase
         $this->assertNotContains("'unsafe-eval'", $csp);
         $this->assertNotContains('script-src *', $csp);
     }
+
+    public function testCounterScriptIsFetchedLateUnlessTheOwnerAsksForNow(): void
+    {
+        $this->freshSite();
+        $this->createPage('about');
+        $this->set(['yandex_metrika_id' => '42']);
+        $head = Seo::head('about', Pages::doc('about'), Seo::settings());
+        $this->assertNotContains('data-ym-load', $head, 'late start is the default');
+        $js = (string)file_get_contents(__DIR__ . '/../assets/analytics.js');
+        $this->assertContains("window.ym(id, 'init', options)", $js, 'the queue is ready at once, goals are not lost');
+        $this->assertContains('requestIdleCallback', $js);
+        $this->assertContains("data-ym-load') === 'now'", $js);
+
+        $this->set(['yandex_metrika_load' => 'now']);
+        $head = Seo::head('about', Pages::doc('about'), Seo::settings());
+        $this->assertContains('data-ym-options="" data-ym-load="now"></script>', $head);
+        $this->assertThrows(ValidationException::class, fn() => $this->set(['yandex_metrika_load' => 'never']), 'yandex_metrika_load');
+        $this->set(['yandex_metrika_load' => '']);
+        $this->assertNotContains('data-ym-load', Seo::head('about', Pages::doc('about'), Seo::settings()));
+    }
 }

@@ -1,5 +1,8 @@
 // Yandex Metrika starter. The counter number and options come from the data attributes of this script tag
 // (set in the admin: Settings, Analytics), so the page needs no inline script and the Content-Security-Policy stays strict.
+// The queue of the counter (ym) is ready at once, so goals reached before the script arrives are not lost; the heavy script of
+// Yandex is fetched a few seconds after the page is loaded (data-ym-load="now": at once), so it does not compete with the main
+// picture and the first taps.
 (function () {
     'use strict';
 
@@ -18,14 +21,31 @@
             options[name] = true;
         }
     });
+    var URL = 'https://mc.yandex.ru/metrika/tag.js';
 
-    (function (m, e, t, r, i, k, a) {
-        m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments); };
-        m[i].l = 1 * new Date();
-        for (var j = 0; j < e.scripts.length; j++) { if (e.scripts[j].src === r) { return; } }
-        k = e.createElement(t); a = e.getElementsByTagName(t)[0];
-        k.async = 1; k.src = r; a.parentNode.insertBefore(k, a);
-    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
-
+    window.ym = window.ym || function () { (window.ym.a = window.ym.a || []).push(arguments); };
+    window.ym.l = 1 * new Date();
     window.ym(id, 'init', options);
-})();
+
+    var loaded = false;
+    function load() {
+        if (loaded) { return; }
+        loaded = true;
+        for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === URL) { return; } }
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = URL;
+        document.head.appendChild(s);
+    }
+
+    if (tag.getAttribute('data-ym-load') === 'now') {
+        load();
+        return;
+    }
+    function later() {
+        setTimeout(function () {
+            if ('requestIdleCallback' in window) { window.requestIdleCallback(load, { timeout: 1500 }); } else { load(); }
+        }, 2500);
+    }
+    if (document.readyState === 'complete') { later(); } else { window.addEventListener('load', later); }
+}());

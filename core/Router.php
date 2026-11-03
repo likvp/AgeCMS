@@ -389,7 +389,11 @@ final class Router
         $phone = trim((string)($in['phone'] ?? ''));
         $message = trim((string)preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', (string)($in['message'] ?? '')));
         $page = (string)($in['page'] ?? '');
+        $consent = in_array(strtolower(trim((string)($in['consent'] ?? ''))), ['1', 'on', 'true', 'yes'], true);
         $errors = [];
+        if (!$consent && SiteSettings::consentRequired(Seo::settings())) {
+            $errors[] = 'Нужно согласие на обработку персональных данных';
+        }
         if (mb_strlen($name) > 100) {
             $errors[] = 'Имя слишком длинное';
         }
@@ -407,9 +411,12 @@ final class Router
         }
         $page = Pages::slugValid($page) ? $page : '';
 
-        Database::write(static function (PDO $pdo) use ($page, $name, $phone, $message, $ip): void {
-            $pdo->prepare('INSERT INTO leads (created_at, page_slug, name, phone, message, ip_hash) VALUES (?, ?, ?, ?, ?, ?)')
-                ->execute([ag_now(), $page, $name, $phone, $message, AntiSpam::ipHash($ip)]);
+        // The agreement is kept with the lead as proof (152-FZ): the time and the address it came from.
+        $consentAt = $consent ? ag_now() : '';
+        $consentIp = $consent ? substr($ip, 0, 45) : '';
+        Database::write(static function (PDO $pdo) use ($page, $name, $phone, $message, $ip, $consentAt, $consentIp): void {
+            $pdo->prepare('INSERT INTO leads (created_at, page_slug, name, phone, message, ip_hash, consent_at, consent_ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                ->execute([ag_now(), $page, $name, $phone, $message, AntiSpam::ipHash($ip), $consentAt, $consentIp]);
             $day = gmdate('Y-m-d');
             $pdo->prepare('INSERT OR IGNORE INTO analytics_daily (date) VALUES (?)')->execute([$day]);
             $pdo->prepare('UPDATE analytics_daily SET leads_count = leads_count + 1 WHERE date = ?')->execute([$day]);
@@ -421,8 +428,8 @@ final class Router
         header('Cache-Control: no-store');
         echo json_encode(['ok' => true]);
         Http::finishResponse();
-        EventBus::trigger('lead.created', ['name' => $name, 'phone' => $phone, 'message' => $message, 'page' => $page]);
-        Mailer::notifyLead(['name' => $name, 'phone' => $phone, 'message' => $message, 'page' => $page]);
+        EventBus::trigger('lead.created', ['name' => $name, 'phone' => $phone, 'message' => $message, 'page' => $page, 'consent_at' => $consentAt]);
+        Mailer::notifyLead(['name' => $name, 'phone' => $phone, 'message' => $message, 'page' => $page, 'consent_at' => $consentAt]);
         exit;
     }
 

@@ -17,8 +17,8 @@ final class SiteSettings
         'site_name' => [1, 100], 'site_description' => [0, 300], 'llms_text' => [0, 4000],
         'org_logo' => [0, 500], 'org_phone' => [0, 40], 'org_phone2' => [0, 40], 'org_email' => [0, 120],
         'org_inn' => [0, 12], 'org_legal_name' => [0, 200], 'org_address' => [0, 300],
-        'cookie_banner' => [0, 1], 'cookie_text' => [0, 500], 'cookie_policy_url' => [0, 500],
-        'yandex_metrika_id' => [0, 12], 'yandex_metrika_options' => [0, 120], 'yandex_webmaster' => [0, 64], 'verification_tags' => [0, 2000],
+        'cookie_banner' => [0, 1], 'lead_consent' => [0, 1], 'cookie_text' => [0, 500], 'cookie_policy_url' => [0, 500],
+        'yandex_metrika_id' => [0, 12], 'yandex_metrika_options' => [0, 120], 'yandex_metrika_load' => [0, 5], 'yandex_webmaster' => [0, 64], 'verification_tags' => [0, 2000],
     ];
 
     /** Keys that may hold several lines; every other value is one line of plain text. */
@@ -84,6 +84,7 @@ final class SiteSettings
             'org_phone', 'org_phone2' => preg_match('/^[+0-9 ()\-.,]{3,40}$/', $value) === 1 && preg_match('/\d/', $value) === 1 ? null : "{$key} must be a phone number: digits, spaces, + ( ) -",
             'org_inn' => preg_match('/^(\d{10}|\d{12})$/', $value) === 1 ? null : 'org_inn must be 10 or 12 digits',
             'cookie_banner' => in_array($value, ['0', '1'], true) ? null : 'cookie_banner must be "1" (shown) or "0" (hidden)',
+            'lead_consent' => in_array($value, ['0', '1'], true) ? null : 'lead_consent must be "1" (a form without the agreement is refused) or "0"',
             default => Analytics::problem($key, $value),
         };
     }
@@ -136,6 +137,12 @@ final class SiteSettings
             is_bool($normalized) => $normalized ? '1' : '0',
             default => (string)$normalized,
         };
+    }
+
+    /** Does a lead have to carry the visitor's agreement to the processing of personal data (a field "consent" of the form). */
+    public static function consentRequired(array $settings): bool
+    {
+        return ($settings['lead_consent'] ?? '0') === '1';
     }
 
     /**

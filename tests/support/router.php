@@ -14,7 +14,7 @@ if (preg_match('~^/admin/(index|api|mcp|install|upload)\.php$~', $path) === 1) {
 }
 // Uploads live outside the repository when AGECMS_UPLOADS_DIR is set (tests, the dev instance).
 $uploads = getenv('AGECMS_UPLOADS_DIR');
-if ($uploads !== false && $uploads !== '' && preg_match('~^/assets/uploads/([a-f0-9]{20}\.(webp|avif))$~', $path, $m) === 1 && is_file($uploads . '/' . $m[1])) {
+if ($uploads !== false && $uploads !== '' && preg_match('~^/assets/uploads/((?:r/)?[a-f0-9]{20}(?:-\d+)?\.(webp|avif))$~', $path, $m) === 1 && is_file($uploads . '/' . $m[1])) {
     header('Content-Type: image/' . $m[2]);
     readfile($uploads . '/' . $m[1]);
     return true;

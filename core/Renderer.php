@@ -15,6 +15,9 @@ final class Renderer
     /** Extra cache tags a block template asked for while the page is rendered (ag_cache_tag, ag_child_pages). @var list<string> */
     public static array $tags = [];
 
+    /** Lines for the <head> that a block template asked for while the page is rendered (the preload of the main picture, see ag_img). @var list<string> */
+    public static array $hints = [];
+
     /**
      * Renders a stored page. Returns null when the page does not exist or, outside edit mode and preview, is unpublished.
      *
@@ -48,6 +51,8 @@ final class Renderer
         self::$context = ['editing' => $editing, 'slug' => $slug, 'block' => '', 'csrf' => $csrf];
         self::$settings = Seo::settings();
         self::$tags = [];
+        self::$hints = [];
+        Picture::reset();
         $content = '';
         foreach ($doc['blocks'] as $block) {
             $file = "{$themeDir}/blocks/{$block['type']}.php";
@@ -78,11 +83,16 @@ final class Renderer
         self::$tags = [];
 
         $settings = self::$settings;
+        $head = Seo::head($slug, $doc, $settings);
+        if (self::$hints !== []) {
+            $head .= "\n    " . implode("\n    ", self::$hints);
+            self::$hints = [];
+        }
         $html = self::layout($theme, [
             'doc' => $doc,
             'slug' => $slug,
             'settings' => $settings,
-            'head' => Seo::head($slug, $doc, $settings),
+            'head' => $head,
             'content' => $content,
             'menus' => ['header' => self::menu('header'), 'footer' => self::menu('footer')],
             'editing' => $editing,
@@ -128,6 +138,14 @@ final class Renderer
         }
     }
 
+    /** A line for the <head> of the page being rendered (at most 8, no repeats). */
+    public static function addHint(string $line): void
+    {
+        if ($line !== '' && count(self::$hints) < 8 && !in_array($line, self::$hints, true)) {
+            self::$hints[] = $line;
+        }
+    }
+
     /** @return list<array{title:string,url:string}> */
     private static function menu(string $name): array
     {
@@ -151,7 +169,8 @@ final class Renderer
     /**
      * The notice about cookies at the bottom of every page, unless the owner switched it off (tab «Сайт») or the theme shows
      * its own (an element with data-ag-cookie). It is in the cached page, hidden; assets/cookie.js shows it to whoever has
-     * not closed it yet. No inline script or style: the page policy allows only files of the site.
+     * not closed it yet and fetches cookie.css for them, so the page has no render-blocking stylesheet for it. No inline script
+     * or style: the page policy allows only files of the site.
      *
      * @param array<string,string> $settings
      */
@@ -167,10 +186,7 @@ final class Renderer
             . ($policy !== '' ? ' <a href="' . ag_e($policy) . '">Подробнее</a>' : '') . '</p>'
             . '<button type="button" data-ag-cookie-ok>Понятно</button></div>'
             . '<script src="' . $asset('/assets/cookie.js') . '" defer></script>';
-        $html = substr($html, 0, $body) . $notice . "\n" . substr($html, $body);
-        $css = '<link rel="stylesheet" href="' . $asset('/assets/cookie.css') . '">';
-        $head = stripos($html, '</head>');
-        return $head === false ? $html : substr($html, 0, $head) . $css . "\n" . substr($html, $head);
+        return substr($html, 0, $body) . $notice . "\n" . substr($html, $body);
     }
 
     /** @param array<string,mixed> $vars */

@@ -86,6 +86,7 @@ h3 { font-size: 1.2rem; }
 .is-editing [data-ag-field].ag-error { outline-color: #d63031; }
 
 .figure { margin: 0; }
+.figure picture { display: contents; }
 .figure img { display: block; width: 100%; height: auto; border-radius: var(--radius); background: var(--surface); }
 .figure figcaption { margin-top: 10px; color: var(--muted); font-size: 0.9rem; }
 

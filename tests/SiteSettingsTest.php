@@ -79,7 +79,7 @@ final class SiteSettingsTest extends TestCase
         $this->assertSame(1, substr_count($page, 'data-ag-cookie '));
         $this->assertContains(SiteSettings::COOKIE_TEXT, $page);
         $this->assertNotContains('Подробнее', $page, 'no link without a policy');
-        $this->assertTrue(strpos($page, '/assets/cookie.css') < strpos($page, '</head>'));
+        $this->assertNotContains('/assets/cookie.css', $page, 'the styles are fetched by cookie.js, no render-blocking stylesheet');
         $this->assertTrue(strpos($page, '/assets/cookie.js') > strpos($page, '<main>'));
         $this->assertNotContains('data-ag-cookie', Renderer::renderSlug('cookie-probe', true, 'csrf')['html'], 'not in the editor');
         $this->assertContains('data-ag-cookie', Renderer::shell('Не найдено', '<p>404</p>'), 'module pages and errors have it too');

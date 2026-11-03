@@ -159,7 +159,8 @@ final class Mailer
             . 'Имя: ' . ($lead['name'] ?? '') . "\n"
             . 'Телефон: ' . ($lead['phone'] ?? '') . "\n"
             . 'Сообщение: ' . ($lead['message'] ?? '') . "\n"
-            . 'Страница: ' . $site . '/' . (($lead['page'] ?? '') === 'index' ? '' : ($lead['page'] ?? '')) . "\n\n"
+            . 'Страница: ' . $site . '/' . (($lead['page'] ?? '') === 'index' ? '' : ($lead['page'] ?? '')) . "\n"
+            . (($lead['consent_at'] ?? '') !== '' ? 'Согласие на обработку данных: ' . $lead['consent_at'] . " (UTC)\n" : '') . "\n"
             . "Все заявки: {$site}/admin/?s=leads\n";
         $sent = 0;
         foreach (array_slice(array_unique($to), 0, 5) as $address) {

@@ -51,6 +51,18 @@ function ag_rich(mixed $html): string
     return is_string($html) ? \AgeCMS\RichText::sanitize($html) : '';
 }
 
+/**
+ * A picture for a template, ready for a fast phone: srcset in several widths, AVIF where the server can make it, real width and
+ * height (no layout shift), lazy loading, and with 'priority' => true (the main picture of the first screen, one per page)
+ * fetchpriority and a preload line in the <head>. Print the result as is. See Picture.
+ *
+ * @param array{class?:string,sizes?:string,priority?:bool,lazy?:bool,width?:int,height?:int,attrs?:array<string,string>} $options
+ */
+function ag_img(string $src, string $alt = '', array $options = []): string
+{
+    return \AgeCMS\Picture::render($src, $alt, $options);
+}
+
 /** Adds a cache tag to the page being rendered: Cache::invalidate([$tag]) then drops its cached copy. */
 function ag_cache_tag(string $tag): void
 {

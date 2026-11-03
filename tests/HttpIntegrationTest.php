@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use AgeCMS\{Auth, Database};
+use AgeCMS\{Actor, Auth, Database, Queue};
 
 require_once __DIR__ . '/support/HttpCase.php';
 
@@ -210,6 +210,31 @@ final class HttpIntegrationTest extends HttpCase
         $this->assertSame(2, (int)Database::value('SELECT COUNT(*) FROM leads'));
     }
 
+    public function testLeadKeepsTheConsentAndCanRequireIt(): void
+    {
+        $this->boot();
+        $token = fn() => json_decode($this->http('GET', '/_/token')['body'], true)['token'];
+        $post = fn(array $data) => $this->http('POST', '/_/lead', json_encode($data), ['Content-Type' => 'application/json']);
+        $old = $token();
+        sleep(3);
+
+        $with = $post(['token' => $old, 'phone' => '+7 900 000-00-10', 'name' => 'Анна', 'consent' => '1']);
+        $this->assertSame(200, $with['status']);
+        $row = Database::rows('SELECT consent_at, consent_ip FROM leads WHERE name = ?', ['Анна'])[0];
+        $this->assertTrue(preg_match('/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/', $row['consent_at']) === 1, 'the time of the agreement: ' . $row['consent_at']);
+        $this->assertSame('127.0.0.1', $row['consent_ip']);
+
+        $without = $post(['token' => $old, 'phone' => '+7 900 000-00-11', 'name' => 'Борис']);
+        $this->assertSame(200, $without['status'], 'not required by default');
+        $this->assertSame('', Database::value('SELECT consent_at FROM leads WHERE name = ?', ['Борис']));
+
+        Queue::submit(Actor::cli('test'), 'set_settings', ['values' => ['lead_consent' => '1']]);
+        $refused = $post(['token' => $old, 'phone' => '+7 900 000-00-12', 'name' => 'Вера']);
+        $this->assertSame(422, $refused['status']);
+        $this->assertContains('согласие', $refused['body']);
+        $this->assertSame(0, (int)Database::value('SELECT COUNT(*) FROM leads WHERE name = ?', ['Вера']));
+    }
+
     public function testLoginIsRateLimited(): void
     {
         $this->boot();
@@ -341,7 +366,8 @@ final class HttpIntegrationTest extends HttpCase
         $this->form(['action' => 'cookie_save', 'tab' => 'site', 'cookie_banner' => '1', 'cookie_text' => 'Мы используем cookie.', 'cookie_policy_url' => '/privacy'], $csrf);
         $home = $this->http('GET', '/')['body'];
         $this->assertContains('Мы используем cookie. <a href="/privacy">Подробнее</a>', $home);
-        $this->assertTrue(preg_match('~cookie\.css\?v=\d+">\s*</head>~', $home) === 1, 'its styles in <head>');
+        $this->assertContains('/assets/cookie.js?v=', $home);
+        $this->assertNotContains('/assets/cookie.css', $home, 'no render-blocking stylesheet: cookie.js fetches the styles');
 
         if (function_exists('imagewebp')) {
             $png = TEST_TMP . '/logo.png';

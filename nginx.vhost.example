@@ -20,6 +20,10 @@ map $upstream_http_x_agecms_policy $agecms_csp {
     copy    $upstream_http_content_security_policy;
 }
 
+# Speed for phones (Core Web Vitals): HTTP/3 and compression. With TLS (certbot) the server block listens on 443; add
+#   listen 443 quic reuseport;  http3 on;  add_header Alt-Svc 'h3=":443"; ma=86400' always;
+# and in http {} (or here): gzip on; gzip_types text/css application/javascript image/svg+xml application/json; (brotli too, if the module is installed).
+# A CDN in front of the site (for Russia: Yandex Cloud CDN, Selectel, Cloud.ru) gives HTTP/3 and edge caching without touching the server.
 server {
     listen 80;
     server_name example.com;

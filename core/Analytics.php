@@ -8,6 +8,9 @@ namespace AgeCMS;
  * (Google, Bing, Yandex Direct and others). Values live in the settings table (versioned like the site name), so an
  * administrator edits them in the admin and an agent through set_settings.
  *
+ * The counter script of Yandex (about 75 KB and a long task on a phone) is fetched a few seconds after the page is loaded, so it
+ * does not compete with the main picture and the first taps; "yandex_metrika_load" = "now" brings the old behaviour back.
+ *
  * Nothing here is inline: the counter is started by /assets/analytics.js from data attributes, which is what the
  * Content-Security-Policy (script-src 'self' https://mc.yandex.ru) allows. Pages that are not indexable (the cabinet,
  * search, errors) never get a counter, so personal data stays out of Webvisor.
@@ -36,6 +39,8 @@ final class Analytics
                     }
                 }
                 return null;
+            case 'yandex_metrika_load':
+                return in_array($value, ['now', 'delay'], true) ? null : 'yandex_metrika_load must be "now" (start with the page) or "delay" (a few seconds after the page is loaded, the default)';
             case 'yandex_webmaster':
                 return preg_match('/^[A-Za-z0-9]{8,64}$/', $value) === 1 ? null : 'yandex_webmaster must be the verification code from Yandex Webmaster (letters and digits, 8-64)';
             case 'verification_tags':
@@ -88,7 +93,8 @@ final class Analytics
         $id = $settings['yandex_metrika_id'] ?? '';
         if ($id !== '' && self::problem('yandex_metrika_id', $id) === null) {
             $options = array_filter(explode(',', $settings['yandex_metrika_options'] ?? ''), static fn(string $o): bool => isset(self::METRIKA_OPTIONS[$o]));
-            $lines[] = '<script src="/assets/analytics.js" defer data-ym="' . ag_e($id) . '" data-ym-options="' . ag_e(implode(',', $options)) . '"></script>';
+            $now = ($settings['yandex_metrika_load'] ?? '') === 'now' ? ' data-ym-load="now"' : '';
+            $lines[] = '<script src="/assets/analytics.js" defer data-ym="' . ag_e($id) . '" data-ym-options="' . ag_e(implode(',', $options)) . '"' . $now . '></script>';
         }
         return $lines;
     }
