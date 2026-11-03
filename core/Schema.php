@@ -290,6 +290,16 @@ SQL);
                     $pdo->exec("ALTER TABLE leads ADD COLUMN consent_ip TEXT NOT NULL DEFAULT ''");
                 }
             },
+            // Holding an agent's token like a person's account: frozen for a while (frozen_until) or blocked until
+            // the owner lifts it (blocked_at), with who did it and why. last_ip shows where the agent calls from.
+            9 => static function (PDO $pdo): void {
+                $has = static fn(string $table, string $column): bool => in_array($column, array_column($pdo->query("PRAGMA table_info({$table})")->fetchAll(PDO::FETCH_ASSOC), 'name'), true);
+                foreach (['frozen_until' => 'TEXT', 'blocked_at' => 'TEXT', 'hold_reason' => "TEXT NOT NULL DEFAULT ''", 'hold_by' => "TEXT NOT NULL DEFAULT ''", 'last_ip' => "TEXT NOT NULL DEFAULT ''"] as $column => $type) {
+                    if (!$has('api_tokens', $column)) {
+                        $pdo->exec("ALTER TABLE api_tokens ADD COLUMN {$column} {$type}");
+                    }
+                }
+            },
         ];
     }
 }

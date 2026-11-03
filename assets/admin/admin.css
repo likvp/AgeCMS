@@ -355,6 +355,11 @@ dialog .row { justify-content: flex-end; margin-top: 18px; }
 .who-link:hover .avatar { background: var(--accent); color: var(--accent-ink); }
 .in.sm, select.in.sm { height: 32px; font-size: 0.86rem; }
 .role-form { display: inline-block; min-width: 170px; }
+.nowrap { white-space: nowrap; }
+.hold-form { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.hold-form .in.sm { width: auto; min-width: 0; }
+.actions .hold-form .in.sm { max-width: 110px; }
+.actions .hold-form { flex-wrap: nowrap; }
 .drop { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 30px 20px; border: 1.5px dashed var(--line-strong); border-radius: var(--r-lg); background: var(--surface); transition: border-color 0.15s, background 0.15s; }
 .drop .i { width: 28px; height: 28px; color: var(--accent); }
 .drop.over { border-color: var(--accent); background: var(--accent-soft); }

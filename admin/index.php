@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, ServerSetup, Slug, Updater, Updates};
+use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, ServerSetup, Slug, Tokens, Updater, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -34,7 +34,7 @@ $user = Auth::user();
 // Set by the router for /admin/m/<module>/...: a page that a module declared in its manifest (ModuleAdmin).
 $adminModule = $GLOBALS['AGECMS_ADMIN_MODULE'] ?? null;
 $moduleReply = null;
-$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'trash', 'menus', 'settings', 'history', 'leads', 'users', 'system', 'module_settings', 'forgot', 'reset'], true) ? (string)$_GET['s'] : 'overview';
+$section = in_array($_GET['s'] ?? '', ['overview', 'pages', 'edit', 'media', 'trash', 'menus', 'settings', 'history', 'leads', 'users', 'agents', 'system', 'module_settings', 'forgot', 'reset'], true) ? (string)$_GET['s'] : 'overview';
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $adminModule === null) {
@@ -372,7 +372,7 @@ try {
                     Config::set('agent_access.token_days', $days);
                     Audit::record(Audit::TOKENS, 'Доступ агентов: токены на ' . ($days > 0 ? $days . ' дн.' : 'без срока') . ', самостоятельная выдача ' . (isset($_POST['self_issue']) ? 'разрешена' : 'запрещена') . ', бэкап перед правкой агента ' . (isset($_POST['before_agent']) ? 'включён' : 'выключен'));
                     $flash = 'Настройки доступа для агентов сохранены';
-                    $section = 'system';
+                    $section = 'agents';
                     break;
                 case 'updates_save':
                     Security::requirePermission($actor, 'system.manage');
@@ -452,7 +452,7 @@ try {
                     $code = Auth::createInvite($role, $days, (string)($_POST['note'] ?? ''), (string)$user['username']);
                     $newAgent = ['kind' => 'invite', 'secret' => $code, 'text' => agent_invite_text($code), 'hours' => max(1, (int)Config::get('agent_access.invite_hours', 24))];
                     $flash = 'Код подключения создан';
-                    $section = 'system';
+                    $section = 'agents';
                     break;
                 case 'agent_user_create':
                     Security::requirePermission($actor, 'system.manage');
@@ -514,13 +514,55 @@ try {
                     Security::requirePermission($actor, 'system.manage');
                     $newToken = Auth::createToken((string)$_POST['name'], (string)$_POST['role'], max(0, (int)($_POST['days'] ?? 0)));
                     $flash = 'Токен создан. Скопируйте его сейчас, второй раз он не показывается.';
-                    $section = 'system';
+                    $section = 'agents';
                     break;
                 case 'token_revoke':
                     Security::requirePermission($actor, 'system.manage');
-                    Auth::revokeToken((string)$_POST['name']);
-                    $flash = 'Токен отозван';
-                    $section = 'system';
+                    isset($_POST['id']) ? Tokens::revoke((int)$_POST['id']) : Auth::revokeToken((string)($_POST['name'] ?? ''));
+                    $flash = 'Токен отозван: агент сразу потерял доступ';
+                    $section = 'agents';
+                    break;
+                case 'token_freeze':
+                    Security::requirePermission($actor, 'system.manage');
+                    Tokens::freeze((int)($_POST['id'] ?? 0), (int)($_POST['hours'] ?? 24), (string)($_POST['reason'] ?? ''));
+                    $flash = 'Токен заморожен: агент получит отказ до конца срока, потом снова сможет работать';
+                    $section = 'agents';
+                    break;
+                case 'token_unfreeze':
+                    Security::requirePermission($actor, 'system.manage');
+                    Tokens::unfreeze((int)($_POST['id'] ?? 0));
+                    $flash = 'Токен разморожен';
+                    $section = 'agents';
+                    break;
+                case 'token_block':
+                    Security::requirePermission($actor, 'system.manage');
+                    Tokens::block((int)($_POST['id'] ?? 0), (string)($_POST['reason'] ?? ''));
+                    $flash = 'Токен заблокирован: агент не сможет работать, пока вы не снимете блокировку';
+                    $section = 'agents';
+                    break;
+                case 'token_unblock':
+                    Security::requirePermission($actor, 'system.manage');
+                    Tokens::unblock((int)($_POST['id'] ?? 0));
+                    $flash = 'Токен разблокирован';
+                    $section = 'agents';
+                    break;
+                case 'token_role':
+                    Security::requirePermission($actor, 'system.manage');
+                    Tokens::setRole((int)($_POST['id'] ?? 0), (string)($_POST['role'] ?? ''));
+                    $flash = 'Роль токена изменена';
+                    $section = 'agents';
+                    break;
+                case 'agents_freeze':
+                    Security::requirePermission($actor, 'system.manage');
+                    Tokens::freezeAll((int)($_POST['hours'] ?? 24), (string)($_POST['reason'] ?? ''));
+                    $flash = 'Все ИИ-агенты заморожены. Люди работают как обычно';
+                    $section = 'agents';
+                    break;
+                case 'agents_unfreeze':
+                    Security::requirePermission($actor, 'system.manage');
+                    Tokens::unfreezeAll();
+                    $flash = 'Агенты разморожены';
+                    $section = 'agents';
                     break;
             }
         }

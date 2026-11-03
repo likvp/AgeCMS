@@ -17,11 +17,12 @@
  */
 defined('AGECMS_BOOTED') || exit;
 
-use AgeCMS\{CircuitBreaker, Database, Media, Pages, SkillRegistry, Updates};
+use AgeCMS\{CircuitBreaker, Database, Media, Pages, SkillRegistry, Tokens, Updates};
 
 $frozen = CircuitBreaker::frozenInfo();
+$agentsFrozen = $isAdmin && $section !== 'agents' ? Tokens::allFrozen() : null;
 // Agent tokens that run out within a week (or already did while still in use): the owner hears about it here, not only the agent.
-$expiring = $isAdmin ? Database::rows("SELECT name, expires_at FROM api_tokens WHERE revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at < ? AND last_used_at IS NOT NULL AND last_used_at >= ? ORDER BY expires_at", [gmdate('Y-m-d\\TH:i:s\\Z', time() + 7 * 86400), gmdate('Y-m-d\\TH:i:s\\Z', time() - 30 * 86400)]) : [];
+$expiring = $isAdmin ? Database::rows("SELECT name, expires_at FROM api_tokens WHERE revoked_at IS NULL AND blocked_at IS NULL AND expires_at IS NOT NULL AND expires_at < ? AND last_used_at IS NOT NULL AND last_used_at >= ? ORDER BY expires_at", [gmdate('Y-m-d\\TH:i:s\\Z', time() + 7 * 86400), gmdate('Y-m-d\\TH:i:s\\Z', time() - 30 * 86400)]) : [];
 $newCore = $isAdmin ? Updates::available() : null;
 $unsignedModules = $isAdmin ? SkillRegistry::unsigned() : [];
 $nav = [
@@ -34,6 +35,7 @@ $nav = [
 ];
 if ($isAdmin) {
     $nav[] = ['users', 'Пользователи', 'users', null];
+    $nav[] = ['agents', 'ИИ-агенты', 'key', null];
 }
 // Menus are a tab of the settings; an editor sees only that tab there.
 $nav[] = ['settings', 'Настройки', 'gear-six', null];
@@ -103,11 +105,16 @@ $roleNames = ['admin' => 'Администратор', 'editor' => 'Редакт
                     <p><button class="btn sm" type="button" data-copy="#new-agent"><?= icon('copy') ?>Копировать текст</button></p>
                 </div></div>
             <?php endif; ?>
+            <?php if ($agentsFrozen !== null): ?>
+                <div class="notice warn" role="status"><?= icon('snowflake') ?><div>
+                    <p><b>Все ИИ-агенты заморожены</b> до <?= admin_date($agentsFrozen['until']) ?><?= $agentsFrozen['reason'] !== '' ? ': ' . h($agentsFrozen['reason']) : '' ?>. Снять заморозку можно в разделе «<a href="<?= h(admin_url('agents')) ?>">ИИ-агенты</a>».</p>
+                </div></div>
+            <?php endif; ?>
             <?php if ($expiring !== []): ?>
                 <div class="notice warn" role="status"><?= icon('clock-counter-clockwise') ?><div>
                     <p><b>Скоро заканчивается токен агента:</b>
                     <?php foreach ($expiring as $i => $t): $left = (int)ceil((strtotime($t['expires_at']) - time()) / 86400); ?><?= $i > 0 ? ', ' : ' ' ?><?= h($t['name']) ?> (<?= $left > 0 ? 'ещё ' . $left . ' дн.' : 'уже закончился' ?>)<?php endforeach; ?>.
-                    Чтобы агент не потерял доступ, получите новый текст для него в разделе «<a href="<?= h(admin_url('system')) ?>">Система</a>».</p>
+                    Чтобы агент не потерял доступ, получите новый текст для него в разделе «<a href="<?= h(admin_url('agents')) ?>">ИИ-агенты</a>».</p>
                 </div></div>
             <?php endif; ?>
             <?php if ($unsignedModules !== []): ?>

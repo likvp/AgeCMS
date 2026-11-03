@@ -8,8 +8,10 @@ use PDO;
 /** Human login (PHP session + CSRF) and agent API tokens. */
 final class Auth
 {
-    /** Why the last bearer token was refused: 'expired', 'blocked' or ''. */
+    /** Why the last bearer token was refused: 'expired', 'blocked' (its user), 'revoked', 'token_blocked', 'token_frozen', 'agents_frozen' or ''. */
     private static string $tokenProblem = '';
+    /** @var array{until:?string,reason:string}|null why and until when the owner holds the refused token */
+    private static ?array $tokenHold = null;
     /** @var array<string,mixed>|null the token of the current request */
     private static ?array $currentToken = null;
 
@@ -355,25 +357,48 @@ final class Auth
     public static function tokenActor(string $bearer): ?Actor
     {
         self::$tokenProblem = '';
+        self::$tokenHold = null;
         self::$currentToken = null;
         $row = Database::row(
-            'SELECT t.id, t.name, t.role, t.last_used_at, t.expires_at, t.user_id, u.id AS uid, u.blocked_at
-             FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND t.revoked_at IS NULL',
+            'SELECT t.id, t.name, t.role, t.last_used_at, t.last_ip, t.expires_at, t.revoked_at, t.frozen_until, t.blocked_at AS token_blocked_at,
+                    t.hold_reason, t.user_id, u.id AS uid, u.blocked_at
+             FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?',
             [Security::hashToken($bearer)],
         );
         if ($row === null) {
+            return null;
+        }
+        $now = gmdate('Y-m-d\TH:i:s\Z');
+        if ($row['revoked_at'] !== null) {
+            self::$tokenProblem = 'revoked';
+            return null;
+        }
+        if ($row['token_blocked_at'] !== null) {
+            self::$tokenProblem = 'token_blocked';
+            self::$tokenHold = ['until' => null, 'reason' => (string)$row['hold_reason']];
             return null;
         }
         if ($row['user_id'] !== null && ($row['uid'] === null || $row['blocked_at'] !== null)) {
             self::$tokenProblem = 'blocked';
             return null;
         }
+        if ($row['frozen_until'] !== null && (string)$row['frozen_until'] > $now) {
+            self::$tokenProblem = 'token_frozen';
+            self::$tokenHold = ['until' => (string)$row['frozen_until'], 'reason' => (string)$row['hold_reason']];
+            return null;
+        }
+        if (($all = Tokens::allFrozen()) !== null) {
+            self::$tokenProblem = 'agents_frozen';
+            self::$tokenHold = ['until' => $all['until'], 'reason' => $all['reason']];
+            return null;
+        }
         if ($row['expires_at'] !== null && strtotime((string)$row['expires_at']) < time()) {
             self::$tokenProblem = 'expired';
             return null;
         }
-        if ($row['last_used_at'] === null || strtotime((string)$row['last_used_at']) < time() - 60) {
-            Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?')->execute([ag_now(), $row['id']]));
+        $ip = Http::clientIp();
+        if ($row['last_used_at'] === null || strtotime((string)$row['last_used_at']) < time() - 60 || $row['last_ip'] !== $ip) {
+            Database::write(static fn(PDO $pdo) => $pdo->prepare('UPDATE api_tokens SET last_used_at = ?, last_ip = ? WHERE id = ?')->execute([ag_now(), $ip, $row['id']]));
         }
         self::$currentToken = ['name' => (string)$row['name'], 'role' => (string)$row['role'], 'expires_at' => $row['expires_at']];
         $actor = new Actor('agent', (string)$row['name'], (string)$row['role'], 'tok-' . $row['id'] . '-' . gmdate('YmdH'));
@@ -381,15 +406,34 @@ final class Auth
         return $actor;
     }
 
-    /** What the agent should read when its request is refused with 401. */
+    /** What the agent should read when its request is refused. */
     public static function authError(): string
     {
         $doc = Seo::siteUrl() . '/AGENT.md';
+        $why = self::$tokenHold !== null && self::$tokenHold['reason'] !== '' ? ' Reason: ' . self::$tokenHold['reason'] . '.' : '';
+        $until = self::$tokenHold['until'] ?? '';
         return match (self::$tokenProblem) {
             'expired' => "The token has expired. Ask the owner for a new one: a ready token or a one-time invitation code, see {$doc}",
             'blocked' => 'The user behind this token is blocked or deleted. Ask the owner.',
+            'revoked' => 'token_revoked: the owner took this token away. Stop working on this site. Do not try to get another token unless the owner asks you to.',
+            'token_blocked' => "token_blocked: the owner blocked this token until further notice.{$why} Stop working on this site and tell the owner. Do not try to get another token to get around it.",
+            'token_frozen' => "token_frozen: the owner froze this token until {$until}.{$why} Stop, wait until then (see Retry-After) or until the owner says so. Do not try to get another token to get around it.",
+            'agents_frozen' => "agents_frozen: the owner froze every agent on this site until {$until}.{$why} Stop and wait (see Retry-After) or until the owner says so.",
             default => "Authentication required: send a Bearer token. If the owner gave you a token, use it; if you got a one-time invitation code or the owner's login and password, see {$doc}",
         };
+    }
+
+    /** HTTP status for a refused token: 403 when the owner holds it on purpose, 401 when there is no working token. */
+    public static function authStatus(): int
+    {
+        return in_array(self::$tokenProblem, ['token_blocked', 'token_frozen', 'agents_frozen'], true) ? 403 : 401;
+    }
+
+    /** Seconds until a frozen token may come back, for the Retry-After header; null when it is not frozen. */
+    public static function retryAfter(): ?int
+    {
+        $until = self::$tokenHold['until'] ?? null;
+        return $until === null ? null : max(1, strtotime($until) - time());
     }
 
     /**
@@ -753,7 +797,7 @@ final class Auth
     public static function issueTokenForCredentials(string $username, string $password, string $name, string $role = '', ?int $days = null, bool $ownUser = true): array
     {
         if (Config::get('agent_access.self_issue', true) !== true) {
-            throw new ForbiddenException('self_issue_disabled: the owner switched off self-service tokens. Ask the owner for a token (Admin, System).');
+            throw new ForbiddenException('self_issue_disabled: the owner switched off self-service tokens. Ask the owner for a token (Admin, AI agents).');
         }
         $user = self::checkCredentials($username, $password);
         if ($user === null) {
@@ -763,7 +807,7 @@ final class Auth
             throw new ForbiddenException('This account is blocked. Ask the owner.');
         }
         if (self::hasTotp($user)) {
-            throw new ForbiddenException('two_factor: this user signs in with a second factor, so a password alone cannot get a token. Ask the owner for a one-time invitation code (Admin, System).');
+            throw new ForbiddenException('two_factor: this user signs in with a second factor, so a password alone cannot get a token. Ask the owner for a one-time invitation code (Admin, AI agents).');
         }
         $rank = ['viewer' => 1, 'editor' => 2, 'admin' => 3];
         $userRank = $rank[$user['role']] ?? 1;

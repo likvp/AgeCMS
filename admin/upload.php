@@ -37,7 +37,10 @@ try {
         }
     }
     if ($actor === null) {
-        Http::json(['ok' => false, 'error' => Auth::authError(), 'instructions' => Seo::siteUrl() . '/AGENT.md'], 401);
+        if (($wait = Auth::retryAfter()) !== null) {
+            header('Retry-After: ' . $wait);
+        }
+        Http::json(['ok' => false, 'error' => Auth::authError(), 'instructions' => Seo::siteUrl() . '/AGENT.md'], $bearer !== null ? Auth::authStatus() : 401);
     }
     Security::requirePermission($actor, 'content.write');
     if (!AntiSpam::rateLimit('upload:' . $actor->name, (int)Config::get('rate_limit.upload_per_minute', 30), 60)) {

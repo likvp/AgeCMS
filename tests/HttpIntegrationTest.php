@@ -289,7 +289,7 @@ final class HttpIntegrationTest extends HttpCase
         $csrf = $this->adminLogin();
         $this->assertTrue($csrf !== '');
 
-        foreach (['pages' => 'Новая страница', 'settings&tab=menu' => 'ag-editor-data', 'history' => 'История изменений', 'overview' => 'Просмотры по дням', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Токены для ИИ-агентов'] as $section => $marker) {
+        foreach (['pages' => 'Новая страница', 'settings&tab=menu' => 'ag-editor-data', 'history' => 'История изменений', 'overview' => 'Просмотры по дням', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Открыть «ИИ-агенты»', 'agents' => 'Заморозить всех агентов'] as $section => $marker) {
             $r = $this->http('GET', '/admin/?s=' . $section, null, [], true);
             $this->assertSame(200, $r['status'], $section);
             $this->assertContains($marker, $r['body'], $section);
@@ -607,7 +607,7 @@ final class HttpIntegrationTest extends HttpCase
     {
         $this->boot();
         $csrf = $this->adminLogin();
-        $page = $this->http('GET', '/admin/?s=system', null, [], true)['body'];
+        $page = $this->http('GET', '/admin/?s=agents', null, [], true)['body'];
         $this->assertContains('Подключить ИИ-агента', $page);
         $this->assertContains('Правила для агентов', $page);
         $this->assertContains('/AGENT.md', $page);

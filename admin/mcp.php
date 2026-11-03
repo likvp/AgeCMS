@@ -105,8 +105,14 @@ try {
     $bearer = Http::bearer();
     $actor = $bearer === null ? null : Auth::tokenActor($bearer);
     if ($actor === null) {
-        header('WWW-Authenticate: Bearer realm="agecms"');
-        Http::json(rpcError(null, -32001, Auth::authError()), 401);
+        if (($wait = Auth::retryAfter()) !== null) {
+            header('Retry-After: ' . $wait);
+        }
+        $status = $bearer === null ? 401 : Auth::authStatus();
+        if ($status === 401) {
+            header('WWW-Authenticate: Bearer realm="agecms"');
+        }
+        Http::json(rpcError(null, -32001, Auth::authError()), $status);
     }
     if (($tokenInfo = Auth::currentToken()) !== null && $tokenInfo['warning'] !== null) {
         header('X-AgeCMS-Token-Warning: ' . $tokenInfo['warning']);

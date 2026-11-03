@@ -42,7 +42,10 @@ try {
         }
     }
     if ($actor === null) {
-        Http::json(['ok' => false, 'error' => Auth::authError(), 'instructions' => Seo::siteUrl() . '/AGENT.md'], 401);
+        if (($wait = Auth::retryAfter()) !== null) {
+            header('Retry-After: ' . $wait);
+        }
+        Http::json(['ok' => false, 'error' => Auth::authError(), 'instructions' => Seo::siteUrl() . '/AGENT.md'], $bearer !== null ? Auth::authStatus() : 401);
     }
     if (($tokenInfo = Auth::currentToken()) !== null && $tokenInfo['warning'] !== null) {
         header('X-AgeCMS-Token-Warning: ' . $tokenInfo['warning']);
