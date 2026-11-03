@@ -15,6 +15,7 @@ final class Config
         'secret' => '',
         'indexnow_key' => '',
         'indexnow' => true,
+        'timezone' => 'Europe/Moscow',
         'trusted_proxies' => [],
         'trusted_publishers' => [],
         'secrets' => [],

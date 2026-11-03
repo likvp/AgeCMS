@@ -620,10 +620,19 @@ function icon(string $name): string
     return '<svg class="i" aria-hidden="true"><use href="' . $sprite . '#' . $name . '"/></svg>';
 }
 
-/** Compact timestamp: 2026-10-27 06:15. */
+/** Compact timestamp in the time zone of the site (config "timezone", Europe/Moscow by default): 2026-10-27 09:15. Stored values are UTC. */
 function admin_date(?string $v): string
 {
-    return $v === null ? '' : h(str_replace('T', ' ', substr($v, 0, 16)));
+    if ($v === null) {
+        return '';
+    }
+    $plain = str_replace('T', ' ', substr($v, 0, 16));
+    try {
+        $zone = new DateTimeZone((string)Config::get('timezone', 'Europe/Moscow'));
+        return h((new DateTimeImmutable($plain, new DateTimeZone('UTC')))->setTimezone($zone)->format('Y-m-d H:i'));
+    } catch (Throwable) {
+        return h($plain);
+    }
 }
 
 /**
