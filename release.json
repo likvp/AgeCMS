@@ -1,26 +1,26 @@
 {
-    "version": "1.8.0",
+    "version": "1.8.1",
     "date": "2026-11-03",
-    "notes": "ИИ-агенты под контролем, как пользователи. Новый раздел админки «ИИ-агенты»: все токены агентов с состоянием, сроком, временем и адресом последнего обращения, числом правок за 30 дней и фильтрами (работают, остановлены, без доступа); у каждого агента карточка с журналом его правок. Токен можно заморозить на час, сутки, 7 или 30 дней (заморозка проходит сама), заблокировать до снятия, сменить роль и отнять навсегда; причина и кто это сделал сохраняются, всё пишется в историю. Кнопка «Заморозить всех» останавливает всех агентов сразу, включая токены, выданные за это время; люди в админке работают как обычно. Агент получает понятный отказ: 403 с token_frozen, token_blocked или agents_frozen, причиной и заголовком Retry-After, у отнятого токена 401 с token_revoked; инструкция /AGENT.md говорит агенту остановиться и не искать обход. Подключение агентов, правила доступа и выдача токена вручную переехали из «Системы» в «ИИ-агенты». В консоли: php bin/token.php freeze, unfreeze, block, unblock, role, freeze-all, unfreeze-all, list. Ещё в этой версии: время в админке показывается по часовому поясу сайта (настройка timezone, по умолчанию Europe/Moscow); бэкап базы работает на SQLite старше 3.27 (например 3.26 на REG.RU): файл базы копируется под блокировкой записи, в «Требованиях сервера» новая строка «SQLite 3.27 или новее». Схема базы 9.",
+    "notes": "Обновление ядра на SQLite 3.26 (REG.RU и другие общие хостинги). Копия базы перед обновлением делается ещё до записи файлов; если она не получилась, обновление теперь не начинается и файлы сайта не трогаются, а в сообщении написаны причина и выход, вместо сырой ошибки SQLSTATE. Перед скачиванием проверяются права на data/backups и место на диске. php bin/update.php --install --no-backup обновляет без копии базы; настройка backup.method = copy всегда копирует базу файлом. Файл core/Backup.php теперь подходит и старым ядрам: сайту на ядре до 1.8.0 с SQLite старше 3.27, где «Обновить» падает с near \"INTO\": syntax error, достаточно один раз заменить этот файл файлом из выпуска и нажать «Обновить» (README, раздел «Обновление на SQLite старше 3.27»). Все тесты ядра проходят на настоящем SQLite 3.26.0 (SQLITE=3.26 bin/test-matrix.sh 8.1). Схема базы та же, 9.",
     "url": "",
-    "package": "agecms-1.8.0.json.gz",
-    "sha256": "b9b0db43919946c92dfa1264e08c555ce77e48e9268110fe6b15817a214de122",
-    "size": 581316,
+    "package": "agecms-1.8.1.json.gz",
+    "sha256": "e713942e8be176ee469277a35a63e68917cba39df3e642b1c4453d138113d694",
+    "size": 583361,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "ncI3k2WS7bpw84jPEtI6j+Pp+Syo8xUw/pnxFS09pa3GpR8aA70sQ7minjswkg9tAGKSoudgKcsR2Tt8LnPaCA=="
+        "sig": "hrc8NNK7rDZ4UYK7mqVrYXpUdbLBHi306HlHbIPLwnZ1bt0VoROnmme12rWN4GTzS0Rfj5Q0rWqJp52haKzQDQ=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "ncI3k2WS7bpw84jPEtI6j+Pp+Syo8xUw/pnxFS09pa3GpR8aA70sQ7minjswkg9tAGKSoudgKcsR2Tt8LnPaCA=="
+            "sig": "hrc8NNK7rDZ4UYK7mqVrYXpUdbLBHi306HlHbIPLwnZ1bt0VoROnmme12rWN4GTzS0Rfj5Q0rWqJp52haKzQDQ=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEYCIQDkYYIUbaC6xnEiiFoTry1jNIc+FDl60oGwCw2s5lHZ/QIhALF9Y1nePTA48AspiY0cyfW+moHxKSF7f4JzwQzZ8z9r"
+            "sig": "MEQCICxt+c/N+bwYhAkoFgVUg4hpwdpgOKegrQeIU9a6RozrAiBbgPiaYjnjNledk5VPG/QMbfC24NOmFyKL+Qo3HSDExQ=="
         }
     ]
 }
