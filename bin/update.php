@@ -4,6 +4,7 @@ declare(strict_types=1);
 // Core updates from the command line, the same as «Обновить» in «Система».
 //   php bin/update.php              check the source (updates.url) and say whether a newer core is out
 //   php bin/update.php --install    download, verify the signature and install it
+//   php bin/update.php --install --no-backup   the same without the copy of the database (when it cannot be made)
 //   php bin/update.php --rollback   put back the files saved before the last update (the database stays as it is)
 if (PHP_SAPI !== 'cli') {
     exit(1);
@@ -32,7 +33,7 @@ try {
         echo $newer === null ? "Up to date.\n" : "Run with --install to update.\n";
         exit(0);
     }
-    $done = Updater::install(null, 'cli');
+    $done = Updater::install(null, 'cli', !in_array('--no-backup', $args, true));
     echo "Updated {$done['from']} -> {$done['to']}, {$done['files']} files. Saved: {$done['rollback']}\n";
 } catch (Throwable $e) {
     fwrite(STDERR, $e->getMessage() . "\n");

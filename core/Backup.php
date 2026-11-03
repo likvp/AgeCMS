@@ -27,7 +27,8 @@ final class Backup
         }
         $stamp = ($kind === 'auto' ? 'auto-' : '') . gmdate('Ymd-His');
         $snapshot = "{$dir}/agecms-{$stamp}.sqlite";
-        self::snapshot($snapshot);
+        // backup.method = copy: always the file copy, as on SQLite older than 3.27 (also for hosts where VACUUM INTO misbehaves).
+        self::snapshot($snapshot, Config::get('backup.method', 'auto') === 'copy');
 
         if (class_exists(ZipArchive::class)) {
             $target = "{$dir}/agecms-{$stamp}.zip";
@@ -39,8 +40,10 @@ final class Backup
             $zip->addFile($snapshot, 'data.sqlite');
             // Files of copied pages (importer, mode "exact copy") are part of the site: they go in as site-copy/<key>/...
             // The images of the media library are not included, as before.
-            $root = CopyPage::root();
-            if (is_dir($root)) {
+            // class_exists: this file is also dropped by hand into older cores (before 1.6.0 there was no CopyPage) to let
+            // a site on SQLite older than 3.27 update itself, see "Обновление" in README.md.
+            $root = class_exists(CopyPage::class) ? CopyPage::root() : '';
+            if ($root !== '' && is_dir($root)) {
                 $base = strlen(rtrim($root, '/')) + 1;
                 $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS));
                 foreach ($it as $file) {

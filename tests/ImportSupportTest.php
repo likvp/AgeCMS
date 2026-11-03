@@ -127,8 +127,8 @@ final class ImportSupportTest extends TestCase
         $this->createPage('kept');
         Database::write(static function (PDO $pdo): void {
             $pdo->exec('DROP TABLE media_hashes');
-            $pdo->exec('ALTER TABLE pages DROP COLUMN published_at');
-            $pdo->exec('ALTER TABLE agent_sessions DROP COLUMN creates_limit');
+            TestEnv::dropColumns($pdo, 'pages', ['published_at']);
+            TestEnv::dropColumns($pdo, 'agent_sessions', ['creates_limit']);
         });
         Database::pdo()->exec('PRAGMA user_version = 5');
         Database::reset();

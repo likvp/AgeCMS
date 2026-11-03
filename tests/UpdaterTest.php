@@ -205,6 +205,64 @@ final class UpdaterTest extends TestCase
         $this->assertSame(false, is_file(AGECMS_UPDATE_ROOT . '/assets/admin/admin.css'));
     }
 
+    public function testUpdateWorksWhenTheDatabaseIsCopiedAsOnOldSqlite(): void
+    {
+        // SQLite older than 3.27 (REG.RU runs 3.26) has no VACUUM INTO: the copy before the update is a file copy.
+        $this->site();
+        Config::set('backup.method', 'copy');
+        $fetch = $this->publish(Updater::pack($this->files('1.1.0'), '1.1.0'));
+        $done = Updater::install($fetch);
+        $this->assertSame('1.1.0', $done['to']);
+        $this->assertSame('new index 1.1.0', $this->read('index.php'));
+        $copies = glob(AGECMS_DATA . '/backups/agecms-*') ?: [];
+        $this->assertTrue($copies !== [], 'the database was copied first');
+        $zip = new ZipArchive();
+        if ($zip->open($copies[0]) === true) {
+            $db = TEST_TMP . '/restored.sqlite';
+            file_put_contents($db, (string)$zip->getFromName('data.sqlite'));
+            $zip->close();
+            $this->assertSame('ok', (string)(new PDO('sqlite:' . $db))->query('PRAGMA integrity_check')->fetchColumn(), 'the copy is a sound database');
+        }
+    }
+
+    public function testAFailedDatabaseCopyStopsTheUpdateBeforeAnyFileAndSaysWhy(): void
+    {
+        $this->site();
+        // data/backups cannot be created: a file sits in its place
+        TestEnv::remove(AGECMS_DATA . '/backups');
+        file_put_contents(AGECMS_DATA . '/backups', 'not a folder');
+        $fetch = $this->publish(Updater::pack($this->files('1.1.0'), '1.1.0'));
+        $e = $this->assertThrows(AgeCMSException::class, fn() => Updater::install($fetch), 'файлы сайта не тронуты');
+        $this->assertContains('--no-backup', $e->getMessage(), 'the owner hears the way out');
+        $this->assertNotContains('SQLSTATE', substr($e->getMessage(), 0, 40), 'the reason comes first, not a raw database error');
+        $this->assertSame('old index', $this->read('index.php'));
+        $this->assertSame(false, is_file(AGECMS_UPDATE_ROOT . '/core/New.php'));
+        $this->assertSame(false, Updater::last()['ok']);
+
+        // with the folder fixed the owner may still go on without the copy of the database (the rollback files are kept)
+        unlink(AGECMS_DATA . '/backups');
+        $done = Updater::install($fetch, 'cli', false);
+        $this->assertSame('1.1.0', $done['to']);
+        $this->assertSame('new index 1.1.0', $this->read('index.php'));
+        $this->assertSame([], glob(AGECMS_DATA . '/backups/agecms-*') ?: [], 'no copy of the database was made');
+        $this->assertTrue((glob(AGECMS_DATA . '/backups/core-*') ?: []) !== [], 'the old files are saved for a rollback');
+    }
+
+    public function testPreflightNamesTheBackupFolderItCannotWrite(): void
+    {
+        $this->site();
+        @mkdir(AGECMS_DATA . '/backups', 0700, true);
+        chmod(AGECMS_DATA . '/backups', 0500);
+        try {
+            if (is_writable(AGECMS_DATA . '/backups')) {
+                return; // running as root: permissions are not enforced
+            }
+            $this->assertContains('data/backups', implode('; ', Updater::preflight()));
+        } finally {
+            chmod(AGECMS_DATA . '/backups', 0700);
+        }
+    }
+
     public function testNothingToInstallWithoutANewerVersion(): void
     {
         $this->site();

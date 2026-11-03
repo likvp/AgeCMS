@@ -198,6 +198,17 @@ final class Updater
         if ($notWritable !== []) {
             $problems[] = 'PHP не может писать в ' . implode(', ', $notWritable) . ' (файлы сайта принадлежат другому пользователю)';
         }
+        // The copy of the database made before the files are replaced needs a folder it can write and room on the disk.
+        $backups = Backup::dir();
+        if (is_dir($backups) ? !is_writable($backups) : !is_writable(AGECMS_DATA)) {
+            $problems[] = 'нет прав на запись в ' . (is_dir($backups) ? 'data/backups' : 'data') . ', а там делается копия базы перед обновлением';
+        }
+        $db = Database::file();
+        $free = function_exists('disk_free_space') ? @disk_free_space(AGECMS_DATA) : false;
+        $need = (is_file($db) ? 2 * (int)filesize($db) : 0) + 2 * self::MAX_PACKAGE;
+        if ($free !== false && $free < $need) {
+            $problems[] = 'на диске мало места: свободно ' . round($free / 1048576) . ' МБ, для копии базы и пакета нужно около ' . round($need / 1048576) . ' МБ';
+        }
         return $problems;
     }
 
@@ -205,9 +216,10 @@ final class Updater
      * Downloads, checks and installs the newer release that Updates found. $fetch replaces the download in tests.
      *
      * @param (callable(string):(array{status:int,body:string}|null))|null $fetch
+     * @param bool $backup false skips the copy of the database (bin/update.php --no-backup), for when it cannot be made
      * @return array{from:string,to:string,files:int,rollback:string}
      */
-    public static function install(?callable $fetch = null, string $by = 'admin'): array
+    public static function install(?callable $fetch = null, string $by = 'admin', bool $backup = true): array
     {
         $handle = @fopen(AGECMS_DATA . '/update.lock', 'c');
         if ($handle === false || !flock($handle, LOCK_EX | LOCK_NB)) {
@@ -239,7 +251,7 @@ final class Updater
                 throw new AgeCMSException('Скачанный пакет не совпадает с подписанным, установка отменена');
             }
             $files = self::unpack($reply['body'], $to);
-            $result = self::apply($files, $from, $to);
+            $result = self::apply($files, $from, $to, $backup);
             Logger::log('info', 'updates.installed', ['from' => $from, 'to' => $to, 'files' => $result['files'], 'by' => $by]);
             self::remember(['ok' => true, 'from' => $from, 'to' => $to, 'by' => $by, 'error' => '']);
             Audit::record(Audit::CORE, "Обновление ядра: {$from} -> {$to} (файлов: {$result['files']})", self::journalActor($by));
@@ -324,14 +336,16 @@ final class Updater
      * @param array<string,string> $files
      * @return array{from:string,to:string,files:int,rollback:string}
      */
-    public static function apply(array $files, string $from, string $to): array
+    public static function apply(array $files, string $from, string $to, bool $backup = true): array
     {
         $root = self::root();
         // Load what runs after the swap now, so this request does not mix old and new class files.
         foreach ([Cache::class, Logger::class, Backup::class, Database::class] as $class) {
             class_exists($class);
         }
-        Backup::create();
+        if ($backup) {
+            self::backupDatabase();
+        }
         $old = [];
         $created = [];
         foreach (array_keys($files) as $path) {
@@ -368,6 +382,22 @@ final class Updater
             // Pages are re-rendered on the next visit anyway.
         }
         return ['from' => $from, 'to' => $to, 'files' => count($files), 'rollback' => basename($rollback)];
+    }
+
+    /**
+     * The copy of the database before the files change. Everything up to the swap runs on the code of the version being
+     * replaced, so a failure here must stop the update with a plain reason (nothing is written yet), never half way.
+     * It once was the raw "near INTO: syntax error" of SQLite 3.26, which has no VACUUM INTO.
+     */
+    private static function backupDatabase(): void
+    {
+        try {
+            Backup::create();
+        } catch (Throwable $e) {
+            Logger::log('error', 'updates.backup_failed', ['error' => $e->getMessage()]);
+            throw new AgeCMSException('Обновление не начато, файлы сайта не тронуты: не получилась копия базы перед обновлением (' . $e->getMessage() . '). '
+                . 'Проверьте место на диске и права PHP на data/backups. Если копия не нужна, обновите без неё из консоли: php bin/update.php --install --no-backup');
+        }
     }
 
     /**

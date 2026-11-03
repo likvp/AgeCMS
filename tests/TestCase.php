@@ -122,6 +122,56 @@ final class TestEnv
         }
     }
 
+    /**
+     * ALTER TABLE ... DROP COLUMN on any SQLite. The statement exists from 3.35; on older builds (3.26 on REG.RU, the
+     * oldest the core supports) the table is rebuilt without the columns, with its indexes and triggers put back.
+     * Tests use it to put a database back into an older shape.
+     *
+     * @param list<string> $columns
+     */
+    public static function dropColumns(PDO $pdo, string $table, array $columns): void
+    {
+        if (version_compare((string)$pdo->query('SELECT sqlite_version()')->fetchColumn(), '3.35.0', '>=')) {
+            foreach ($columns as $column) {
+                $pdo->exec("ALTER TABLE {$table} DROP COLUMN {$column}");
+            }
+            return;
+        }
+        $drop = array_map('strtolower', $columns);
+        $create = (string)$pdo->query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = " . $pdo->quote($table))->fetchColumn();
+        $body = substr($create, strpos($create, '(') + 1, strrpos($create, ')') - strpos($create, '(') - 1);
+        $parts = [];
+        $depth = 0;
+        $current = '';
+        foreach (str_split($body) as $ch) {
+            $depth += $ch === '(' ? 1 : ($ch === ')' ? -1 : 0);
+            if ($ch === ',' && $depth === 0) {
+                $parts[] = $current;
+                $current = '';
+                continue;
+            }
+            $current .= $ch;
+        }
+        $parts[] = $current;
+        $keep = array_filter($parts, static fn(string $p): bool => !in_array(strtolower(trim((string)strtok(trim($p), " \t\n"), '"`[]')), $drop, true));
+        $names = array_values(array_diff(array_column($pdo->query("PRAGMA table_info({$table})")->fetchAll(PDO::FETCH_ASSOC), 'name'), $columns));
+        $extras = $pdo->query("SELECT sql FROM sqlite_master WHERE tbl_name = " . $pdo->quote($table) . " AND type IN ('index', 'trigger') AND sql IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN);
+        $list = implode(', ', array_map(static fn(string $n): string => '"' . $n . '"', $names));
+        $pdo->exec("CREATE TABLE {$table}__rebuilt (" . implode(',', $keep) . ')');
+        $pdo->exec("INSERT INTO {$table}__rebuilt ({$list}) SELECT {$list} FROM {$table}");
+        $pdo->exec("DROP TABLE {$table}");
+        $pdo->exec('PRAGMA legacy_alter_table = ON');
+        $pdo->exec("ALTER TABLE {$table}__rebuilt RENAME TO {$table}");
+        $pdo->exec('PRAGMA legacy_alter_table = OFF');
+        foreach ($extras as $sql) {
+            try {
+                $pdo->exec($sql);
+            } catch (PDOException) {
+                // an index or trigger on a dropped column goes away with it, as DROP COLUMN would refuse it anyway
+            }
+        }
+    }
+
     public static function remove(string $path): void
     {
         if (!file_exists($path) && !is_link($path)) {

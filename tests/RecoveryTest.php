@@ -269,14 +269,9 @@ final class RecoveryTest extends TestCase
             $pdo->exec('DROP TABLE redirects');
             $pdo->exec('DROP TABLE agent_invites');
             $pdo->exec('DROP TABLE totp_recovery');
-            $pdo->exec('ALTER TABLE users DROP COLUMN totp_secret');
-            $pdo->exec('ALTER TABLE users DROP COLUMN totp_enabled_at');
-            $pdo->exec('ALTER TABLE users DROP COLUMN totp_last_step');
-            $pdo->exec('ALTER TABLE api_tokens DROP COLUMN user_id');
-            $pdo->exec('ALTER TABLE api_tokens DROP COLUMN expires_at');
-            $pdo->exec('ALTER TABLE users DROP COLUMN blocked_at');
-            $pdo->exec('ALTER TABLE users DROP COLUMN email');
-            $pdo->exec('ALTER TABLE users DROP COLUMN pwd_epoch');
+            TestEnv::dropColumns($pdo, 'users', ['totp_secret', 'totp_enabled_at', 'totp_last_step']);
+            TestEnv::dropColumns($pdo, 'api_tokens', ['user_id', 'expires_at']);
+            TestEnv::dropColumns($pdo, 'users', ['blocked_at', 'email', 'pwd_epoch']);
         });
         Database::pdo()->exec('PRAGMA user_version = 1');
         Database::reset();
