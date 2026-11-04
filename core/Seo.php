@@ -50,15 +50,25 @@ final class Seo
             '<meta name="robots" content="' . ((int)$doc['is_noindex'] === 1 ? 'noindex, nofollow' : 'index, follow') . '">',
             '<meta name="generator" content="AgeCMS">',
             '<link rel="help" type="text/markdown" href="' . ag_e(self::siteUrl()) . '/AGENT.md" title="Instructions for AI agents that edit this site">',
-            '<meta property="og:type" content="website">',
+            '<meta property="og:type" content="' . ag_e((string)($doc['meta']['og:type'] ?? 'website')) . '">',
             '<meta property="og:site_name" content="' . ag_e($site) . '">',
             '<meta property="og:title" content="' . ag_e($title) . '">',
             '<meta property="og:description" content="' . ag_e($description) . '">',
             '<meta property="og:url" content="' . ag_e($canonical) . '">',
         ];
+        // Messengers and social networks draw the preview of a link from these: a large picture when there is one.
         if ($image !== '') {
             $lines[] = '<meta property="og:image" content="' . ag_e($image) . '">';
             $lines[] = '<meta name="twitter:card" content="summary_large_image">';
+            $lines[] = '<meta name="twitter:image" content="' . ag_e($image) . '">';
+        } else {
+            $lines[] = '<meta name="twitter:card" content="summary">';
+        }
+        // Extra preview tags of a module page (ModuleResponse::withMeta, keys checked there): twitter:* by name, the rest by property.
+        foreach ((array)($doc['meta'] ?? []) as $key => $content) {
+            if ($key !== 'og:type') {
+                $lines[] = '<meta ' . (str_starts_with((string)$key, 'twitter:') ? 'name' : 'property') . '="' . ag_e((string)$key) . '" content="' . ag_e((string)$content) . '">';
+            }
         }
         $lines[] = '<script type="application/ld+json">' . json_encode(self::jsonLd($slug, $doc, $settings), self::LD_FLAGS) . '</script>';
         // Verification codes go on every page; the counter only on pages that search engines may index (never the cabinet or search).

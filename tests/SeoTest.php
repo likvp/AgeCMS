@@ -18,6 +18,24 @@ final class SeoTest extends TestCase
         $this->assertContains('<loc>https://example.test/about</loc>', Seo::sitemap());
     }
 
+    public function testEveryPageTellsMessengersWhichCardToDraw(): void
+    {
+        $this->freshSite();
+        $this->createPage('about');
+        $doc = Pages::doc('about');
+        $doc['og_image'] = '';
+        $plain = Seo::head('about', $doc, Seo::settings());
+        $this->assertContains('<meta name="twitter:card" content="summary">', $plain, 'no picture: the small card');
+        $this->assertNotContains('og:image', $plain);
+        $doc['og_image'] = '/assets/uploads/cover.webp';
+        $big = Seo::head('about', $doc, Seo::settings());
+        $this->assertContains('<meta property="og:image" content="https://example.test/assets/uploads/cover.webp">', $big);
+        $this->assertContains('<meta name="twitter:card" content="summary_large_image">', $big);
+        $this->assertContains('<meta name="twitter:image" content="https://example.test/assets/uploads/cover.webp">', $big);
+        $this->assertSame(1, substr_count($big, 'twitter:card'));
+        $this->assertContains('<meta property="og:type" content="website">', $big, 'pages keep og:type website');
+    }
+
     public function testSitemapListsOnlyPublicIndexablePages(): void
     {
         $this->freshSite();

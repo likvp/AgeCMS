@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use AgeCMS\{Content, Database, ModuleSigner, ModuleSitemap, Security, SkillRegistry, ValidationException};
+use AgeCMS\{Content, Database, ModuleResponse, ModuleSigner, ModuleSitemap, Security, SkillRegistry, ValidationException};
 
 require_once __DIR__ . '/support/HttpCase.php';
 require_once __DIR__ . '/support/ModuleFixture.php';
@@ -254,6 +254,61 @@ final class ModuleRoutesTest extends HttpCase
         $this->assertSame('public, max-age=120', $page['headers']['cache-control']);
         $this->assertContains('noindex', $this->http('GET', '/rt_idx/hello')['body'], 'a route without the flag stays out of search');
         $this->assertContains('noindex', $this->http('GET', '/rt_idx/nothing')['body'], 'an error page of an indexable route is not offered either');
+    }
+
+    public function testAModulePageGivesLinkPreviewsAPictureAndSafeTags(): void
+    {
+        $this->boot();
+        ModuleFixture::make('rt_og', ModuleFixture::routes('rt_og'));
+        $base = 'http://127.0.0.1:' . $this->port;
+        $body = $this->http('GET', '/rt_og/product')['body'];
+        $this->assertContains('<meta property="og:image" content="' . $base . '/assets/uploads/paint%20white.webp?v=1">', $body, 'a path from the root becomes a full address');
+        $this->assertContains('<meta name="twitter:card" content="summary_large_image">', $body);
+        $this->assertContains('<meta name="twitter:image" content="' . $base . '/assets/uploads/paint%20white.webp?v=1">', $body);
+        $this->assertContains('<meta property="og:type" content="product">', $body, 'og:type is replaced, not repeated');
+        $this->assertSame(1, substr_count($body, 'property="og:type"'));
+        $this->assertContains('<meta property="product:price:amount" content="1990">', $body);
+        $this->assertContains('<meta property="product:price:currency" content="RUB">', $body);
+        $this->assertContains('<meta name="twitter:image:alt" content="Банка &quot;белой&quot; краски">', $body, 'tags stripped, quotes escaped');
+        $this->assertSame(1, substr_count($body, 'property="og:title"'), 'a module cannot replace the title the core writes');
+        $this->assertNotContains('подмена', $body);
+        $this->assertNotContains('onload', $body);
+        $this->assertNotContains('http-equiv', $body);
+        $this->assertSame(1, substr_count($body, 'name="robots"'));
+        $this->assertContains('content="index, follow"', $body);
+
+        $plain = $this->http('GET', '/rt_og/product2')['body'];
+        $this->assertNotContains('og:image', $plain, 'javascript: is not a picture');
+        $this->assertNotContains('alert', $plain);
+        $this->assertContains('<meta name="twitter:card" content="summary">', $plain, 'without a picture the small card');
+
+        $hidden = $this->http('GET', '/rt_og/noindeximg')['body'];
+        $this->assertNotContains('og:image', $hidden, 'a route that is not indexable gets no preview tags, as before');
+        $this->assertContains('noindex', $hidden);
+
+        $old = $this->http('GET', '/rt_og/idx')['body'];
+        $this->assertContains('<meta name="twitter:card" content="summary">', $old, 'without the new methods only the small card is added');
+        $this->assertNotContains('og:image', $old);
+    }
+
+    public function testImageAddressesAreCheckedBeforeTheyReachTheHead(): void
+    {
+        $ok = ['https://cdn.example.com/p/1.jpg', 'http://example.com/a.webp?x=1&y=2', '/assets/uploads/a.webp', '/'];
+        $bad = ['javascript:alert(1)', '//evil.example/a.jpg', 'data:image/png;base64,AAAA', 'ftp://x/a.jpg', '/a"><script>', 'a.jpg', "/a\\b.jpg", "https://x/\na", '/\\evil'];
+        foreach ($ok as $url) {
+            $this->assertSame($url, ModuleResponse::html('t', 'b')->withImage($url)->image(), $url);
+        }
+        foreach ($bad as $url) {
+            $this->assertSame('', ModuleResponse::html('t', 'b')->withImage($url)->image(), $url);
+        }
+        $this->assertSame('https://x/a%20b.jpg', ModuleResponse::html('t', 'b')->withImage('https://x/a b.jpg')->image(), 'a space is encoded, not a reason to lose the picture');
+        $r = ModuleResponse::html('t', 'b');
+        for ($i = 0; $i < 20; $i++) {
+            $r = $r->withMeta("product:tag{$i}", 'x');
+        }
+        $this->assertSame(12, count($r->meta()), 'at most 12 extra tags');
+        $this->assertSame([], ModuleResponse::html('t', 'b')->withMeta('og:image', '/a.jpg')->meta(), 'the picture goes through withImage only');
+        $this->assertSame([], ModuleResponse::html('t', 'b')->image() === '' ? [] : ['x'], 'nothing by default');
     }
 
     // Addresses of modules in sitemap.xml (E5).

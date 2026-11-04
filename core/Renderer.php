@@ -104,7 +104,7 @@ final class Renderer
     /**
      * A page around ready-made HTML: 404, search results, errors. Never cached.
      *
-     * @param array{slug:string,description:string}|null $seo set only for a page of an indexable module route: it is offered to search engines
+     * @param array{slug:string,description:string,image?:string,meta?:array<string,string>}|null $seo set only for a page of an indexable module route: it is offered to search engines; image and meta make the link preview (ModuleResponse::withImage, withMeta)
      */
     public static function shell(string $title, string $contentHtml, bool $editing = false, ?array $seo = null): string
     {
@@ -114,6 +114,8 @@ final class Renderer
         if ($seo !== null) {
             $doc['is_noindex'] = 0;
             $doc['meta_description'] = $seo['description'];
+            $doc['og_image'] = (string)($seo['image'] ?? '');
+            $doc['meta'] = (array)($seo['meta'] ?? []);
             $head = Seo::head($seo['slug'], $doc, $settings);
         } else {
             $head = '<title>' . ag_e($title . ($settings['site_name'] ?? '' ? ' - ' . $settings['site_name'] : '')) . '</title>' . "\n    " . '<meta name="robots" content="noindex, nofollow">';

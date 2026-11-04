@@ -59,6 +59,12 @@ PHP;
             "/{$name}/pub" => ModuleResponse::html('Каталог', '<p class="mod-pub">public</p>'),
             "/{$name}/idx" => ModuleResponse::html('Витрина', '<p class="mod-idx">idx</p>')->withDescription('Описание <b>витрины</b> модуля'),
             "/{$name}/pubcookie" => ModuleResponse::html('Каталог', '<p>x</p>')->withCookie('sid', 'x', 60),
+            "/{$name}/product" => ModuleResponse::html('Краска «Белая»', '<p class="mod-product">p</p>')->withDescription('Банка 2,5 л')
+                ->withImage('/assets/uploads/paint white.webp?v=1')->withMeta('og:type', 'product')->withMeta('product:price:amount', '1990')
+                ->withMeta('product:price:currency', 'RUB')->withMeta('twitter:image:alt', '<b>Банка</b> "белой" краски')
+                ->withMeta('og:title', 'подмена')->withMeta('robots', 'noindex')->withMeta('og:x" onload="1', 'x')->withMeta('http-equiv', 'refresh'),
+            "/{$name}/product2" => ModuleResponse::html('Без картинки', '<p>p</p>')->withImage('javascript:alert(1)'),
+            "/{$name}/noindeximg" => ModuleResponse::html('Скрытая', '<p>p</p>')->withImage('https://cdn.example.com/a.jpg'),
             default => ModuleResponse::html('Пусто', '<p>empty</p>', 404),
         };
     }
@@ -128,6 +134,9 @@ PHP;
             ['path' => "/{$name}/pub", 'cache' => 'public', 'max_age' => 120],
             ['path' => "/{$name}/pubcookie", 'cache' => 'public', 'max_age' => 120],
             ['path' => "/{$name}/idx", 'cache' => 'public', 'max_age' => 120, 'indexable' => true],
+            ['path' => "/{$name}/product", 'cache' => 'public', 'max_age' => 120, 'indexable' => true],
+            ['path' => "/{$name}/product2", 'cache' => 'public', 'max_age' => 120, 'indexable' => true],
+            ['path' => "/{$name}/noindeximg"],
         ];
     }
 }
