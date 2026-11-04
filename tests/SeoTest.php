@@ -36,6 +36,24 @@ final class SeoTest extends TestCase
         $this->assertContains('<meta property="og:type" content="website">', $big, 'pages keep og:type website');
     }
 
+    public function testTheSitePictureStandsInForPagesWithoutTheirOwn(): void
+    {
+        $this->freshSite();
+        $this->createPage('about');
+        $admin = \AgeCMS\Actor::human('admin');
+        $this->assertThrows(\AgeCMS\ValidationException::class, static fn() => Queue::submit($admin, 'set_settings', ['values' => ['og_image' => 'javascript:alert(1)']]), 'og_image');
+        Queue::submit($admin, 'set_settings', ['values' => ['og_image' => '/themes/kolerovka/assets/og-default.png']]);
+        $doc = Pages::doc('about');
+        $doc['og_image'] = '';
+        $head = Seo::head('about', $doc, Seo::settings());
+        $this->assertContains('<meta property="og:image" content="https://example.test/themes/kolerovka/assets/og-default.png">', $head);
+        $this->assertContains('<meta name="twitter:card" content="summary_large_image">', $head);
+        $doc['og_image'] = '/assets/uploads/own.webp';
+        $own = Seo::head('about', $doc, Seo::settings());
+        $this->assertContains('content="https://example.test/assets/uploads/own.webp"', $own, 'the page keeps its own picture');
+        $this->assertNotContains('og-default', $own);
+    }
+
     public function testSitemapListsOnlyPublicIndexablePages(): void
     {
         $this->freshSite();

@@ -41,7 +41,9 @@ final class Seo
         }
         $description = $doc['meta_description'] !== '' ? $doc['meta_description'] : ($settings['site_description'] ?? '');
         $canonical = $doc['canonical_url'] !== '' ? $doc['canonical_url'] : self::url($slug);
-        $image = $doc['og_image'] !== '' ? self::absolute($doc['og_image']) : '';
+        // The picture of the page, else the default picture of the site (settings, og_image) for every page that has none.
+        $picture = $doc['og_image'] !== '' ? $doc['og_image'] : (string)($settings['og_image'] ?? '');
+        $image = $picture !== '' ? self::absolute($picture) : '';
 
         $lines = [
             '<title>' . ag_e($title) . '</title>',

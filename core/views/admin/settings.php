@@ -161,9 +161,10 @@ $ymOn = array_filter(explode(',', $settings['yandex_metrika_options'] ?? ($ymId 
 <?php elseif ($tab === 'site'): ?>
 <section class="panel">
     <div class="panel-h"><h2>Поисковики и ИИ-модели</h2></div>
-    <form method="post" class="panel-b">
+    <form method="post" class="panel-b" enctype="multipart/form-data">
         <?= admin_post_fields($csrf, 'settings_save') . AdminTabs::field($tab) ?>
         <label class="f"><span>Описание сайта <small>(description)</small></span><textarea class="in" name="site_description" rows="3" maxlength="300"><?= h($settings['site_description'] ?? '') ?></textarea><small class="hint">Описание по умолчанию (<code>meta description</code>) для страниц, у которых своего нет. Попадает и в <code>llms.txt</code>. До 300 символов, одной строкой.</small></label>
+        <?= admin_media_field('Картинка для соцсетей по умолчанию', '<input class="in" type="text" name="og_image" value="' . h($settings['og_image'] ?? '') . '" maxlength="500" placeholder="/assets/uploads/..." autocapitalize="none" spellcheck="false">', 'og_image_file', $settings['og_image'] ?? '', '<small class="hint">Её показывают Telegram, VK, Max и другие в превью ссылки на страницу, у которой нет своей картинки (поле «Картинка для соцсетей» в редакторе страницы). Лучше 1200 на 630 пикселей.</small>') ?>
         <label class="f"><span>Текст для ИИ-моделей <small>(llms.txt)</small></span><textarea class="in" name="llms_text" rows="9" maxlength="4000" placeholder="Чем занимается компания, для кого, чем отличается, как правильно называть, что не предлагаем, как связаться. Можно в формате Markdown."><?= h($settings['llms_text'] ?? '') ?></textarea><small class="hint">Свободный текст для языковых моделей: отдельно от описания, подробнее и без ограничения в одну строку. Выводится в файле <a href="/llms.txt" target="_blank" rel="noopener">/llms.txt</a> после описания, посетители сайта его не видят. До 4000 символов.</small></label>
         <button class="btn primary" type="submit">Сохранить</button>
     </form>

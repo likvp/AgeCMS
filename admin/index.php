@@ -103,7 +103,7 @@ try {
                     // Each tab of the settings page posts its own keys; a form without a tab is the older one with name and description.
                     $keys = match ((string)($_POST['tab'] ?? '')) {
                         'main' => ['site_name', 'org_logo', 'org_phone', 'org_phone2', 'org_email', 'org_inn', 'org_legal_name', 'org_address'],
-                        'site' => ['site_description', 'llms_text'],
+                        'site' => ['site_description', 'og_image', 'llms_text'],
                         default => ['site_name', 'site_description', 'llms_text'],
                     };
                     $values = [];
@@ -115,6 +115,10 @@ try {
                     $logo = admin_uploaded('org_logo_file');
                     if ($logo !== null && in_array('org_logo', $keys, true)) {
                         $values['org_logo'] = $logo;
+                    }
+                    $preview = admin_uploaded('og_image_file');
+                    if ($preview !== null && in_array('og_image', $keys, true)) {
+                        $values['og_image'] = $preview;
                     }
                     $result = Queue::submit($actor, 'set_settings', ['values' => $values]);
                     $flash = $result['changed'] ? 'Настройки сохранены, ревизия #' . $result['revision_id'] : 'Без изменений';

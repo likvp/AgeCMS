@@ -14,7 +14,7 @@ final class SiteSettings
 {
     /** Allowed length of each core key, [min, max]. */
     public const LIMITS = [
-        'site_name' => [1, 100], 'site_description' => [0, 300], 'llms_text' => [0, 4000],
+        'site_name' => [1, 100], 'site_description' => [0, 300], 'og_image' => [0, 500], 'llms_text' => [0, 4000],
         'org_logo' => [0, 500], 'org_phone' => [0, 40], 'org_phone2' => [0, 40], 'org_email' => [0, 120],
         'org_inn' => [0, 12], 'org_legal_name' => [0, 200], 'org_address' => [0, 300],
         'cookie_banner' => [0, 1], 'lead_consent' => [0, 1], 'cookie_text' => [0, 500], 'cookie_policy_url' => [0, 500],
@@ -79,7 +79,7 @@ final class SiteSettings
     private static function problem(string $key, string $value): ?string
     {
         return match ($key) {
-            'org_logo', 'cookie_policy_url' => SchemaValidator::urlValid($value) ? null : "{$key} must be an http(s) URL or a path on the site (/assets/uploads/...)",
+            'org_logo', 'og_image', 'cookie_policy_url' => SchemaValidator::urlValid($value) ? null : "{$key} must be an http(s) URL or a path on the site (/assets/uploads/...)",
             'org_email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false ? null : 'org_email must be an e-mail address',
             'org_phone', 'org_phone2' => preg_match('/^[+0-9 ()\-.,]{3,40}$/', $value) === 1 && preg_match('/\d/', $value) === 1 ? null : "{$key} must be a phone number: digits, spaces, + ( ) -",
             'org_inn' => preg_match('/^(\d{10}|\d{12})$/', $value) === 1 ? null : 'org_inn must be 10 or 12 digits',

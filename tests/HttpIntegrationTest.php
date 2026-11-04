@@ -289,7 +289,7 @@ final class HttpIntegrationTest extends HttpCase
         $csrf = $this->adminLogin();
         $this->assertTrue($csrf !== '');
 
-        foreach (['pages' => 'Новая страница', 'settings&tab=menu' => 'ag-editor-data', 'history' => 'История изменений', 'overview' => 'Просмотры по дням', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'system' => 'Открыть «ИИ-агенты»', 'agents' => 'Заморозить всех агентов'] as $section => $marker) {
+        foreach (['pages' => 'Новая страница', 'settings&tab=menu' => 'ag-editor-data', 'history' => 'История изменений', 'overview' => 'Просмотры по дням', 'leads' => 'Посещаемость', 'settings' => 'Название сайта', 'settings&tab=site' => 'Картинка для соцсетей по умолчанию', 'system' => 'Открыть «ИИ-агенты»', 'agents' => 'Заморозить всех агентов'] as $section => $marker) {
             $r = $this->http('GET', '/admin/?s=' . $section, null, [], true);
             $this->assertSame(200, $r['status'], $section);
             $this->assertContains($marker, $r['body'], $section);
