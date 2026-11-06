@@ -1,26 +1,26 @@
 {
-    "version": "1.9.0",
-    "date": "2026-11-04",
-    "notes": "Превью ссылок в мессенджерах и соцсетях (Telegram, VK, Max и другие). Картинка по умолчанию для всего сайта: в «Настройках», вкладка «Поисковики и ИИ-модели», поле «Картинка для соцсетей по умолчанию» (в API set_settings ключ og_image); её показывают все страницы без своей картинки, своя картинка страницы («Картинка для соцсетей» в редакторе) по-прежнему важнее. Страницы модулей с флагом indexable (например, карточка товара в каталоге) могут дать свою картинку и теги превью: ModuleResponse::withImage() выводит og:image, twitter:image и twitter:card summary_large_image, ModuleResponse::withMeta() добавляет og:*, product:*, article:* и twitter:* (тип «товар», цена, валюта); адрес картинки проверяется (только https, http или путь от корня сайта), заголовок, описание, адрес, картинку, вид карточки и robots модуль заменить не может, текст очищается и экранируется, произвольный HTML и скрипты в head не попадают. У страниц совсем без картинки теперь есть twitter:card summary. Описание в docs/MODULES.md. Схема базы та же, 9.",
+    "version": "1.10.0",
+    "date": "2026-11-06",
+    "notes": "Лента RSS: адрес /rss.xml отдаёт опубликованные индексируемые страницы, у которых указана дата публикации, новые сверху, не больше 50 записей (заголовок, ссылка, описание, дата). Подходит для блога: в шапку страниц добавьте <link rel=\"alternate\" type=\"application/rss+xml\" href=\"/rss.xml\">. Адрес /rss.xml теперь системный и не отдаётся редиректам. Схема базы та же, 9.",
     "url": "",
-    "package": "agecms-1.9.0.json.gz",
-    "sha256": "a909eed66c30b4e6571753549a749668d042fd6e40448dbb186de1e636a9f3d7",
-    "size": 585485,
+    "package": "agecms-1.10.0.json.gz",
+    "sha256": "c5a3e8e3c1452bb26d442d3b47e328650214657c1d5f50e86b24a965cf192a15",
+    "size": 585935,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "Dhmn5GB5JvEoL5mb/uBAxfqYfgSYVk/ul/hYtGP/kSWqnmTH+sRFjh46UG+h/vXWv6jUXcLZo6D+lgcN5NozAA=="
+        "sig": "cMerKGobBPYplStmAdf1QseiAqRHZ/jqxgK74gWj4v43lzaNGgZJbHcRXmGQw1vFWn37jLG1Jo4UfCJS2C3YDQ=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "Dhmn5GB5JvEoL5mb/uBAxfqYfgSYVk/ul/hYtGP/kSWqnmTH+sRFjh46UG+h/vXWv6jUXcLZo6D+lgcN5NozAA=="
+            "sig": "cMerKGobBPYplStmAdf1QseiAqRHZ/jqxgK74gWj4v43lzaNGgZJbHcRXmGQw1vFWn37jLG1Jo4UfCJS2C3YDQ=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEUCIDgbGYJdaOYxJMhPNR7/wQ/Hapb8JyVlLDeYWbleGkQ3AiEApCeyH+aftAYshFOCd++8u9AfuyPyM2/ISBBehr64cs0="
+            "sig": "MEUCIG3kWJYckMgY7hYvJLrgq9n1mvRWLc/3M+2wv/BwS/3LAiEA59Eh8AbVhtErpYrFPJFLl0M3DeNg1ixn9ltuO3l5zkg="
         }
     ]
 }
