@@ -15,7 +15,7 @@ final class Redirects
     private const MAX_LENGTH = 2000;
     /** Query keys that only mark where a visitor came from; they never decide where an old address leads. */
     private const TRACKING = ['fbclid', 'gclid', 'yclid', 'ysclid', 'dclid', 'msclkid', '_openstat', 'openstat', 'mc_cid', 'mc_eid', '_ga', '_gl', 'from'];
-    private const SYSTEM_PATHS = ['/sitemap.xml', '/robots.txt', '/llms.txt', '/AGENT.md', '/index'];
+    private const SYSTEM_PATHS = ['/sitemap.xml', '/rss.xml', '/robots.txt', '/llms.txt', '/AGENT.md', '/index'];
 
     /**
      * A source address as stored: no scheme and host, a leading "/", no trailing "/", percent-encoding decoded (Cyrillic stays

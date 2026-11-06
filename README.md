@@ -6,6 +6,8 @@
 
 PHP 8.1+ и SQLite, без зависимостей, без cron, без сборки. Один каталог, одна команда установки.
 
+**Бесплатно и навсегда.** Лицензия Apache 2.0: ставьте на свои и клиентские сайты, меняйте код, используйте в коммерческих проектах. Без подписок, ключей и лимитов на страницы. Сайт проекта: [agecms.ru](https://agecms.ru).
+
 [![Version](https://img.shields.io/badge/version-1.2.2-2563eb)](https://github.com/likvp/AgeCMS/tree/releases)
 [![PHP](https://img.shields.io/badge/PHP-8.1%20%E2%86%92%208.5-777BB4?logo=php&logoColor=white)](#-требования)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20%2B%20FTS5-003B57?logo=sqlite&logoColor=white)](#-как-это-устроено)

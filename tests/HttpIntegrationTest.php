@@ -48,6 +48,10 @@ final class HttpIntegrationTest extends HttpCase
         }
 
         $this->assertContains('<urlset', $this->http('GET', '/sitemap.xml')['body']);
+        $rss = $this->http('GET', '/rss.xml');
+        $this->assertSame(200, $rss['status']);
+        $this->assertContains('application/rss+xml', $rss['headers']['content-type']);
+        $this->assertContains('<rss version="2.0"', $rss['body']);
         $this->assertContains('Sitemap:', $this->http('GET', '/robots.txt')['body']);
         $this->assertContains('# ', $this->http('GET', '/llms.txt')['body']);
         $this->assertSame(405, $this->http('DELETE', '/')['status']);

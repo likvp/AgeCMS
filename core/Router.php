@@ -57,6 +57,8 @@ final class Router
         switch (true) {
             case $path === '/sitemap.xml':
                 self::send(200, 'application/xml; charset=utf-8', Seo::sitemap(), ['Cache-Control' => 'public, max-age=300']);
+            case $path === '/rss.xml':
+                self::send(200, 'application/rss+xml; charset=utf-8', Seo::rss(), ['Cache-Control' => 'public, max-age=300']);
             case $path === '/robots.txt':
                 self::send(200, 'text/plain; charset=utf-8', Seo::robots(), ['Cache-Control' => 'public, max-age=3600']);
             case $path === '/llms.txt':

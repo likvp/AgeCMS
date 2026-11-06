@@ -49,6 +49,28 @@ final class BlogBlocksTest extends TestCase
         $this->assertContains('"datePublished":"2020-01-02"', $jsonLd);
     }
 
+    public function testRssFeedListsDatedPublishedPagesNewestFirst(): void
+    {
+        $this->freshSite();
+        $this->blog();
+        $this->post('blog/old', ['published_at' => '2020-01-02', 'title' => 'Старая & важная', 'meta_description' => 'Про <старое>']);
+        $this->post('blog/new', ['published_at' => '2021-03-04T10:20:30', 'title' => 'Новая']);
+        $this->post('blog/hidden', ['published_at' => '2022-01-01', 'title' => 'Скрытая', 'is_published' => false]);
+        $this->post('blog/noindex', ['published_at' => '2022-01-01', 'title' => 'Закрытая', 'is_noindex' => true]);
+        $this->createPage('plain');
+
+        $rss = Seo::rss();
+        $xml = simplexml_load_string($rss);
+        $this->assertSame(true, $xml !== false, 'the feed is well formed XML');
+        $titles = [];
+        foreach ($xml->channel->item as $item) {
+            $titles[] = (string)$item->title;
+        }
+        $this->assertSame(['Новая', 'Старая & важная'], $titles, 'dated, published and indexable pages only, newest first');
+        $this->assertContains('<pubDate>Thu, 04 Mar 2021 10:20:30 +0000</pubDate>', $rss);
+        $this->assertContains('<description>Про &lt;старое&gt;</description>', $rss);
+    }
+
     public function testArticleRendersCleanHtmlAndEditsInPlace(): void
     {
         $this->freshSite();

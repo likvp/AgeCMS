@@ -193,6 +193,40 @@ final class Seo
         return $xml . '</urlset>' . "\n";
     }
 
+    /**
+     * RSS 2.0 of the dated pages (posts of a blog): published, not hidden from search, with a published_at date, newest first.
+     * The feed lists up to 50 items; the text of an item is the page description.
+     */
+    public static function rss(): string
+    {
+        $settings = self::settings();
+        $site = (string)($settings['site_name'] ?? 'Site');
+        $base = self::siteUrl();
+        $items = '';
+        $newest = '';
+        $rows = Database::rows("SELECT slug, title, meta_description, published_at FROM pages WHERE is_published = 1 AND is_noindex = 0 AND published_at <> '' ORDER BY published_at DESC, slug LIMIT 50");
+        foreach ($rows as $row) {
+            $ts = strtotime((string)$row['published_at'] . (strlen((string)$row['published_at']) === 10 ? ' 00:00:00 UTC' : ' UTC'));
+            if ($ts === false) {
+                continue;
+            }
+            $date = gmdate('D, d M Y H:i:s', $ts) . ' +0000';
+            $newest = $newest === '' ? $date : $newest;
+            $url = htmlspecialchars(self::url((string)$row['slug']), ENT_XML1);
+            $items .= "    <item>\n        <title>" . htmlspecialchars((string)$row['title'], ENT_XML1) . "</title>\n        <link>{$url}</link>\n        <guid isPermaLink=\"true\">{$url}</guid>\n        <pubDate>{$date}</pubDate>\n"
+                . ((string)$row['meta_description'] !== '' ? '        <description>' . htmlspecialchars((string)$row['meta_description'], ENT_XML1) . "</description>\n" : '')
+                . "    </item>\n";
+        }
+        return '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">' . "\n  <channel>\n"
+            . '    <title>' . htmlspecialchars($site, ENT_XML1) . "</title>\n"
+            . '    <link>' . htmlspecialchars($base . '/', ENT_XML1) . "</link>\n"
+            . '    <description>' . htmlspecialchars((string)($settings['site_description'] ?? '') !== '' ? (string)$settings['site_description'] : $site, ENT_XML1) . "</description>\n"
+            . '    <language>ru</language>' . "\n"
+            . '    <atom:link href="' . htmlspecialchars($base . '/rss.xml', ENT_XML1) . '" rel="self" type="application/rss+xml"/>' . "\n"
+            . ($newest !== '' ? "    <lastBuildDate>{$newest}</lastBuildDate>\n" : '')
+            . $items . "  </channel>\n</rss>\n";
+    }
+
     public static function robots(): string
     {
         return "# AI agents that edit this site: read " . self::siteUrl() . "/AGENT.md\nUser-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /search\nSitemap: " . self::siteUrl() . "/sitemap.xml\n";
