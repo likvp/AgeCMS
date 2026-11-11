@@ -1,26 +1,26 @@
 {
-    "version": "1.10.0",
-    "date": "2026-11-06",
-    "notes": "Лента RSS: адрес /rss.xml отдаёт опубликованные индексируемые страницы, у которых указана дата публикации, новые сверху, не больше 50 записей (заголовок, ссылка, описание, дата). Подходит для блога: в шапку страниц добавьте <link rel=\"alternate\" type=\"application/rss+xml\" href=\"/rss.xml\">. Адрес /rss.xml теперь системный и не отдаётся редиректам. Схема базы та же, 9.",
+    "version": "1.11.0",
+    "date": "2026-11-11",
+    "notes": "Адреса модулей принимают картинки и запросы не из браузера. Загрузка картинок: адрес routes с POST может объявить upload (только image, max_kb, max_files), ядро проверяет файлы до вызова модуля, toMedia() кладёт картинку в assets/uploads/m/<модуль>/, ModuleUpload::deleteMedia() убирает свою. Адреса API: routes с api: true не требуют токен формы, не получают и не ставят cookie, отдают модулю заголовки из списка headers через $request->header(), читают JSON до max_body_kb, все ответы и ошибки ядра в JSON (вебхуки, мобильные приложения). Модули без новых полей работают как раньше. Схема базы та же, 9.",
     "url": "",
-    "package": "agecms-1.10.0.json.gz",
-    "sha256": "c5a3e8e3c1452bb26d442d3b47e328650214657c1d5f50e86b24a965cf192a15",
-    "size": 585935,
+    "package": "agecms-1.11.0.json.gz",
+    "sha256": "b213161df0f17509f3efe8e32d33a27700a7ad8263c40e60b9f76c2af5fdd184",
+    "size": 591526,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "cMerKGobBPYplStmAdf1QseiAqRHZ/jqxgK74gWj4v43lzaNGgZJbHcRXmGQw1vFWn37jLG1Jo4UfCJS2C3YDQ=="
+        "sig": "H3a5s41CFwfcA56SDhXm2oDiowqAUFKSTGcoc8SGijR+2NQ/xpDCC/tIb3IaKdhdES788dsNtJp8ARhUfqk5DQ=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "cMerKGobBPYplStmAdf1QseiAqRHZ/jqxgK74gWj4v43lzaNGgZJbHcRXmGQw1vFWn37jLG1Jo4UfCJS2C3YDQ=="
+            "sig": "H3a5s41CFwfcA56SDhXm2oDiowqAUFKSTGcoc8SGijR+2NQ/xpDCC/tIb3IaKdhdES788dsNtJp8ARhUfqk5DQ=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEUCIG3kWJYckMgY7hYvJLrgq9n1mvRWLc/3M+2wv/BwS/3LAiEA59Eh8AbVhtErpYrFPJFLl0M3DeNg1ixn9ltuO3l5zkg="
+            "sig": "MEYCIQDGuM9jnSxkOyoHNjKCAS06b+qEagwRvTna+8Bda4agCgIhAKHnvk5/ivIMY5lRtY+q0cEFZygJ6grvVDBX2zdUR21P"
         }
     ]
 }
