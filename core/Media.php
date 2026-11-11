@@ -272,7 +272,7 @@ final class Media
     }
 
     /** @return string site-relative URL such as /assets/uploads/ab12cd.webp */
-    public static function optimize(string $path, int $quality = 82): string
+    public static function optimize(string $path, int $quality = 82, string $sub = '', bool $unique = false): string
     {
         if (!self::available()) {
             throw new AgeCMSException('The GD extension with WebP support is required');
@@ -303,18 +303,19 @@ final class Media
         imagealphablending($image, false);
         imagesavealpha($image, true);
 
-        $dir = self::dir();
+        $dir = self::dir() . ($sub !== '' ? '/' . $sub : '');
         if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
             throw new AgeCMSException("Cannot create {$dir}");
         }
         $tmp = $dir . '/.tmp' . bin2hex(random_bytes(4));
         imagewebp($image, $tmp, max(1, min(100, $quality)));
-        $name = substr(sha1_file($tmp), 0, 20);
+        // A picture of a module's route gets a random name: two owners of the same photo never share a file, so one can delete theirs.
+        $name = $unique ? bin2hex(random_bytes(10)) : substr(sha1_file($tmp), 0, 20);
         rename($tmp, "{$dir}/{$name}.webp");
         @chmod("{$dir}/{$name}.webp", 0644);
         if (function_exists('imageavif')) {
             @imageavif($image, "{$dir}/{$name}.avif", max(1, min(100, $quality - 20)));
         }
-        return "/assets/uploads/{$name}.webp";
+        return '/assets/uploads/' . ($sub !== '' ? $sub . '/' : '') . "{$name}.webp";
     }
 }

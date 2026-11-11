@@ -11,7 +11,8 @@ final class ModuleRequest
      * @param array<string,mixed> $query
      * @param array<string,mixed> $body POST fields without the form token fields; empty for GET
      * @param array<string,string> $cookies cookies of this module (names without the module prefix)
-     * @param list<ModuleUpload> $files checked uploads of an admin page that declared "upload"; empty everywhere else
+     * @param list<ModuleUpload> $files checked uploads of an admin page or a route that declared "upload"; empty everywhere else
+     * @param array<string,string> $headers request headers the manifest asked for ("headers" of an API route), names in lower case
      * @param bool $poll an admin page asked by data-ag-poll / data-ag-step of admin.js: the core sends an HTML answer as a bare
      *                   fragment (no admin menu around it), so the module may answer with just the part that changes
      */
@@ -26,12 +27,19 @@ final class ModuleRequest
         public readonly array $cookies,
         public readonly array $files = [],
         public readonly bool $poll = false,
+        public readonly array $headers = [],
     ) {
     }
 
     public function param(string $name): string
     {
         return $this->params[$name] ?? '';
+    }
+
+    /** A request header that the manifest listed for this route (lower or upper case name); an empty string for any other. */
+    public function header(string $name): string
+    {
+        return $this->headers[strtolower($name)] ?? '';
     }
 
     public function cookie(string $name): string

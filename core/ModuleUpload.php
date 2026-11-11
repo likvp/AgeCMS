@@ -4,7 +4,8 @@ declare(strict_types=1);
 namespace AgeCMS;
 
 /**
- * A file that arrived with an admin page of a module (a page that declared "upload" in its manifest, see ModuleAdmin).
+ * A file that arrived with an admin page of a module (a page that declared "upload" in its manifest, see ModuleAdmin) or with a
+ * POST address of the module (a route that declared "upload", only pictures, see ModuleRoutes).
  * The core has already checked it: the kind is decided from the content, never from the name or the browser's type,
  * the size and the number are within the page's limits. The module sees only this object, never $_FILES.
  * Export files (kinds xml and zip: a WordPress export, a site archive) are judged by their signature, may be large
@@ -37,6 +38,8 @@ final class ModuleUpload
         public readonly string $mime,
         public readonly int $size,
         public readonly string $path,
+        /** true for a file that came with an address of the module (routes), false for an admin page; decides where toMedia() puts an image */
+        public readonly bool $ownMedia = false,
     ) {
     }
 
@@ -64,7 +67,12 @@ final class ModuleUpload
         return $name;
     }
 
-    /** Puts an image into the media library of the site (resized, converted to WebP) and returns its name there. */
+    /**
+     * Puts an image into the media library of the site (resized, converted to WebP) and returns its address there.
+     * A file of an admin page goes to the library of the editor (/assets/uploads/<hash>.webp). A file that came with an address
+     * of the module (routes) goes to the folder of the module, /assets/uploads/m/<module>/<random>.webp: it is not shown to the
+     * editor next to site pictures, two owners of the same photo never share a file, and the module removes its own with deleteMedia().
+     */
     public function toMedia(): string
     {
         if ($this->kind !== 'image') {
@@ -75,7 +83,7 @@ final class ModuleUpload
             throw new AgeCMSException('Cannot read the image');
         }
         try {
-            return Media::optimize($tmp);
+            return $this->ownMedia ? Media::optimize($tmp, 82, 'm/' . $this->module, true) : Media::optimize($tmp);
         } finally {
             @unlink($tmp);
         }
@@ -89,6 +97,23 @@ final class ModuleUpload
         }
         $file = self::dir($module) . '/' . $name;
         return is_file($file) ? $file : null;
+    }
+
+    /**
+     * Removes a picture that toMedia() of this module put into its folder (the address toMedia() returned), with its AVIF copy.
+     * Pictures of other modules and of the editor are never touched. @return bool true when a file was removed
+     */
+    public static function deleteMedia(string $module, string $url): bool
+    {
+        if (preg_match('~^/assets/uploads/m/' . preg_quote($module, '~') . '/([a-f0-9]{20})\.webp$~', $url, $m) !== 1) {
+            return false;
+        }
+        $base = Media::dir() . '/m/' . $module . '/' . $m[1];
+        $removed = is_file($base . '.webp') && @unlink($base . '.webp');
+        if (is_file($base . '.avif')) {
+            @unlink($base . '.avif');
+        }
+        return $removed;
     }
 
     public static function delete(string $module, string $name): void
@@ -105,12 +130,12 @@ final class ModuleUpload
     }
 
     /**
-     * The largest file, in bytes, the page $path of $module takes right now: its max_kb, lowered by upload_max_filesize and
+     * The largest file, in bytes, the admin page or the route $path (as written in the manifest) of $module takes right now: its max_kb, lowered by upload_max_filesize and
      * post_max_size of this PHP. 0 when the page takes no files. For the hint next to the file field.
      */
     public static function maxBytes(string $module, string $path): int
     {
-        foreach (ModuleAdmin::all() as $page) {
+        foreach ([...ModuleAdmin::all(), ...ModuleRoutes::all()] as $page) {
             if ($page['module'] === $module && $page['path'] === $path && $page['upload'] !== null) {
                 $own = $page['upload']['max_kb'] * 1024;
                 $server = self::serverMaxBytes();
@@ -182,10 +207,11 @@ final class ModuleUpload
      *
      * @param array{kinds:list<string>,max_kb:int,max_files:int} $limits
      * @param array<string,mixed> $files $_FILES
+     * @param bool $ownMedia the files came with an address of the module (routes), see toMedia()
      * @return list<self>
      * @throws ValidationException
      */
-    public static function collect(string $module, array $limits, array $files): array
+    public static function collect(string $module, array $limits, array $files, bool $ownMedia = false): array
     {
         $flat = [];
         foreach ($files as $entry) {
@@ -250,7 +276,7 @@ final class ModuleUpload
                     throw new ValidationException(["{$label}: CSV должен быть в UTF-8"]);
                 }
             }
-            $out[] = new self($module, $label, $kind, $mime, (int)filesize($f['tmp']), $f['tmp']);
+            $out[] = new self($module, $label, $kind, $mime, (int)filesize($f['tmp']), $f['tmp'], $ownMedia);
         }
         return $out;
     }

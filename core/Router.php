@@ -230,49 +230,91 @@ final class Router
     /**
      * Answers an address that a module owns. The core does the work that must not be left to a module: the request
      * limit, the same-site and form-token checks for POST, the security headers, the cache policy and the error page.
+     * An address declared "api" is for programs (a Telegram webhook, a mobile app): no form token and no cookies, the headers
+     * the manifest names, a JSON body, and every answer, errors of the core included, is JSON. An address declared "upload"
+     * takes pictures: the core checks them before the module is called and keeps none of them unless the module saves it.
      *
-     * @param array{route:?array<string,mixed>,params:array<string,string>,allow:list<string>} $hit
+     * @param array{route:?array<string,mixed>,params:array<string,string>,allow:list<string>,api?:bool} $hit
      */
     private static function module(array $hit, string $method, string $path): never
     {
         $route = $hit['route'];
         if ($route === null) {
+            if ($hit['api'] ?? false) {
+                self::apiError(405, ['Allow' => implode(', ', $hit['allow'])]);
+            }
             self::send(405, 'text/plain; charset=utf-8', "Method not allowed\n", ['Allow' => implode(', ', $hit['allow'])]);
         }
         $name = (string)$route['module'];
         $post = $method === 'POST';
+        $api = (bool)$route['api'];
         $ip = Http::clientIp();
 
         if (!AntiSpam::rateLimit('mod:' . $name . ':' . $route['path'] . ':' . ($post ? 'p' : 'g') . ':' . $ip, $route['rate']['limit'], $route['rate']['window'])) {
-            self::moduleReply($route, 429, 'Слишком много запросов', '<section class="section"><div class="container narrow"><h1>Слишком много запросов</h1><p>Попробуйте чуть позже.</p></div></section>', ['Retry-After' => (string)$route['rate']['window']]);
+            self::moduleFail($route, 429, 'Слишком много запросов', '<section class="section"><div class="container narrow"><h1>Слишком много запросов</h1><p>Попробуйте чуть позже.</p></div></section>', ['Retry-After' => (string)$route['rate']['window']]);
         }
 
         $body = [];
+        $uploads = [];
         if ($post) {
-            self::sameSiteOnly();
-            if (($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '') === 'cross-site') {
-                self::moduleReply($route, 403, 'Запрос отклонён', '<section class="section"><div class="container narrow"><h1>Запрос отклонён</h1></div></section>');
+            if ($api) {
+                if (self::foreignOrigin() || ($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '') === 'cross-site') {
+                    self::apiError(403);
+                }
+                $body = self::apiInput($route);
+            } else {
+                self::sameSiteOnly();
+                if (($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '') === 'cross-site') {
+                    self::moduleFail($route, 403, 'Запрос отклонён', '<section class="section"><div class="container narrow"><h1>Запрос отклонён</h1></div></section>');
+                }
+                $body = self::input();
             }
-            $body = self::input();
-            if (!AntiSpam::validate($body)) {
-                self::moduleReply($route, 400, 'Форма устарела', '<section class="section"><div class="container narrow"><h1>Форма устарела</h1><p>Вернитесь на предыдущую страницу, обновите её и отправьте форму ещё раз.</p></div></section>');
+            // Pictures first: a file that is too big for PHP empties $_POST and $_FILES, and "the form is stale" would be a wrong answer.
+            if ($route['upload'] !== null) {
+                try {
+                    self::assertUploadArrived();
+                    if (!$api && !AntiSpam::validate($body)) {
+                        self::moduleFail($route, 400, 'Форма устарела', '<section class="section"><div class="container narrow"><h1>Форма устарела</h1><p>Вернитесь на предыдущую страницу, обновите её и отправьте форму ещё раз.</p></div></section>');
+                    }
+                    $uploads = ModuleUpload::collect($name, $route['upload'], $_FILES, true);
+                } catch (ValidationException $e) {
+                    self::moduleFail($route, 400, 'Данные не приняты', '<section class="section"><div class="container narrow"><h1>Данные не приняты</h1><p>' . ag_e($e->getMessage()) . '</p></div></section>', [], ['error' => 'invalid_upload', 'message' => $e->getMessage()]);
+                }
+            } elseif (!$api && !AntiSpam::validate($body)) {
+                self::moduleFail($route, 400, 'Форма устарела', '<section class="section"><div class="container narrow"><h1>Форма устарела</h1><p>Вернитесь на предыдущую страницу, обновите её и отправьте форму ещё раз.</p></div></section>');
             }
-            unset($body['token'], $body['website_hp']);
+            if (!$api) {
+                unset($body['token'], $body['website_hp']);
+            }
         }
 
         try {
             $module = SkillRegistry::routed($name);
-            $request = new ModuleRequest($name, $method === 'HEAD' ? 'GET' : $method, $path, $hit['params'], $_GET, $body, $ip, self::moduleCookies($name));
+            $request = new ModuleRequest(
+                $name, $method === 'HEAD' ? 'GET' : $method, $path, $hit['params'], $_GET, $body, $ip,
+                $api ? [] : self::moduleCookies($name), $uploads, false, $api ? self::requestHeaders($route['headers']) : [],
+            );
             $response = $module->handle($request);
         } catch (NotFoundException) {
-            self::notFound();
+            $api ? self::apiError(404) : self::notFound();
+        } catch (ValidationException $e) {
+            // A picture that passed the checks of the core but cannot be decoded (toMedia()) is the sender's fault, not an error of the module.
+            if ($route['upload'] === null) {
+                Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => $e->getMessage(), 'at' => basename($e->getFile()) . ':' . $e->getLine()]);
+                self::moduleFail($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1><p>Мы уже знаем об ошибке. Попробуйте позже.</p></div></section>');
+            }
+            self::moduleFail($route, 400, 'Данные не приняты', '<section class="section"><div class="container narrow"><h1>Данные не приняты</h1><p>' . ag_e($e->getMessage()) . '</p></div></section>', [], ['error' => 'invalid_upload', 'message' => $e->getMessage()]);
         } catch (Throwable $e) {
             Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => $e->getMessage(), 'at' => basename($e->getFile()) . ':' . $e->getLine()]);
-            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1><p>Мы уже знаем об ошибке. Попробуйте позже.</p></div></section>');
+            self::moduleFail($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1><p>Мы уже знаем об ошибке. Попробуйте позже.</p></div></section>');
         }
         if (!$response instanceof ModuleResponse) {
             Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => 'handle() did not return a ModuleResponse']);
-            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+            self::moduleFail($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+        }
+        if ($api && $response->kind !== 'json') {
+            Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => 'an api route answers only with JSON']);
+            self::moduleFail($route, 500, 'Ошибка', '');
         }
 
         $status = $response->status;
@@ -280,15 +322,15 @@ final class Router
             $to = $response->body;
             if (!in_array($status, [302, 303], true) || preg_match('~^/(?![/\\\\])[^\x00-\x1F\x7F\\\\]*$~', $to) !== 1) {
                 Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => 'redirect must be 302 or 303 to an address on this site']);
-                self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+                self::moduleFail($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
             }
         } elseif ($status < 200 || $status > 599 || ($status >= 300 && $status < 400)) {
             Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => "status {$status} is not allowed"]);
-            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+            self::moduleFail($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
         }
-        if ($route['cache'] === 'public' && $response->cookies() !== []) {
-            Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => 'a public route cannot set cookies']);
-            self::moduleReply($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
+        if (($route['cache'] === 'public' || $api) && $response->cookies() !== []) {
+            Logger::log('error', 'module.route_failed', ['module' => $name, 'path' => $path, 'error' => $api ? 'an api route cannot set cookies' : 'a public route cannot set cookies']);
+            self::moduleFail($route, 500, 'Ошибка', '<section class="section"><div class="container narrow"><h1>Что-то пошло не так</h1></div></section>');
         }
         self::moduleSetCookies($name, $response);
 
@@ -299,6 +341,78 @@ final class Router
             self::moduleSend($route, $status, 'application/json; charset=utf-8', $response->body);
         }
         self::moduleReply($route, $status, $response->title, $response->body, [], $response->description(), $path, $response->image(), $response->meta());
+    }
+
+    /** An error of the core on an address of a module: a page in the theme, on an API address JSON ($extra may change "error" and add "message"). */
+    private static function moduleFail(array $route, int $status, string $title, string $bodyHtml, array $headers = [], array $extra = []): never
+    {
+        if ($route['api']) {
+            self::apiError($status, $headers, $extra);
+        }
+        self::moduleReply($route, $status, $title, $bodyHtml, $headers);
+    }
+
+    /** {"ok": false, "error": "rate_limited"} and the like: the only error answer of an API address. @param array<string,string> $headers @param array<string,mixed> $extra */
+    private static function apiError(int $status, array $headers = [], array $extra = []): never
+    {
+        $code = [400 => 'bad_request', 403 => 'forbidden', 404 => 'not_found', 405 => 'method_not_allowed', 413 => 'payload_too_large', 429 => 'rate_limited'][$status] ?? ($status >= 500 ? 'server_error' : 'error');
+        self::send($status, 'application/json; charset=utf-8', (string)json_encode(array_replace(['ok' => false, 'error' => $code], $extra), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $headers + ['Cache-Control' => 'private, no-store', 'X-AgeCMS-Cache' => 'bypass']);
+    }
+
+    /**
+     * Body of a POST to an API address: JSON of any content type, or the fields of a form (multipart, urlencoded) as PHP read them.
+     * Not JSON, broken JSON or a JSON value that is not an object or a list gives an empty array; a body over the limit of the route is refused.
+     *
+     * @param array<string,mixed> $route
+     * @return array<string,mixed>
+     */
+    private static function apiInput(array $route): array
+    {
+        $type = strtolower((string)($_SERVER['CONTENT_TYPE'] ?? ''));
+        if (str_contains($type, 'multipart/form-data') || str_contains($type, 'application/x-www-form-urlencoded')) {
+            return $_POST;
+        }
+        $limit = (int)$route['max_body_kb'] * 1024;
+        if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $limit) {
+            self::apiError(413);
+        }
+        $raw = (string)file_get_contents('php://input', false, null, 0, $limit + 1);
+        if (strlen($raw) > $limit) {
+            self::apiError(413);
+        }
+        $data = $raw === '' ? null : json_decode($raw, true);
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * The request headers that the manifest of an API route asked for, by lower case name; the rest is never handed over.
+     *
+     * @param list<string> $names
+     * @return array<string,string>
+     */
+    private static function requestHeaders(array $names): array
+    {
+        $out = [];
+        foreach ($names as $n) {
+            $value = match ($n) {
+                'content-type' => $_SERVER['CONTENT_TYPE'] ?? null,
+                'content-length' => $_SERVER['CONTENT_LENGTH'] ?? null,
+                'authorization' => $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null,
+                default => $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $n))] ?? null,
+            };
+            if (is_string($value) && $value !== '') {
+                $out[$n] = substr((string)preg_replace('/[\x00-\x1f\x7f]/', '', $value), 0, 4096);
+            }
+        }
+        return $out;
+    }
+
+    /** A form post whose files PHP threw away because the whole request was over post_max_size. @throws ValidationException */
+    private static function assertUploadArrived(): void
+    {
+        if (str_contains(strtolower((string)($_SERVER['CONTENT_TYPE'] ?? '')), 'multipart/form-data') && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0 && $_POST === [] && $_FILES === []) {
+            throw new ValidationException(['Файл больше, чем разрешает сервер (post_max_size ' . ini_get('post_max_size') . ')']);
+        }
     }
 
     /**
@@ -475,13 +589,16 @@ final class Router
     /** Rejects cross-site POSTs when the browser says where the request came from. */
     private static function sameSiteOnly(): void
     {
-        $origin = (string)($_SERVER['HTTP_ORIGIN'] ?? '');
-        if ($origin === '') {
-            return;
-        }
-        if (parse_url($origin, PHP_URL_HOST) !== parse_url((string)Config::get('site_url', ''), PHP_URL_HOST)) {
+        if (self::foreignOrigin()) {
             Http::json(['ok' => false, 'error' => 'Forbidden origin'], 403);
         }
+    }
+
+    /** True when the request names an Origin that is not this site. A request without Origin (a program, not a browser) is not foreign. */
+    private static function foreignOrigin(): bool
+    {
+        $origin = (string)($_SERVER['HTTP_ORIGIN'] ?? '');
+        return $origin !== '' && parse_url($origin, PHP_URL_HOST) !== parse_url((string)Config::get('site_url', ''), PHP_URL_HOST);
     }
 
     private static function redirect(string $to): never

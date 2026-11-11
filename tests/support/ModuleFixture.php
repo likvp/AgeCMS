@@ -65,8 +65,22 @@ PHP;
                 ->withMeta('og:title', 'подмена')->withMeta('robots', 'noindex')->withMeta('og:x" onload="1', 'x')->withMeta('http-equiv', 'refresh'),
             "/{$name}/product2" => ModuleResponse::html('Без картинки', '<p>p</p>')->withImage('javascript:alert(1)'),
             "/{$name}/noindeximg" => ModuleResponse::html('Скрытая', '<p>p</p>')->withImage('https://cdn.example.com/a.jpg'),
+            "/{$name}/photo", "/{$name}/nophoto" => self::photo($request),
+            "/api/{$name}/echo" => ModuleResponse::json(['method' => $request->method, 'body' => $request->body, 'auth' => $request->header('Authorization'), 'hook' => $request->header('x-hook'), 'other' => $request->header('x-other'), 'cookie' => $request->header('cookie'), 'cookies' => $request->cookies, 'query' => $request->query, 'files' => count($request->files)]),
+            "/api/{$name}/cookie" => ModuleResponse::json(['ok' => true])->withCookie('sid', 'x', 60),
+            "/api/{$name}/html" => ModuleResponse::html('Страница', '<p>html</p>'),
+            "/api/{$name}/go" => ModuleResponse::redirect("/{$name}/hello"),
+            "/api/{$name}/boom" => throw new \RuntimeException('secret trace detail'),
+            "/api/{$name}/gone" => throw new \AgeCMS\NotFoundException('nothing'),
+            "/api/{$name}/photo" => self::photo($request),
             default => ModuleResponse::html('Пусто', '<p>empty</p>', 404),
         };
+    }
+
+    private static function photo(ModuleRequest $request): ModuleResponse
+    {
+        @file_put_contents(AGECMS_DATA . '/called.txt', 'x', FILE_APPEND);
+        return ModuleResponse::json(['files' => array_map(static fn($f) => ['name' => $f->name, 'kind' => $f->kind, 'mime' => $f->mime, 'size' => $f->size, 'stored' => isset($request->body['keep']) ? $f->store() : null, 'media' => isset($request->body['media']) ? $f->toMedia() : null], $request->files), 'body' => array_keys($request->body)]);
     }
 PHP;
         if ($sitemap !== null) {
