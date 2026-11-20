@@ -271,6 +271,45 @@ final class Media
         }
     }
 
+    /** EXIF orientation of a JPEG (1 to 8), 1 when there is none or the exif extension is missing. */
+    public static function orientation(string $path): int
+    {
+        if (!function_exists('exif_read_data')) {
+            return 1;
+        }
+        $exif = @exif_read_data($path, 'IFD0');
+        $value = is_array($exif) ? (int)($exif['Orientation'] ?? 1) : 1;
+        return $value >= 2 && $value <= 8 ? $value : 1;
+    }
+
+    /** The picture turned and mirrored the way its EXIF orientation says, so it shows upright once the tag is gone. */
+    private static function upright(\GdImage $image, string $path): \GdImage
+    {
+        $turn = null;
+        $flip = null;
+        switch (self::orientation($path)) {
+            case 2: $flip = IMG_FLIP_HORIZONTAL; break;
+            case 3: $turn = 180; break;
+            case 4: $flip = IMG_FLIP_VERTICAL; break;
+            case 5: $flip = IMG_FLIP_VERTICAL; $turn = -90; break;
+            case 6: $turn = -90; break;
+            case 7: $flip = IMG_FLIP_VERTICAL; $turn = 90; break;
+            case 8: $turn = 90; break;
+            default: return $image;
+        }
+        if ($flip !== null) {
+            imageflip($image, $flip);
+        }
+        if ($turn !== null) {
+            // imagerotate() counts the angle counter-clockwise
+            $rotated = imagerotate($image, $turn, 0);
+            if ($rotated !== false) {
+                $image = $rotated;
+            }
+        }
+        return $image;
+    }
+
     /** @return string site-relative URL such as /assets/uploads/ab12cd.webp */
     public static function optimize(string $path, int $quality = 82, string $sub = '', bool $unique = false): string
     {
@@ -294,7 +333,11 @@ final class Media
             throw new ValidationException(['Image could not be decoded']);
         }
         imagepalettetotruecolor($image);
-        if ($info[0] > self::MAX_WIDTH) {
+        // A phone writes a photo as it lies in the sensor and notes the turn in EXIF: without applying it a portrait shot is saved sideways.
+        if ($info[2] === IMAGETYPE_JPEG) {
+            $image = self::upright($image, $path);
+        }
+        if (imagesx($image) > self::MAX_WIDTH) {
             $scaled = imagescale($image, self::MAX_WIDTH);
             if ($scaled !== false) {
                 $image = $scaled;
