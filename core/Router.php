@@ -11,6 +11,9 @@ final class Router
 {
     public const EDIT_COOKIE = 'agecms_edit';
 
+    /** Set for the answer that may be shown in a frame of the sites of security.frame_ancestors (see Embedding). Everything else stays strict. */
+    private static bool $embed = false;
+
     public static function handle(): void
     {
         // Leftover jobs, pings and re-renders are finished after a visit is answered, at most every 30 seconds.
@@ -123,6 +126,7 @@ final class Router
             Cache::store($slug, $page['html'], $page['tags'], $generation);
         }
         $html = $signedIn ? self::withEditButton($page['html'], $editing, $path) : $page['html'];
+        self::$embed = !$signedIn;
         self::send(200, 'text/html; charset=utf-8', $html, [
             'Cache-Control' => $signedIn ? 'private, no-store' : 'public, max-age=0, must-revalidate',
             'X-AgeCMS-Cache' => 'miss',
@@ -439,6 +443,8 @@ final class Router
     private static function moduleSend(array $route, int $status, string $type, string $body, array $headers = []): never
     {
         $cache = $route['cache'] === 'public' && $status === 200 ? 'public, max-age=' . $route['max_age'] : 'private, no-store';
+        // A page of a module may be framed only when the manifest says so ("embed", or a public address) and nobody is signed in.
+        self::$embed = !$route['api'] && $type === 'text/html; charset=utf-8' && ($route['embed'] || $route['cache'] === 'public') && Auth::user() === null;
         self::send($status, $type, $body, $headers + ['Cache-Control' => $cache, 'X-AgeCMS-Cache' => 'bypass']);
     }
 
@@ -612,7 +618,8 @@ final class Router
         if (!headers_sent()) {
             http_response_code($status);
             header('Content-Type: ' . $type);
-            foreach (array_replace(require __DIR__ . '/security-headers.php', $headers) as $name => $value) {
+            $security = require __DIR__ . '/security-headers.php';
+            foreach (array_replace(self::$embed ? Embedding::open($security) : $security, $headers) as $name => $value) {
                 header($name . ': ' . $value);
             }
         }

@@ -27,6 +27,18 @@ switch ($args[0] ?? '') {
             exit(1);
         }
         $decoded = json_decode($args[2], true);
+        if ($args[1] === 'security.frame_ancestors') {
+            // telegram, https://example.com, or several in a list or separated by spaces; a typo is refused here, not ignored later.
+            $parsed = AgeCMS\Embedding::parse(json_last_error() === JSON_ERROR_NONE ? $decoded : $args[2]);
+            if ($parsed['invalid'] !== []) {
+                fwrite(STDERR, 'Not accepted: ' . implode(', ', $parsed['invalid']) . ". Use the word telegram or origins like https://example.com\n");
+                exit(1);
+            }
+            Config::set($args[1], $parsed['sources']);
+            AgeCMS\Audit::record(AgeCMS\Audit::SYSTEM, 'Изменена настройка security.frame_ancestors из консоли');
+            echo "Saved: " . ($parsed['sources'] === [] ? '(nobody)' : implode(' ', $parsed['sources'])) . "\n";
+            break;
+        }
         Config::set($args[1], json_last_error() === JSON_ERROR_NONE ? $decoded : $args[2]);
         AgeCMS\Audit::record(AgeCMS\Audit::SYSTEM, "Изменена настройка {$args[1]} из консоли");
         echo "Saved.\n";

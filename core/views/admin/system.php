@@ -87,6 +87,20 @@ $envInstallable = array_filter($envMissing, static fn(array $c): bool => \AgeCMS
     </div>
 </section>
 
+<?php if ($isAdmin): $frameNow = \AgeCMS\Embedding::sources(); $frameTg = \AgeCMS\Embedding::PRESETS['telegram']; if (array_diff($frameTg, $frameNow) === []) { $frameNow = array_merge(['telegram'], array_diff($frameNow, $frameTg)); } ?>
+<section class="panel">
+    <div class="panel-h"><h2>Показ сайта во фрейме</h2></div>
+    <div class="panel-b">
+        <p class="muted">По умолчанию страницы сайта открываются только на самом сайте. Чтобы мини-приложение работало и в веб-версии Telegram, впишите <code>telegram</code>. Другие сайты: адреса вида <code>https://example.com</code>, через пробел. Админка, вход и страницы после входа остаются закрытыми всегда. Пусто: никому, кроме самого сайта.</p>
+        <form method="post">
+            <?= admin_post_fields($csrf, 'frame_save') ?>
+            <label class="f"><span>Кому можно показывать сайт во фрейме</span><input class="in" type="text" name="frame_ancestors" value="<?= h(implode(' ', $frameNow)) ?>" placeholder="telegram" maxlength="1000" autocomplete="off"></label>
+            <div class="row center"><button class="btn primary" type="submit">Сохранить</button></div>
+        </form>
+    </div>
+</section>
+<?php endif; ?>
+
 <section class="panel">
     <div class="panel-h"><h2>Обслуживание</h2></div>
     <form method="post" class="panel-b row center">

@@ -1,23 +1,27 @@
 # AgeCMS on nginx + PHP-FPM. Copy to /etc/nginx/sites-available/, adjust server_name, root and the FPM socket.
 # Shadow cache: for a plain GET (no query string, no admin cookie) nginx looks for assets/cache/<slug>.html
 # first and answers from disk in about a millisecond. PHP only runs on a cache miss, for forms, admin and API.
+#
+# Security headers: PHP sends them for every answer it makes (core/security-headers.php, and for public pages the sites of the
+# setting security.frame_ancestors, see core/Embedding.php), so nginx adds them ONLY where it answers without PHP (cache files,
+# uploads, assets, the admin JSON endpoints) and never at server level, where they would be added to PHP's answers as a second copy.
+# A request that comes from a frame (the browser says Sec-Fetch-Dest: iframe) skips the disk cache and goes to PHP, because only PHP
+# knows which sites may frame the page; ordinary visits keep the disk speed.
 
 map $http_cookie $agecms_admin {
     default 0;
     "~*(^|;\s*)agecms_admin=" 1;
 }
-# $is_args is "?" when there is a query string, so the key below means: GET, no query, not admin.
-map "$request_method:$is_args:$agecms_admin" $agecms_cache_dir {
-    default      /assets/cache-off;
-    "GET::0"     /assets/cache;
-    "HEAD::0"    /assets/cache;
+# $is_args is "?" when there is a query string, so the key below means: GET, no query, not admin, not from a frame.
+map $http_sec_fetch_dest $agecms_framed {
+    default  0;
+    iframe   1;
+    frame    1;
 }
-
-# Pages copied from another site (modules/importer, mode "exact copy") are answered by PHP with their own policy and the marker
-# X-AgeCMS-Policy: copy; every other response gets the strict policy of the site.
-map $upstream_http_x_agecms_policy $agecms_csp {
-    default "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self' https://mc.yandex.ru; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html https://mc.yandex.ru; frame-ancestors 'self'";
-    copy    $upstream_http_content_security_policy;
+map "$request_method:$is_args:$agecms_admin:$agecms_framed" $agecms_cache_dir {
+    default      /assets/cache-off;
+    "GET::0:0"   /assets/cache;
+    "HEAD::0:0"  /assets/cache;
 }
 
 # Speed for phones (Core Web Vitals): HTTP/3 and compression. With TLS (certbot) the server block listens on 443; add
@@ -32,11 +36,7 @@ server {
     charset utf-8;
     client_max_body_size 12m;
 
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-    add_header Content-Security-Policy $agecms_csp always;
+    # No add_header at server level: see the note at the top. PHP sends the security headers of its own answers.
 
     # Internals are never served.
     location ~ ^/(data|core|bin|tests|bench|docs|modules|tools)(/|$) { return 404; }
@@ -49,7 +49,7 @@ server {
         default_type text/html;
         add_header Cache-Control "public, max-age=0, must-revalidate" always;
         add_header X-AgeCMS-Cache "hit" always;
-        # add_header in a location replaces the inherited ones, so repeat the security headers here.
+        # Cache files are answered by nginx without PHP, with the strict headers (a request from a frame never gets here, see $agecms_framed).
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -97,19 +97,30 @@ server {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root/index.php;
         fastcgi_param SCRIPT_NAME /index.php;
-        # The policy header is set above from the map ($agecms_csp); PHP's own copy would double it.
-        fastcgi_hide_header Content-Security-Policy;
+        # The policy of the answer (strict, a copied page's own, or with the frame sites) comes from PHP and is passed on as it is.
         fastcgi_hide_header X-AgeCMS-Policy;
         fastcgi_pass unix:/run/php/php8.2-fpm.sock;
     }
     location = /index.php {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root/index.php;
-        fastcgi_hide_header Content-Security-Policy;
         fastcgi_hide_header X-AgeCMS-Policy;
         fastcgi_pass unix:/run/php/php8.2-fpm.sock;
     }
-    location ~ ^/admin/(index|api|mcp|install|upload)\.php$ {
+    # The admin pages send their own security headers (always strict, never framed).
+    location ~ ^/admin/(index|install)\.php$ {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_read_timeout 30s;
+    }
+    # The JSON endpoints of the admin send none, so nginx adds the strict set.
+    location ~ ^/admin/(api|mcp|upload)\.php$ {
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self' https://mc.yandex.ru; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html https://mc.yandex.ru; frame-ancestors 'self'" always;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_pass unix:/run/php/php8.2-fpm.sock;

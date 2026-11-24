@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Security, Seo, ServerSetup, Slug, Tokens, Updater, Updates};
+use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Embedding, Security, Seo, ServerSetup, Slug, Tokens, Updater, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -389,6 +389,17 @@ try {
                     Audit::record(Audit::CORE, $url === '' ? 'Проверка обновлений ядра выключена' : 'Обновления ядра: адрес ' . $url . ', автоустановка ' . (isset($_POST['updates_auto']) ? 'включена' : 'выключена'));
                     $state = $url !== '' ? Updates::check() : null;
                     $flash = $url === '' ? 'Проверка обновлений выключена' : ($state['error'] !== '' ? 'Адрес сохранён, но проверить не вышло: ' . $state['error'] : 'Настройки обновлений сохранены');
+                    $section = 'system';
+                    break;
+                case 'frame_save':
+                    Security::requirePermission($actor, 'system.manage');
+                    $parsed = Embedding::parse((string)($_POST['frame_ancestors'] ?? ''));
+                    if ($parsed['invalid'] !== []) {
+                        throw new AgeCMSException('Не принято: ' . implode(', ', array_map(static fn(string $v): string => mb_substr($v, 0, 60), array_slice($parsed['invalid'], 0, 5))) . '. Нужно слово telegram или адрес сайта вида https://example.com');
+                    }
+                    Config::set('security.frame_ancestors', $parsed['sources']);
+                    Audit::record(Audit::SYSTEM, $parsed['sources'] === [] ? 'Показ сайта во фрейме чужих сайтов выключен' : 'Показ сайта во фрейме разрешён: ' . implode(' ', $parsed['sources']));
+                    $flash = $parsed['sources'] === [] ? 'Показ сайта во фрейме выключен' : 'Список сайтов для фрейма сохранён';
                     $section = 'system';
                     break;
                 case 'env_install':

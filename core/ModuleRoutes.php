@@ -10,6 +10,7 @@ use Throwable;
  *   "routes": [{"path": "/kabinet/zalog/{id}", "methods": ["GET", "POST"], "rate": {"limit": 10, "window": 60}, "cache": "private"}]
  * Two more kinds of address, both only with cache private:
  *   "upload": {"kinds": ["image"], "max_kb": 8192, "max_files": 8}   a POST address that takes pictures (multipart/form-data)
+ *   "embed": true                                                       a page that the sites of security.frame_ancestors may show in a frame (a public address is open without it)
  *   "api": true, "headers": ["authorization"], "max_body_kb": 256       an address for programs: no form token, JSON only, no cookies
  * Only modules with a verified signature get routes. A route that is malformed, uses an address the core or a page
  * already owns, or collides with a route of another module blocks the whole module when the registry loads it.
@@ -30,7 +31,7 @@ final class ModuleRoutes
 
     /**
      * @param array<string,mixed> $manifest
-     * @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int,indexable:bool,api:bool,headers:list<string>,max_body_kb:int,upload:?array{kinds:list<string>,max_kb:int,max_files:int}}>
+     * @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int,indexable:bool,api:bool,embed:bool,headers:list<string>,max_body_kb:int,upload:?array{kinds:list<string>,max_kb:int,max_files:int}}>
      */
     public static function parse(string $module, array $manifest): array
     {
@@ -41,7 +42,7 @@ final class ModuleRoutes
         $routes = [];
         $seen = [];
         foreach ($declared as $i => $route) {
-            if (!is_array($route) || array_diff(array_keys($route), ['path', 'methods', 'rate', 'cache', 'max_age', 'indexable', 'upload', 'api', 'headers', 'max_body_kb']) !== []) {
+            if (!is_array($route) || array_diff(array_keys($route), ['path', 'methods', 'rate', 'cache', 'max_age', 'indexable', 'upload', 'api', 'headers', 'max_body_kb', 'embed']) !== []) {
                 throw new AgeCMSException("routes[{$i}]: unknown or missing fields");
             }
             $path = $route['path'] ?? null;
@@ -111,6 +112,10 @@ final class ModuleRoutes
             if ($api && ($cache !== 'private' || $indexable)) {
                 throw new AgeCMSException("routes[{$i}]: an api route is never public or indexable (cache private, no indexable)");
             }
+            $embed = $route['embed'] ?? false;
+            if (!is_bool($embed) || ($embed && ($api || !in_array('GET', $methods, true)))) {
+                throw new AgeCMSException("routes[{$i}]: embed is true or false and only goes with a page address that takes GET (not api)");
+            }
             $headers = $route['headers'] ?? [];
             if (!is_array($headers) || !array_is_list($headers) || count($headers) > self::MAX_HEADERS || count(array_unique($headers)) !== count($headers)) {
                 throw new AgeCMSException("routes[{$i}]: headers is a list of at most " . self::MAX_HEADERS . ' different names');
@@ -146,7 +151,7 @@ final class ModuleRoutes
                 'module' => $module, 'path' => $path, 'segments' => $segments, 'methods' => $methods,
                 'rate' => ['limit' => (int)$rate['limit'], 'window' => (int)$rate['window']],
                 'cache' => $cache, 'max_age' => $cache === 'public' ? (int)$maxAge : 0, 'indexable' => $indexable,
-                'api' => $api, 'headers' => array_values($headers), 'max_body_kb' => (int)$maxBody, 'upload' => $upload,
+                'api' => $api, 'embed' => $embed, 'headers' => array_values($headers), 'max_body_kb' => (int)$maxBody, 'upload' => $upload,
             ];
         }
         return $routes;
@@ -189,7 +194,7 @@ final class ModuleRoutes
         }
     }
 
-    /** @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int,indexable:bool,api:bool,headers:list<string>,max_body_kb:int,upload:?array{kinds:list<string>,max_kb:int,max_files:int}}> */
+    /** @return list<array{module:string,path:string,segments:list<string>,methods:list<string>,rate:array{limit:int,window:int},cache:string,max_age:int,indexable:bool,api:bool,embed:bool,headers:list<string>,max_body_kb:int,upload:?array{kinds:list<string>,max_kb:int,max_files:int}}> */
     public static function all(): array
     {
         $out = [];

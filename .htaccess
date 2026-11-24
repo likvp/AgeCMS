@@ -4,13 +4,15 @@ DirectoryIndex index.php
 AddDefaultCharset UTF-8
 
 <IfModule mod_headers.c>
-    Header always set X-Content-Type-Options "nosniff"
-    Header always set X-Frame-Options "SAMEORIGIN"
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
-    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    # Pages copied from another site (modules/importer, mode "exact copy") are answered by PHP with their own policy
-    # (CopyPage::csp) and the marker X-AgeCMS-Policy: copy. The strict policy below is set for everything else.
-    Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self' https://mc.yandex.ru; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html https://mc.yandex.ru; frame-ancestors 'self'" "expr=%{resp:X-AgeCMS-Policy} != 'copy'"
+    # Security headers. PHP sends its own for every answer it makes (core/security-headers.php; for public pages also the sites of
+    # the setting security.frame_ancestors, core/Embedding.php; a copied page has its own policy, CopyPage::csp). Apache adds the
+    # strict set only to answers without PHP's policy: cache files, uploads, assets, the 404s of the rules below. Never replace PHP's
+    # copy: a plain "Header always set" would overwrite the frame sites and bring X-Frame-Options back.
+    Header always set X-Content-Type-Options "nosniff" "expr=-z %{resp:Content-Security-Policy}"
+    Header always set X-Frame-Options "SAMEORIGIN" "expr=-z %{resp:Content-Security-Policy}"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin" "expr=-z %{resp:Content-Security-Policy}"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()" "expr=-z %{resp:Content-Security-Policy}"
+    Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self' https://mc.yandex.ru; connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-src 'self' https://yandex.ru/map-widget/ https://yandex.com/map-widget/ https://www.google.com/maps/embed https://www.openstreetmap.org/export/embed.html https://mc.yandex.ru; frame-ancestors 'self'" "expr=-z %{resp:Content-Security-Policy}"
     Header always unset X-AgeCMS-Policy
 </IfModule>
 
@@ -39,16 +41,19 @@ AddDefaultCharset UTF-8
     RewriteRule ^index$ index.php [L]
 
     # 3. Shadow cache hit: a rendered copy exists, PHP is never started.
-    #    Only plain GET and HEAD requests without a query string and without the admin marker cookie.
+    #    Only plain GET and HEAD requests without a query string and without the admin marker cookie. A request from a frame
+    #    (Sec-Fetch-Dest: iframe) goes to PHP instead, which knows which sites may frame the page (security.frame_ancestors).
     RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)$
     RewriteCond %{QUERY_STRING} ^$
     RewriteCond %{HTTP_COOKIE} !(^|;\s*)agecms_admin=
+    RewriteCond %{HTTP:Sec-Fetch-Dest} !^i?frame$
     RewriteCond %{DOCUMENT_ROOT}/assets/cache/$1.html -f
     RewriteRule ^([a-z0-9][a-z0-9_/-]*)$ assets/cache/$1.html [L]
 
     RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)$
     RewriteCond %{QUERY_STRING} ^$
     RewriteCond %{HTTP_COOKIE} !(^|;\s*)agecms_admin=
+    RewriteCond %{HTTP:Sec-Fetch-Dest} !^i?frame$
     RewriteCond %{DOCUMENT_ROOT}/assets/cache/index.html -f
     RewriteRule ^$ assets/cache/index.html [L]
 

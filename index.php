@@ -12,7 +12,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && ($_SERVER['QUERY_STRING'] ??
         header('Cache-Control: public, max-age=0, must-revalidate');
         header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
         header('X-AgeCMS-Cache: hit');
-        foreach (require __DIR__ . '/core/security-headers.php' as $name => $value) {
+        // A cached page is public: with security.frame_ancestors set it may be shown in a frame of those sites (core/Embedding.php).
+        require_once __DIR__ . '/core/Embedding.php';
+        $security = AgeCMS\Embedding::open(require __DIR__ . '/core/security-headers.php', AgeCMS\Embedding::sourcesFromFile((getenv('AGECMS_DATA_DIR') ?: __DIR__ . '/data') . '/config.php'));
+        foreach ($security as $name => $value) {
             header($name . ': ' . $value);
         }
         if (isset($_SERVER['HTTP_IF_MODIFIED_SINCE']) && strtotime($_SERVER['HTTP_IF_MODIFIED_SINCE']) >= $mtime) {

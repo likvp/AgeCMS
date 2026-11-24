@@ -65,6 +65,7 @@
 | `api` | `true`: адрес для программ (вебхук, мобильное приложение), раздел «Адреса API» ниже. Только с `cache: private`, без `indexable`. С ядра 1.11.0 |
 | `headers` | только вместе с `api`: до 5 имён заголовков запроса, которые прочитает модуль, `$request->header('имя')`. С ядра 1.11.0 |
 | `max_body_kb` | только вместе с `api`: потолок тела запроса, 1-1024 КБ, по умолчанию 256. С ядра 1.11.0 |
+| `embed` | `true`: страницу адреса можно показывать во фрейме сайтов из настройки `security.frame_ancestors` (мини-приложение Telegram). Только для страниц (не `api`), адрес принимает `GET`. Адрес с `cache: public` открыт и без поля, адрес с `cache: private` (кабинет, страницы с личными данными) закрыт, пока модуль сам не поставил `embed`. Раздел «Показ сайта во фрейме» ниже. С ядра 1.12.0 |
 | `indexable` | `true` только вместе с `cache: public`: успешная страница адреса отдаётся поисковикам (`index, follow`, `canonical` на сам адрес без параметров, описание из `ModuleResponse::withDescription()`, картинка и теги превью из `withImage()` и `withMeta()`). Без флага страницы модулей остаются `noindex` и без тегов превью. Страницы ошибок `noindex` всегда |
 
 Что делает ядро, а модуль не может отключить:
@@ -378,6 +379,40 @@ if ($file !== null) {
 - `https://www.openstreetmap.org/export/embed.html` (OpenStreetMap).
 
 Тему или модуль, которому нужна карта, строят на `<iframe src="https://yandex.ru/map-widget/v1/?...">`. Другой адрес браузер заблокирует. Политика одинакова в `core/security-headers.php`, `.htaccess` и `nginx.vhost.example` (это проверяет тест), потому что страницы из кэша отдаёт веб-сервер без PHP. Чтобы разрешить ещё что-то, правится строка во всех трёх файлах.
+
+## Показ сайта во фрейме (мини-приложение Telegram, security.frame_ancestors)
+
+Страницы сайта по умолчанию открываются во фрейме только на самом сайте: заголовки `X-Frame-Options: SAMEORIGIN` и `frame-ancestors 'self'`. Мини-приложение Telegram на телефоне и в приложении для компьютера открывается без фрейма, а в веб-версии Telegram (`web.telegram.org`, `webk.telegram.org`, `webz.telegram.org`) во фрейме, и браузер показывает пустое окно. Настройка `security.frame_ancestors` разрешает фрейм названным сайтам. С ядра 1.12.0.
+
+```bash
+php bin/config.php set security.frame_ancestors telegram
+php bin/config.php set security.frame_ancestors "telegram https://shop.example.com"   # свои сайты через пробел
+php bin/config.php set security.frame_ancestors ""                                      # выключить
+```
+
+То же в админке: «Система», блок «Показ сайта во фрейме» (нужно право `system.manage`). Значение: слово `telegram` (три адреса веб-клиентов Telegram) и/или адреса вида `https://example.com`, `https://example.com:8443`, `https://*.example.com`. Принимаются только такие адреса: без пути, без одинокой `*`, без `http://` (кроме `http://localhost` и `http://127.0.0.1` для проверки на своём компьютере). Опечатка в консоли и в админке отклоняется, а попавшая в файл настроек не открывает ничего. Не больше 20 адресов.
+
+Что меняется, когда список не пуст:
+
+- у **публичных страниц** в политике безопасности `frame-ancestors 'self' <адреса>`, а `X-Frame-Options` не отправляется совсем (он не умеет список). Остальная политика (`default-src 'self'` и прочее) та же. Это страницы сайта (в том числе из теневого кэша) и страницы модулей с `cache: public` или `embed: true`;
+- **остаётся только `'self'` и `SAMEORIGIN`**: админка и вход (`/admin/`), любая страница, которую смотрит вошедший пользователь (в том числе режим правки), страницы модулей с `cache: private` без `embed`, адреса `api`, `/_/token`, `sitemap.xml` и ответы 404 и 500. Кабинеты и страницы с личными данными поэтому не откроются чужому сайту, даже если он знает адрес;
+- запрос из фрейма (браузер присылает `Sec-Fetch-Dest: iframe`) не отдаётся с диска веб-сервером, а идёт в PHP, который знает настройку. Обычные посещения по-прежнему отдаются с диска. Так устроены `nginx.vhost.example` и `.htaccess`: заголовки безопасности у ответов PHP веб-сервер не трогает, у файлов с диска добавляет строгие.
+
+Ограничения. Браузер без заголовка `Sec-Fetch-Dest` (Safari до 16.4 и совсем старые) получит страницу из дискового кэша со строгими заголовками, и фрейм в нём будет пустым. Если перед сайтом стоит CDN, который сам кэширует страницы, он должен пропускать запросы с `Sec-Fetch-Dest: iframe` к серверу или учитывать этот заголовок в ключе кэша, иначе фрейм получит заголовки из кэша CDN. Разрешение даёт только показ во фрейме: формы и запросы мини-приложения по-прежнему проверяются на тот же сайт (`Origin`, `Sec-Fetch-Site`).
+
+### Свой шаблон nginx (собран из старой версии nginx.vhost.example)
+
+До ядра 1.12.0 шаблон сам добавлял `X-Frame-Options` и политику `$agecms_csp` на уровне `server` и прятал политику PHP (`fastcgi_hide_header Content-Security-Policy`). С таким шаблоном настройка ничего не изменит: nginx перекроет PHP. Что поправить:
+
+1. Удалить из блока `server` строки `add_header X-Frame-Options ...` и `add_header Content-Security-Policy $agecms_csp ...`. Остальные три `add_header` на уровне `server` можно оставить (значения те же, что шлёт PHP), но лучше убрать все пять, как в новом шаблоне.
+2. Удалить `map $upstream_http_x_agecms_policy $agecms_csp { ... }`.
+3. Из блоков `location @agecms` и `location = /index.php` убрать `fastcgi_hide_header Content-Security-Policy;`. `fastcgi_hide_header X-AgeCMS-Policy;` оставить.
+4. Запрос из фрейма не должен отдаваться с диска. Добавить `map $http_sec_fetch_dest $agecms_framed { default 0; iframe 1; frame 1; }`, а ключ карты кэша сделать `"$request_method:$is_args:$agecms_admin:$agecms_framed"` со значениями `"GET::0:0"` и `"HEAD::0:0"`.
+5. В блоке `location ^~ /assets/cache/` строгие заголовки остаются как есть (их там добавляет nginx, потому что PHP не запускается).
+6. Блок `location ~ ^/admin/(index|api|mcp|install|upload)\.php$` разделить, как в новом шаблоне: для `index|install` заголовки шлёт PHP, для `api|mcp|upload` nginx добавляет строгий набор (раньше он приходил с уровня `server`).
+7. `nginx -t && systemctl reload nginx`.
+
+Проверка: `curl -sI -H 'Sec-Fetch-Dest: iframe' https://сайт/` показывает `Content-Security-Policy` с адресами Telegram и без `X-Frame-Options`, а `curl -sI https://сайт/admin/` по-прежнему `X-Frame-Options: SAMEORIGIN` и `frame-ancestors 'self'`.
 
 ## Счётчики и подтверждение сайта (Метрика, Вебмастер, Директ)
 
