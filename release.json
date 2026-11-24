@@ -1,26 +1,26 @@
 {
-    "version": "1.12.0",
+    "version": "1.13.0",
     "date": "2026-11-24",
-    "notes": "Сайт можно показывать во фрейме: мини-приложение Telegram открывается и в веб-версии Telegram. Настройка security.frame_ancestors (слово telegram или адреса https://...) задаётся командой php bin/config.php set security.frame_ancestors telegram или в админке: Система, Показ сайта во фрейме. По умолчанию пусто, поведение прежнее. С настройкой у публичных страниц (и страниц модулей с cache public или новым полем routes embed) в политике безопасности frame-ancestors 'self' и адреса, X-Frame-Options не отправляется; админка, вход, страницы вошедшего пользователя, личные страницы модулей и адреса api остаются только для самого сайта. Заголовки безопасности ответов PHP теперь решает PHP: в nginx.vhost.example и .htaccess они добавляются только файлам без PHP, а запрос из фрейма (Sec-Fetch-Dest) идёт мимо дискового кэша в PHP. Свой шаблон nginx из старой версии нужно поправить один раз, порядок в docs/MODULES.md, раздел Показ сайта во фрейме. Схема базы та же, 9.",
+    "notes": "Ровная админка и готовые куски для страниц модулей. Ряд полей .row с подсказками выравнивается по верху, кнопка стоит вровень с полем, панели в форме не слипаются с соседними, поле файла оформлено, редактор страницы на телефоне не прокручивается вбок. Новые классы для модулей: fields, stack, cols, card-head (card-pic, card-num, card-meta, card-title, card-actions), facts, tbl params, photos, photo, photo-add; примеры в docs/MODULES.md, раздел Вид страниц модуля в админке. Модули без новых классов работают как раньше. Схема базы та же, 9.",
     "url": "",
-    "package": "agecms-1.12.0.json.gz",
-    "sha256": "3387858b8fb49f0ce8477a26cad18dd0a94504ef84b6ad60d8f0dd8a90388aac",
-    "size": 596710,
+    "package": "agecms-1.13.0.json.gz",
+    "sha256": "4bb3b3d5fbca3430942d9f06e8252ee2d186c54f351c382ea20b36b524a64960",
+    "size": 598671,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "8ozF7lQPk7FqqN8E5XHefgmvfE+9fJKKS7Dvlg8nNqLRU13Gc4VV6FUYcHQsUIMpoenADifc4ai6OvTmybNPBQ=="
+        "sig": "bmCMBJc1tPmaHqm8hs3TGPzoCyXQ+EVMEI2+YysB46IYBHIEHgbv0d4QYUyVA0vn8cOG2Lh5t1VxVTGebl18Cg=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "8ozF7lQPk7FqqN8E5XHefgmvfE+9fJKKS7Dvlg8nNqLRU13Gc4VV6FUYcHQsUIMpoenADifc4ai6OvTmybNPBQ=="
+            "sig": "bmCMBJc1tPmaHqm8hs3TGPzoCyXQ+EVMEI2+YysB46IYBHIEHgbv0d4QYUyVA0vn8cOG2Lh5t1VxVTGebl18Cg=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEUCIQDXnAKUPRAiUisgIFzaoUSxJEJHcOEwXyygYuWZaWIGwAIgLVc6V+q36YP1r5klmu9ptqgs2XxJFldnkPkAuUew3Hs="
+            "sig": "MEYCIQDxpFh2KgAugSaHFbJNcsw8cs81Ep6BrfCqckjl75WwOAIhAI6zAGrG9MQLw5iAeBcia/+XbYCCwaN915kgr6IbCXRy"
         }
     ]
 }
