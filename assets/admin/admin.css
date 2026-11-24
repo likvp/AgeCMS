@@ -170,7 +170,14 @@ label.f, .f { display: block; margin: 0 0 14px; }
 .f.bad input, .f.bad textarea, .f.bad select { border-color: var(--err); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
 .row > .f { margin: 0; flex: 1 1 180px; }
+.row > .f ~ .btn:not(.sm) { height: 38px; }
 .panel-b .row { margin-bottom: 14px; }
+.panel-b > .row:last-child, .panel-b > form > .row:last-child { margin-bottom: 0; }
+/* With a hint (or a tall field) under one of the fields the row is aligned by its top, so labels and fields stay on one line
+   and a button stands next to the fields. Without hints the bottom edge is the common line: a label of two lines moves nobody. */
+.row:not(.center):has(> .f > .hint, > .f > textarea) { align-items: flex-start; }
+.row:not(.center):has(> .f > .hint, > .f > textarea) > .btn { margin-top: calc(0.82rem * 1.55 + 5px); }
+@media (max-width: 620px) { .row:not(.center):has(> .f > .hint, > .f > textarea) > .btn { margin-top: 0; flex: 1 1 100%; } }
 .chk { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-weight: 450; cursor: pointer; }
 .chk input { appearance: none; width: 18px; height: 18px; flex: none; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); display: grid; place-items: center; margin: 0; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
 .chk input[type=radio] { border-radius: 50%; }
@@ -184,7 +191,9 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 
 /* ---- surfaces ---------------------------------------------------------------------------- */
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
-.panel + .panel, .panel + .sect { margin-top: 18px; }
+.panel + .panel, .panel + .sect, .panel + .notice { margin-top: 18px; }
+/* The same distance when a panel sits in a form or next to the pieces of module pages. :where() keeps it weaker than any own margin. */
+:where(.panel, .stats, .cols, .stack, form:has(> .panel)) + :where(.panel, .stats, .cols, .stack, form:has(> .panel)) { margin-top: 18px; }
 .panel-h { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
 .panel-h h2 { flex: 1; }
 .panel-b { padding: 18px; }
@@ -234,7 +243,7 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 .stat .v { font: 600 1.7rem/1.1 var(--mono); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .stat .l { color: var(--muted); font-size: 0.82rem; margin-top: 6px; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; margin-top: 18px; align-items: start; }
-.grid2 > .panel { margin: 0; }
+.grid2 > .panel, .grid2 > form { margin: 0; }
 @media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; } .stat { border-right: 0; border-bottom: 1px solid var(--line); } }
 .feed { list-style: none; margin: 0; padding: 0; }
 .feed li { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 11px 18px; border-bottom: 1px solid var(--line); }
@@ -269,7 +278,7 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 
 /* ---- editor ------------------------------------------------------------------------------ */
 .editor { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
-@media (max-width: 1060px) { .editor { grid-template-columns: 1fr; } }
+@media (max-width: 1060px) { .editor { grid-template-columns: minmax(0, 1fr); } }
 .editor .aside { position: sticky; top: 18px; display: grid; gap: 14px; }
 @media (max-width: 1060px) { .editor .aside { position: static; } }
 .savebar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 10px 0; margin: -10px 0 8px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); }
@@ -294,7 +303,9 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 .itm-h b { font: 600 0.75rem var(--mono); color: var(--muted); flex: 1; }
 .add { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: transparent; }
 .add select { flex: 1; max-width: 260px; }
+@media (max-width: 620px) { .add { flex-wrap: wrap; } .add select { flex: 1 1 130px; } }
 .add small { flex: 2; min-width: 0; }
+@media (max-width: 620px) { .add small { order: 1; flex: 1 1 100%; } }
 .mrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 0 0 8px; }
 .mrow .actions { gap: 0; }
 @media (max-width: 620px) { .mrow { grid-template-columns: 1fr auto; } .mrow .u { grid-column: 1; } }
@@ -348,6 +359,7 @@ dialog .row { justify-content: flex-end; margin-top: 18px; }
 .editor .aside .panel { margin: 0; }
 .panel + .chk { margin-top: 18px; }
 .chk + .btn { margin-top: 6px; }
+.row.center > .chk, .row.center > .chk + .btn { margin: 0; }
 
 /* ---- media, picker, drag and drop, users ---------------------------------------------------- */
 .who-link { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; text-decoration: none; border-radius: var(--r); }
@@ -445,3 +457,67 @@ details.rename[open] > summary { border-bottom: 1px solid var(--line, #e4e4e8); 
 .imp-stats span { font-size: 0.8rem; color: var(--muted); }
 .imp-cur { overflow-wrap: anywhere; word-break: break-all; }
 .panel-b progress { width: 100%; }
+
+/* ---- pieces for module pages (docs/MODULES.md, «Вид страниц модуля в админке») ---------------- */
+/* Blocks one under another with equal distances, whatever they are (panels, forms, notices). */
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+.stack.stack > * { margin-top: 0; margin-bottom: 0; }
+/* Two columns: the content and what is related to it. One column on a narrow screen. */
+.cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+.cols.cols > * { margin-top: 0; margin-bottom: 0; min-width: 0; }
+@media (max-width: 980px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* Fields side by side. Labels, fields and hints share lines (subgrid): neither a long label nor a hint moves the neighbours. */
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 0 14px; align-items: start; }
+.fields > .f { min-width: 0; }
+@supports (grid-template-rows: subgrid) {
+    .fields > * { grid-row: span 3; }
+    .fields > .f:not(:has(> :nth-child(4))) { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 0; align-self: stretch; align-items: start; }
+    .fields > .f:not(:has(> :nth-child(4))) > :first-child { align-self: end; }
+}
+input[type=file].in { height: auto; padding: 6px; cursor: pointer; }
+input[type=file].in::file-selector-button { height: 32px; margin: 0 12px 0 0; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--hover); color: var(--text); font: 550 0.86rem var(--font); cursor: pointer; }
+input[type=file].in:hover::file-selector-button { border-color: var(--muted); }
+
+/* The strip on top of an object: a picture or a number, the state, the actions. */
+.card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; padding: 16px 18px; }
+.card-pic { flex: none; display: block; width: 56px; height: 70px; border-radius: var(--r); object-fit: cover; background: var(--hover); }
+.card-pic.sm { width: 40px; height: 50px; }
+.card-num { font: 650 1.7rem/1.1 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
+.card-meta { flex: 1 1 180px; min-width: 0; display: grid; gap: 5px; justify-items: start; color: var(--muted); font-size: 0.86rem; }
+.card-title { color: var(--text); font-size: 1.1rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.card-actions > form { display: block; margin: 0; }
+@media (max-width: 560px) {
+    .card-head > .card-actions { width: 100%; }
+    .card-actions > * { flex: 1 1 130px; }
+    .card-actions .btn { width: 100%; height: 40px; }
+}
+
+/* Pairs of a label and a value. */
+.facts { margin: 0; }
+.facts > div { display: grid; grid-template-columns: fit-content(45%) minmax(0, 1fr); gap: 16px; padding: 9px 0; }
+.facts > div + div { border-top: 1px solid var(--line); }
+.facts > div:first-child { padding-top: 0; }
+.facts > div:last-child { padding-bottom: 0; }
+.facts dt { color: var(--muted); overflow-wrap: anywhere; }
+.facts dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+* + .facts { margin-top: 16px; }
+.tbl.params th { width: 1%; padding-right: 10px; vertical-align: baseline; }
+.tbl.params td { vertical-align: baseline; overflow-wrap: anywhere; }
+.tbl.params tr:last-child th { border-bottom: 0; }
+.panel-b > .tbl.params tr:first-child > * { padding-top: 0; }
+.panel-b > .tbl.params th { padding-left: 0; }
+.panel-b > .tbl.params td { padding-right: 0; }
+.panel-b > .tbl.params + * { margin-top: 14px; }
+@media (max-width: 560px) { .tbl.params th { width: 40%; white-space: normal; } }
+
+/* Photos with buttons, the first one is the cover. */
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.photo { margin: 0; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.photo img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; background: var(--hover); }
+.photo figcaption { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: space-between; padding: 10px; }
+.photo .btn { width: 100%; height: 34px; padding: 0 6px; }
+.photo .tag { justify-content: center; min-height: 34px; }
+.photo-add { margin: 18px 0 0; padding-top: 18px; border-top: 1px solid var(--line); }
+.photo-add:first-child { margin-top: 0; padding-top: 0; border-top: 0; }

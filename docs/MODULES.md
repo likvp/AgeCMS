@@ -239,6 +239,88 @@ final class Module implements AdminModuleInterface
 
 **Проверка манифеста.** Модуль блокируется целиком, если `admin` не список (до 20 страниц), у страницы нет `path`, `title` или `permission`, есть лишнее поле, путь не начинается с `/` или длиннее 4 сегментов (буквы a-z, цифры, `-`, `_` или `{имя}`), заголовок пустой или длиннее 60 знаков, право или метод неизвестны, две страницы перекрываются, либо в меню (`menu: true`) попала страница с `{}` или без GET. По умолчанию в меню идут страницы с GET без `{}`; лишние скрывайте через `"menu": false`. Если модуль объявил `admin`, но не реализует `AdminModuleInterface`, он блокируется при загрузке.
 
+### Вид страниц модуля в админке
+
+Страницы модулей рисуются стилями админки (`assets/admin/admin.css`), встроенные стили запрещает политика безопасности. Для обычной страницы своих стилей не нужно: ниже готовые куски. Классы без пометки есть во всех версиях ядра, отмеченные **1.13.0** появятся в следующем выпуске, на старом ядре страница откроется, но без раскладки.
+
+| Класс | Для чего |
+| --- | --- |
+| `.panel`, `.panel-h`, `.panel-b` | панель, её шапка с `<h2>` и содержимое. Расстояние между соседними панелями ставит ядро, в том числе когда панель лежит в `<form>` (1.13.0) |
+| `label.f` | поле: `<span>` подпись, элемент с классом `in`, `<small class="hint">` подсказка |
+| `.row` | поля в ряд с кнопкой: фильтр списка, короткая форма. Подсказка под полем соседей не двигает (1.13.0). `.row.center`: кнопки и подписи по середине |
+| `.fields` | **1.13.0.** сетка полей. Подписи, поля и подсказки стоят на общих линиях при любой длине подписи. Для форм с подсказками берите её, а не `.row` |
+| `.stack` | **1.13.0.** блоки друг под другом с равным расстоянием |
+| `.cols` | **1.13.0.** две колонки 3:2, содержание и сбоку связанное; уже 980 px одна. В каждой колонке обычно `.stack` |
+| `.card-head` | **1.13.0.** полоса сверху карточки: `.card-pic` (картинка 56x70, `.card-pic.sm` 40x50 для списков) или `.card-num` (сумма), `.card-meta` (в нём `.card-title`, строки, `.tag`), `.card-actions` |
+| `.card-actions` | **1.13.0.** кнопки и формы с одной кнопкой в ряд; на телефоне кнопки во всю ширину |
+| `dl.facts` | **1.13.0.** пары: подпись слева, значение справа, тонкая линия между ними |
+| `.tbl.params` | **1.13.0.** таблица параметров: `<th>` имя, `<td>` значение |
+| `.photos`, `.photo` | **1.13.0.** плитка фото 4:5 с кнопками одной ширины; обложка отмечена `<span class="tag ok">`. `.photo-add`: форма загрузки под плиткой |
+| `input[type=file].in` | **1.13.0.** оформленное поле файла |
+| `.tag` (`ok`, `warn`, `err`, `info`, `plain`), `.notice` (`ok`, `warn`, `error`), `.empty`, `.tbl` в `.tbl-scroll`, `.feed`, `.stats`, `.btn` (`primary`, `danger`, `ghost`, `sm`) | метки, сообщения, пустое состояние, таблица, лента истории, числа, кнопки |
+
+Форма с сеткой полей:
+
+```html
+<form method="post"><!-- ag_admin_csrf_field() -->
+  <div class="panel">
+    <div class="panel-h"><h2>Описание</h2></div>
+    <div class="panel-b">
+      <div class="fields">
+        <label class="f"><span>Бренд</span><input class="in" type="text" name="brand"><small class="hint">По нему работают фильтры</small></label>
+        <label class="f"><span>Размер</span><input class="in" type="text" name="size"></label>
+        <label class="f"><span>Статус</span><select class="in" name="status"><option>В продаже</option></select></label>
+      </div>
+      <div class="card-actions"><button class="btn primary" type="submit">Сохранить</button></div>
+    </div>
+  </div>
+</form>
+```
+
+Карточка: полоса, затем две колонки.
+
+```html
+<div class="panel"><div class="card-head">
+  <img class="card-pic" src="/assets/uploads/..." alt="">            <!-- или <span class="card-num">25 000 руб.</span> -->
+  <div class="card-meta"><b class="card-title">Куртка</b><span>12 500 руб.</span><span class="tag ok">В продаже</span></div>
+  <div class="card-actions">
+    <a class="btn" href="/item/5">Открыть на сайте</a>
+    <form method="post" class="inline"><!-- ag_admin_csrf_field() --><button class="btn danger" type="submit">Удалить</button></form>
+  </div>
+</div></div>
+<div class="cols">
+  <div class="stack"><!-- панели и формы с содержанием --></div>
+  <div class="stack">
+    <div class="panel"><div class="panel-h"><h2>Покупатель</h2></div><div class="panel-b">
+      <dl class="facts">
+        <div><dt>Телефон</dt><dd>+7 900 000-00-00</dd></div>
+        <div><dt>Доставка</dt><dd>Самовывоз</dd></div>
+      </dl>
+    </div></div>
+  </div>
+</div>
+```
+
+Фото и таблица параметров:
+
+```html
+<div class="photos">
+  <figure class="photo">
+    <a href="/assets/uploads/..."><img src="/assets/uploads/..." alt="Фото 1" loading="lazy"></a>
+    <figcaption><span class="tag ok">Обложка</span><form method="post"><button class="btn sm danger" type="submit">Убрать</button></form></figcaption>
+  </figure>
+</div>
+<form class="photo-add" method="post" enctype="multipart/form-data"><!-- ag_admin_csrf_field() -->
+  <label class="f"><span>Добавить фото</span><input class="in" type="file" name="photo[]" accept="image/jpeg,image/png,image/webp" multiple required>
+    <small class="hint">Можно выбрать сразу несколько. Осталось места: 5 из 8.</small></label>
+  <button class="btn primary" type="submit">Загрузить</button>
+</form>
+
+<table class="tbl params"><tbody><tr><th>Состав</th><td>Хлопок</td></tr></tbody></table>
+```
+
+Если кусков не хватает, подключите из тела страницы свой файл: `<link rel="stylesheet" href="/themes/<тема>/assets/...css">`. Берите переменные админки (`--line`, `--muted`, `--surface`, `--hover`, `--r`, `--r-lg`), тогда тёмная тема получится сама, и давайте своим классам префикс модуля. Имена `.gallery`, `.shot`, `.thumb`, `.stats`, `.grid2`, `.side`, `.editor` заняты страницами ядра. Перед сдачей откройте страницу на ширине 1280 и 375 px, с данными и пустую.
+
 ### Живые части страницы: опрос и шаги без перезагрузки
 
 Своих скриптов у страницы модуля нет (политика безопасности пускает только скрипты сайта, без inline), поэтому опрос делает `assets/admin/admin.js` ядра. Модуль только размечает элемент:
