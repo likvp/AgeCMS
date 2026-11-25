@@ -79,6 +79,16 @@ server {
         try_files $uri =404;
     }
 
+    # The run address of the scheduler carries a secret in its query: it is kept out of the access log.
+    location = /_/cron {
+        access_log off;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_param SCRIPT_NAME /index.php;
+        fastcgi_hide_header X-AgeCMS-Policy;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_read_timeout 60s;
+    }
     location = /index { rewrite ^ /index.php last; }
     # Shadow cache hit: an internal redirect into the location above, so the file is sent with its headers.
     # (try_files serves a file in the current location, which would drop Cache-Control and X-AgeCMS-Cache.)

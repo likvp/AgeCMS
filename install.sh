@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # AgeCMS installer for Debian and Ubuntu: PHP with every extension, nginx (or the Apache already running),
 # Node.js and Chrome for the importer's "exact copy" mode, the site itself, file ownership, the virtual host,
-# a Let's Encrypt certificate and a daily backup.
+# a Let's Encrypt certificate, a daily backup and the scheduler in cron.
 #
 #   curl -fsSL https://raw.githubusercontent.com/likvp/AgeCMS/main/install.sh | sudo bash -s -- example.com
 #
@@ -208,7 +208,12 @@ APACHE
     fi
 
     if [ -d /etc/cron.d ]; then
-        printf '%s\n' "# AgeCMS $DOMAIN: daily database backup" "17 3 * * * www-data $PHP $DIR/bin/backup.php >/dev/null 2>&1" > "/etc/cron.d/agecms-${DOMAIN//./-}"
+        printf '%s\n' "# AgeCMS $DOMAIN: daily database backup, the scheduler every minute (tasks of modules on time, without visitors)" \
+            "17 3 * * * www-data $PHP $DIR/bin/backup.php >/dev/null 2>&1" \
+            "* * * * * www-data $PHP $DIR/bin/cron.php >/dev/null 2>&1" > "/etc/cron.d/agecms-${DOMAIN//./-}"
+        # Containers have no running cron unless it is started; on a normal server it runs already.
+        if [ -d /run/systemd/system ]; then systemctl enable --now cron >>"$LOG" 2>&1 || warn "cron не запустился: планировщик и ночной бэкап не будут работать, проверьте systemctl status cron"
+        else service cron start >>"$LOG" 2>&1 || true; fi
     fi
 
     step "Проверка"
@@ -222,7 +227,7 @@ APACHE
     printf '  Админка:  %s://%s/admin/\n' "$SCHEME" "$DOMAIN"
     printf '  Логин:    %s\n' "$ADMIN"
     printf '  Пароль:   \033[1m%s\033[0m   (показан один раз, сохраните сейчас)\n\n' "$pass"
-    printf '  Файлы %s, PHP %s, %s, бэкап базы каждую ночь.\n' "$DIR" "$PHPV" "$WEB"
+    printf '  Файлы %s, PHP %s, %s, бэкап базы каждую ночь, планировщик раз в минуту.\n' "$DIR" "$PHPV" "$WEB"
     case "$CAPTURE_STATE" in
         ready) printf '  Захват сайтов: готов (%s).\n' "$CAPTURE_NOTE" ;;
         *) printf '  Захват сайтов: %s (%s). Сайт работает без него: импорт по адресу делает страницы AgeCMS,\n  пакет «Точной копии» можно загрузить файлом. Поставить позже: sudo bash %s/bin/install-capture.sh\n' "$([ "$CAPTURE_STATE" = skipped ] && echo пропущен || echo 'не готов')" "$CAPTURE_NOTE" "$DIR" ;;
