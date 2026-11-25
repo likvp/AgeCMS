@@ -300,6 +300,36 @@ SQL);
                     }
                 }
             },
+            // Work that modules put off until a moment or repeat (Scheduler). One row per module and key.
+            10 => static function (PDO $pdo): void {
+                $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    module TEXT NOT NULL,
+    task_key TEXT NOT NULL,
+    handler TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending',
+    due_at INTEGER NOT NULL,
+    run_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    spec TEXT NOT NULL DEFAULT '{}',
+    zone TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL DEFAULT 1,
+    claim TEXT NOT NULL DEFAULT '',
+    lease_until INTEGER NOT NULL DEFAULT 0,
+    last_run_at INTEGER,
+    last_error TEXT NOT NULL DEFAULT '',
+    finished_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (module, task_key)
+);
+CREATE INDEX IF NOT EXISTS scheduled_tasks_due ON scheduled_tasks (status, run_at);
+CREATE INDEX IF NOT EXISTS scheduled_tasks_lease ON scheduled_tasks (lease_until) WHERE claim <> '';
+SQL);
+            },
         ];
     }
 }

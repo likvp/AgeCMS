@@ -25,6 +25,7 @@ final class Config
         'mail' => ['transport' => 'mail', 'from' => '', 'from_name' => '', 'leads_to' => '', 'leads_notify' => true, 'smtp' => ['host' => '', 'port' => 465, 'secure' => 'ssl', 'user' => '', 'pass' => '']],
         'updates' => ['url' => 'https://raw.githubusercontent.com/likvp/AgeCMS/releases/release.json', 'auto' => false, 'trusted_keys' => []],
         'security' => ['frame_ancestors' => []],
+        'scheduler' => ['enabled' => true],
         'rate_limit' => ['mcp_per_minute' => 120, 'login_fails' => 5, 'login_window' => 900],
     ];
 

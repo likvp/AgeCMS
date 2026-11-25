@@ -19,6 +19,9 @@ final class Router
         // Leftover jobs, pings and re-renders are finished after a visit is answered, at most every 30 seconds.
         // The page-view beacon counts as a visit: pages served straight from the cache never start PHP themselves.
         $method = $_SERVER['REQUEST_METHOD'] ?? '';
+        if (parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) === Cron::PATH) {
+            self::cron((string)$method);
+        }
         if (in_array($method, ['GET', 'HEAD'], true) || ($method === 'POST' && parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) === '/_/hit')) {
             Background::afterResponse();
         }
@@ -29,6 +32,20 @@ final class Router
         } catch (Throwable $e) {
             Logger::log('error', 'request.failed', ['uri' => $_SERVER['REQUEST_URI'] ?? '', 'error' => $e->getMessage(), 'at' => basename($e->getFile()) . ':' . $e->getLine()]);
             self::send(500, 'text/plain; charset=utf-8', "Internal server error\n");
+        }
+    }
+
+    /** The run address. Apart from the rest: no visit is counted, and an error never puts its query (the secret) into the log. */
+    private static function cron(string $method): never
+    {
+        try {
+            if (!Database::exists()) {
+                self::send(404, 'text/plain; charset=utf-8', '', ['Cache-Control' => 'no-store']);
+            }
+            Cron::serve($method);
+        } catch (Throwable $e) {
+            Logger::log('error', 'request.failed', ['uri' => Cron::PATH, 'error' => $e->getMessage(), 'at' => basename($e->getFile()) . ':' . $e->getLine()]);
+            self::send(500, 'text/plain; charset=utf-8', '', ['Cache-Control' => 'no-store']);
         }
     }
 

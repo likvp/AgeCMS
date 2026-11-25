@@ -66,6 +66,29 @@ final class CircuitBreakerException extends AgeCMSException
     }
 }
 
+/** A scheduled task (Scheduler) asks for its next attempt after so many seconds: the other side said "wait" (Retry-After). */
+final class RetryLaterException extends AgeCMSException
+{
+    public function __construct(string $message, public readonly int $seconds)
+    {
+        parent::__construct($message);
+    }
+
+    public function kind(): string
+    {
+        return 'retry_later';
+    }
+}
+
+/** A scheduled task (Scheduler) says that another attempt is pointless: the person blocked the bot, the order is gone. */
+final class GiveUpException extends AgeCMSException
+{
+    public function kind(): string
+    {
+        return 'give_up';
+    }
+}
+
 final class Exceptions
 {
     /** Rebuilds an exception from the kind/message pair stored in a queue result. */

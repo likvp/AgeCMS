@@ -2,8 +2,8 @@
 declare(strict_types=1);
 
 // Optional: the site does this by itself after saves and on visits (core/Background.php).
-// A cron entry only adds a schedule, e.g. every minute: * * * * * php /path/bin/queue-worker.php
-// Drains the write queue, sends IndexNow pings and rebuilds invalidated pages.
+// Drains the write queue, sends IndexNow pings and rebuilds invalidated pages. It does not run the tasks of modules or
+// background.tick: for the system cron use bin/cron.php, which does all of it.
 if (PHP_SAPI !== 'cli') {
     exit(1);
 }

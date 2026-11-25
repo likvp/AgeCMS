@@ -149,6 +149,7 @@ final class Api
             'core' => ['version' => Updates::version(), 'newer' => Updates::available()['version'] ?? null],
             // What the web server's PHP lacks (the command-line PHP can differ): an agent that installed the site fixes this list.
             'environment' => ['php' => PHP_VERSION, 'sapi' => PHP_SAPI, 'missing_required' => array_column(array_filter(Installer::checks(), static fn(array $c): bool => !$c['ok'] && $c['level'] === 'required'), 'label'), 'missing_recommended' => array_column(array_filter(Installer::checks(), static fn(array $c): bool => !$c['ok'] && $c['level'] === 'recommended'), 'label')],
+            'scheduler' => ['cron' => ['ok' => 'ok', 'warn' => 'silent', 'none' => 'never'][Cron::status()['level']], 'last_run' => Cron::status()['last'], 'tasks' => Scheduler::counts()],
             'active_theme' => $theme,
             'pages' => Pages::listing(),
             'settings' => Seo::settings(),

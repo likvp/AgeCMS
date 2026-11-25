@@ -67,6 +67,18 @@ final class Audit
         return self::$actor ?? (PHP_SAPI === 'cli' ? Actor::cli() : Actor::system());
     }
 
+    /** Runs $fn with journal entries written as $actor (a scheduled task is not the work of whoever happened to be browsing). */
+    public static function during(Actor $actor, callable $fn): mixed
+    {
+        $before = self::$actor;
+        self::$actor = $actor;
+        try {
+            return $fn();
+        } finally {
+            self::$actor = $before;
+        }
+    }
+
     /** Actor from the `$by` strings the older code passes around: "human:name", "agent:name", plain name. */
     public static function actorFor(?string $by): Actor
     {

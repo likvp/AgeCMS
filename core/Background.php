@@ -9,7 +9,8 @@ use Throwable;
  * Housekeeping that cron would otherwise do: finish stuck jobs, send IndexNow pings, re-render pages
  * dropped from the cache, ask once a day whether a newer core is out (and install it when updates.auto is on).
  * It runs after the response has gone out, when someone saves in the admin or through the API, and on ordinary
- * visits that reach PHP (at most once every 30 seconds). No cron needed.
+ * visits that reach PHP (at most once every 30 seconds). No cron needed. A cron (bin/cron.php, the run address, see Cron) does the
+ * same on time; work with a set time belongs to Scheduler.
  */
 final class Background
 {
@@ -37,6 +38,10 @@ final class Background
         $registered = true;
         register_shutdown_function(static function () use ($always): void {
             Http::finishResponse();
+            // The answer is out: the next click of the same person must not wait for this work on the lock of their session.
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_write_close();
+            }
             try {
                 self::run($always);
             } catch (Throwable $e) {
@@ -46,10 +51,18 @@ final class Background
     }
 
     /**
+     * @param bool $tasks false when the caller has run the scheduled tasks itself (Cron)
      * @return array{jobs:int,pings:int,rebuilt:int,ticked:bool}|null null when nothing was due
      */
-    public static function run(bool $always = false, float $budgetSeconds = 8.0): ?array
+    public static function run(bool $always = false, float $budgetSeconds = 8.0, bool $tasks = true): ?array
     {
+        if ($tasks) {
+            try {
+                Cron::visit();
+            } catch (Throwable $e) {
+                Logger::log('error', 'scheduler.failed', ['error' => $e->getMessage()]);
+            }
+        }
         $ticked = self::tick($budgetSeconds);
         try {
             Updates::checkIfDue();

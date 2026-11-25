@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use AgeCMS\{Actor, Cache, Config, Database, EventBus, Installer, Queue, SkillRegistry};
+use AgeCMS\{Actor, Cache, Config, Database, EventBus, Installer, Queue, Scheduler, SkillRegistry};
 
 /** Minimal test base: assertions plus a fresh installed site per call of freshSite(). */
 abstract class TestCase
@@ -65,6 +65,7 @@ abstract class TestCase
         Config::reset();
         Database::reset();
         EventBus::reset();
+        Scheduler::reset();
         SkillRegistry::reset();
         TestEnv::copyModules();
         Installer::install($options + ['site_url' => 'https://example.test', 'site_name' => 'Test Site', 'admin_password' => 'Passw0rd-test-1', 'demo' => false]);
