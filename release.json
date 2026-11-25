@@ -1,26 +1,26 @@
 {
-    "version": "1.13.0",
-    "date": "2026-11-24",
-    "notes": "Ровная админка и готовые куски для страниц модулей. Ряд полей .row с подсказками выравнивается по верху, кнопка стоит вровень с полем, панели в форме не слипаются с соседними, поле файла оформлено, редактор страницы на телефоне не прокручивается вбок. Новые классы для модулей: fields, stack, cols, card-head (card-pic, card-num, card-meta, card-title, card-actions), facts, tbl params, photos, photo, photo-add; примеры в docs/MODULES.md, раздел Вид страниц модуля в админке. Модули без новых классов работают как раньше. Схема базы та же, 9.",
+    "version": "1.14.0",
+    "date": "2026-11-25",
+    "notes": "Планировщик. Модуль ставит работу на время, по интервалу или каждый день в часовом поясе сайта (класс Scheduler): срок годности, повторы при сбое, замок на задачу, отмена и замена по ключу. Выполняет её bin/cron.php (раз в минуту из cron) или адрес запуска с секретом, тогда всё идёт в срок и без посетителей; install.sh ставит cron сам. Без cron сайт работает как раньше, задачи идут при посещениях. В Системе видно последний запуск, предупреждение о молчащем cron, ближайшие и упавшие задачи, готовая строка для cron. Модули с background.tick не меняются. Схема базы 10, обновляется сама.",
     "url": "",
-    "package": "agecms-1.13.0.json.gz",
-    "sha256": "4bb3b3d5fbca3430942d9f06e8252ee2d186c54f351c382ea20b36b524a64960",
-    "size": 598671,
+    "package": "agecms-1.14.0.json.gz",
+    "sha256": "f260b82f0fb5ef191e1ea7829278c4688b12ce553822bab78cac336a05cd5ef7",
+    "size": 629270,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "bmCMBJc1tPmaHqm8hs3TGPzoCyXQ+EVMEI2+YysB46IYBHIEHgbv0d4QYUyVA0vn8cOG2Lh5t1VxVTGebl18Cg=="
+        "sig": "7U5YyRL3Dao0aN4IRDoqnHHzmF5HxwRsJXHaN9hGQRbb833j9KYhJxe4pGSiYde6vIVMSwi0OK9FxYjTgZvcCQ=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "bmCMBJc1tPmaHqm8hs3TGPzoCyXQ+EVMEI2+YysB46IYBHIEHgbv0d4QYUyVA0vn8cOG2Lh5t1VxVTGebl18Cg=="
+            "sig": "7U5YyRL3Dao0aN4IRDoqnHHzmF5HxwRsJXHaN9hGQRbb833j9KYhJxe4pGSiYde6vIVMSwi0OK9FxYjTgZvcCQ=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEYCIQDxpFh2KgAugSaHFbJNcsw8cs81Ep6BrfCqckjl75WwOAIhAI6zAGrG9MQLw5iAeBcia/+XbYCCwaN915kgr6IbCXRy"
+            "sig": "MEUCIQDPAyRQR00Stj0jecgQ2N1iGSEiK05D+K+f4tXrqbcsEwIgJn+B+f3/LcXDJb4iGumakxwaVZWCTr0sTVH2m8gt2fQ="
         }
     ]
 }
