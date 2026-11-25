@@ -46,6 +46,9 @@ final class Cron
     /** Called for visits (Background::run): tasks only when no cron is near, at most every 30 seconds, for a short while. */
     public static function visit(float $budgetSeconds = 5.0): ?array
     {
+        if (!Database::exists()) {
+            return null; // not installed yet: nothing is written before that
+        }
         $now = time();
         $stamp = Scheduler::dir() . '/.visit';
         $last = @filemtime($stamp);

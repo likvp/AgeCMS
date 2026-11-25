@@ -481,6 +481,15 @@ final class SchedulerTest extends HttpCase
         $this->assertSame(2, count($this->ran));
     }
 
+    public function testNothingIsWrittenBeforeTheInstallation(): void
+    {
+        $this->site();
+        Database::reset();
+        TestEnv::remove(AGECMS_DATA);
+        $this->assertSame(null, Cron::visit());
+        $this->assertSame(false, is_dir(AGECMS_DATA));
+    }
+
     public function testVisitsLeaveTheTasksToALivingCron(): void
     {
         $this->site();
