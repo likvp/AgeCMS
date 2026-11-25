@@ -87,6 +87,8 @@ $envInstallable = array_filter($envMissing, static fn(array $c): bool => \AgeCMS
     </div>
 </section>
 
+<?php if ($isAdmin) { require __DIR__ . '/scheduler.php'; } ?>
+
 <?php if ($isAdmin): $frameNow = \AgeCMS\Embedding::sources(); $frameTg = \AgeCMS\Embedding::PRESETS['telegram']; if (array_diff($frameTg, $frameNow) === []) { $frameNow = array_merge(['telegram'], array_diff($frameNow, $frameTg)); } ?>
 <section class="panel">
     <div class="panel-h"><h2>Показ сайта во фрейме</h2></div>

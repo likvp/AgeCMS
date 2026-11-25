@@ -6,7 +6,7 @@ declare(strict_types=1);
 // Content changes go through the same queue and the same validation as the agent API.
 require __DIR__ . '/../core/bootstrap.php';
 
-use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Embedding, Security, Seo, ServerSetup, Slug, Tokens, Updater, Updates};
+use AgeCMS\{AgeCMSException, AntiSpam, Audit, Auth, Backup, Background, Cache, CircuitBreaker, Config, Cron, Database, ForbiddenException, Installer, Mailer, Media, ModuleInstaller, Pages, Queue, Embedding, Scheduler, Security, Seo, ServerSetup, Slug, Tokens, Updater, Updates};
 
 header('Cache-Control: no-store');
 foreach (require __DIR__ . '/../core/security-headers.php' as $name => $value) {
@@ -400,6 +400,35 @@ try {
                     Config::set('security.frame_ancestors', $parsed['sources']);
                     Audit::record(Audit::SYSTEM, $parsed['sources'] === [] ? 'Показ сайта во фрейме чужих сайтов выключен' : 'Показ сайта во фрейме разрешён: ' . implode(' ', $parsed['sources']));
                     $flash = $parsed['sources'] === [] ? 'Показ сайта во фрейме выключен' : 'Список сайтов для фрейма сохранён';
+                    $section = 'system';
+                    break;
+                case 'task_retry':
+                    Security::requirePermission($actor, 'system.manage');
+                    Scheduler::retry((int)($_POST['id'] ?? 0));
+                    Audit::record(Audit::SYSTEM, 'Планировщик: задача #' . (int)($_POST['id'] ?? 0) . ' поставлена на повтор');
+                    $flash = 'Задача выполнится при следующем запуске планировщика';
+                    $section = 'system';
+                    break;
+                case 'task_remove':
+                    Security::requirePermission($actor, 'system.manage');
+                    $task = Scheduler::remove((int)($_POST['id'] ?? 0));
+                    Audit::record(Audit::SYSTEM, 'Планировщик: убрана задача ' . $task);
+                    $flash = 'Задача убрана';
+                    $section = 'system';
+                    break;
+                case 'cron_url_on':
+                    Security::requirePermission($actor, 'system.manage');
+                    $had = Cron::urlEnabled();
+                    Cron::renewKey();
+                    Audit::record(Audit::SYSTEM, $had ? 'Планировщик: адрес запуска сменён' : 'Планировщик: адрес запуска включён');
+                    $flash = $had ? 'Адрес запуска сменён, прежний больше не работает' : 'Адрес запуска включён';
+                    $section = 'system';
+                    break;
+                case 'cron_url_off':
+                    Security::requirePermission($actor, 'system.manage');
+                    Cron::disableUrl();
+                    Audit::record(Audit::SYSTEM, 'Планировщик: адрес запуска выключен');
+                    $flash = 'Адрес запуска выключен';
                     $section = 'system';
                     break;
                 case 'env_install':
