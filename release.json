@@ -1,26 +1,26 @@
 {
-    "version": "1.14.2",
+    "version": "1.14.3",
     "date": "2026-11-26",
-    "notes": "Админка на телефоне: шапка с меню больше не занимает полэкрана, страница начинается сразу под ней. Таблицы посещаемости на странице «Заявки» и бэкапов в «Системе» прокручиваются внутри карточки и не вылезают за край. База и модули не меняются.",
+    "notes": "Таблицы в админке сортируются нажатием на заголовок, в разделах ядра и на страницах модулей: по возрастанию, по убыванию, исходный порядок. Даты, суммы и размеры сравниваются по значению, строки «Итого» остаются внизу, на телефоне, где модуль прячет шапку, появляется список «Сортировать». Модулям менять ничего не нужно, если у таблицы есть шапка. У списка по страницам сортируется открытая страница. Схема базы та же.",
     "url": "",
-    "package": "agecms-1.14.2.json.gz",
-    "sha256": "b0693f6c9181e206bccef5d9655f13f2b2cf5c0888c5dfb1f9398de9b444d202",
-    "size": 630209,
+    "package": "agecms-1.14.3.json.gz",
+    "sha256": "1c88af7c625dd9496464e8534d4b478eb91e0da137b4212e291a8c5d5197cda7",
+    "size": 637258,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "k9Ah6n1a0DrwzLTpUti3vnX/f62AH+nz0SkOoSmgRrROrnF+P6WvsLZYFRhBrDFYKh7wqbUmuD8W2GvAZdCmAQ=="
+        "sig": "lN/UJcEJ/mrdCXbtDWhJPjupbvx2yG5HG6osnXaAVZSnXkpD21KZaxbM+zLz/kngBwqZLhYlwtqylyaNXUq/Dg=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "k9Ah6n1a0DrwzLTpUti3vnX/f62AH+nz0SkOoSmgRrROrnF+P6WvsLZYFRhBrDFYKh7wqbUmuD8W2GvAZdCmAQ=="
+            "sig": "lN/UJcEJ/mrdCXbtDWhJPjupbvx2yG5HG6osnXaAVZSnXkpD21KZaxbM+zLz/kngBwqZLhYlwtqylyaNXUq/Dg=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEUCIQDsYM4S8rJaSOUrXjYhgcWvJb1V9rRbDYJ0ErNmxjwABAIgAOXgOIT/2zR6lAyjOG26iHEhWPqpMzvG6r4kRmQsS9c="
+            "sig": "MEQCIGYLv+MAHJLcmf3Lix74tMVkzVFULbw2OTsvNxjyUr4YAiBSkPFmS3iTXXieHz3DT1eeEj1vqbM/qeLln0waPwN+Ow=="
         }
     ]
 }
