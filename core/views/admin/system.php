@@ -111,9 +111,9 @@ $envInstallable = array_filter($envMissing, static fn(array $c): bool => \AgeCMS
         <?php if ($isAdmin): ?><button class="btn" name="action" value="backup" type="submit"><?= icon('copy') ?>Сделать бэкап</button><?php endif; ?>
     </form>
     <?php if ($isAdmin): $backups = array_slice(Backup::list(), 0, 8); if ($backups !== []): ?>
-        <table class="tbl"><thead><tr><th>Последние бэкапы</th><th>Откуда</th><th class="r">Размер</th></tr></thead><tbody>
+        <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Последние бэкапы</th><th>Откуда</th><th class="r">Размер</th></tr></thead><tbody>
         <?php foreach ($backups as $b): ?><tr><td class="mono"><?= h($b['file']) ?></td><td><?= $b['auto'] ? '<span class="tag plain">перед правкой агента</span>' : '<span class="tag plain">вручную</span>' ?></td><td class="r num muted"><?= round($b['size'] / 1024) ?> КБ</td></tr><?php endforeach; ?>
-        </tbody></table>
+        </tbody></table></div>
     <?php endif; endif; ?>
 </section>
 

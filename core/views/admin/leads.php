@@ -28,14 +28,14 @@ $stats = Database::rows('SELECT date, views, unique_visitors, leads_count FROM a
     <?php if ($stats === []): ?>
         <div class="empty"><?= icon('info') ?><b>Данных пока нет</b><span>Счётчики появятся после первых посещений.</span></div>
     <?php else: ?>
-        <table class="tbl">
+        <div class="tbl-scroll"><table class="tbl">
             <thead><tr><th>День</th><th>Просмотры</th><th>Посетители</th><th>Заявки</th></tr></thead>
             <tbody>
             <?php foreach ($stats as $s): ?>
                 <tr><td class="num"><?= h($s['date']) ?></td><td class="num"><?= (int)$s['views'] ?></td><td class="num"><?= (int)$s['unique_visitors'] ?></td><td class="num"><?= (int)$s['leads_count'] ?></td></tr>
             <?php endforeach; ?>
             </tbody>
-        </table>
+        </table></div>
     <?php endif; ?>
     </div>
 </section>

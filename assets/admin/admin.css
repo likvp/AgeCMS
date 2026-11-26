@@ -120,7 +120,10 @@ code { background: var(--hover); padding: 0.1em 0.4em; border-radius: var(--r-sm
 .actions-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 @media (max-width: 880px) {
-    .shell { grid-template-columns: minmax(0, 1fr); }
+    /* Строки по содержимому: иначе сетка высотой в экран делит лишнее место между шапкой и страницей, и шапка с меню раздувается. */
+    .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; align-content: start; }
+    .tbl th { padding: 9px 12px; }
+    .tbl td { padding: 10px 12px; }
     .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
     .brand { padding: 0 6px; }
     .brand small { display: none; }
