@@ -1,26 +1,26 @@
 {
-    "version": "1.14.1",
+    "version": "1.14.2",
     "date": "2026-11-26",
-    "notes": "Вкладка браузера в админке показывает открытый раздел и имя сайта, например «Страницы - Название сайта - AgeCMS», вместо одного «AgeCMS» везде. В редакторе страницы в начале стоит её заголовок, на экране входа «Вход - Название сайта». База и модули не меняются.",
+    "notes": "Админка на телефоне: шапка с меню больше не занимает полэкрана, страница начинается сразу под ней. Таблицы посещаемости на странице «Заявки» и бэкапов в «Системе» прокручиваются внутри карточки и не вылезают за край. База и модули не меняются.",
     "url": "",
-    "package": "agecms-1.14.1.json.gz",
-    "sha256": "a081f5c4167fff681c903c0948f2139f28320cf3df3417ad1bd6cb6238177898",
-    "size": 630066,
+    "package": "agecms-1.14.2.json.gz",
+    "sha256": "b0693f6c9181e206bccef5d9655f13f2b2cf5c0888c5dfb1f9398de9b444d202",
+    "size": 630209,
     "signature": {
         "alg": "ed25519",
         "key_id": "agecms-2026",
-        "sig": "b665dzPfQgKd1XgmTc3jyB0M0lin+/NCv+Pqzkis9I7+xijXuIsyQPw0O52FgqeG/kTOV6NiXNEYf3xIdda+DQ=="
+        "sig": "k9Ah6n1a0DrwzLTpUti3vnX/f62AH+nz0SkOoSmgRrROrnF+P6WvsLZYFRhBrDFYKh7wqbUmuD8W2GvAZdCmAQ=="
     },
     "signatures": [
         {
             "alg": "ed25519",
             "key_id": "agecms-2026",
-            "sig": "b665dzPfQgKd1XgmTc3jyB0M0lin+/NCv+Pqzkis9I7+xijXuIsyQPw0O52FgqeG/kTOV6NiXNEYf3xIdda+DQ=="
+            "sig": "k9Ah6n1a0DrwzLTpUti3vnX/f62AH+nz0SkOoSmgRrROrnF+P6WvsLZYFRhBrDFYKh7wqbUmuD8W2GvAZdCmAQ=="
         },
         {
             "alg": "ecdsa-p256-sha256",
             "key_id": "agecms-2026-p256",
-            "sig": "MEQCIBASRmZaI0EA9RvYMjhfdnLNTDxHf+vAXLH5JuOMnML4AiBL513McmEpdt6S5or36SIDqscFXDQZ8pE3yDVzuaWeig=="
+            "sig": "MEUCIQDsYM4S8rJaSOUrXjYhgcWvJb1V9rRbDYJ0ErNmxjwABAIgAOXgOIT/2zR6lAyjOG26iHEhWPqpMzvG6r4kRmQsS9c="
         }
     ]
 }
