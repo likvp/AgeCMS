@@ -767,6 +767,53 @@ function agent_user_text(string $login, string $password): string
     return "Нужно поправить сайт {$url}. Инструкция для тебя: {$url}/AGENT.md\nЛогин: {$login}\nПароль: {$password}\nВыдай себе токен по инструкции и дальше работай только с ним.";
 }
 
+/**
+ * Title of the browser tab: the open section first (a narrow tab keeps the beginning), then the name of the site, so that
+ * the tabs of several sites and sections can be told apart. The sign-in screens end with the site name.
+ *
+ * @param array<string,mixed>|null $user
+ * @param array<string,mixed>|null $module
+ */
+function admin_title(string $section, ?array $user, ?array $module, ?\AgeCMS\ModuleResponse $reply): string
+{
+    $label = match ($section) {
+        'login' => 'Вход',
+        'login2' => 'Код из приложения',
+        'forgot' => 'Восстановление пароля',
+        'reset' => 'Новый пароль',
+        'pages' => 'Страницы',
+        'edit' => admin_edited_page_title(),
+        'media' => 'Медиа',
+        'trash' => 'Корзина',
+        'menus', 'settings' => 'Настройки',
+        'history' => 'История',
+        'leads' => 'Заявки',
+        'users' => ($user['role'] ?? '') === 'admin' ? 'Пользователи' : 'Профиль',
+        'agents' => 'ИИ-агенты',
+        'system' => 'Система',
+        'module_settings' => 'Настройки модуля',
+        'module' => trim((string)($reply?->title ?? '')) ?: (string)($module['page']['title'] ?? 'Модуль'),
+        default => 'Обзор',
+    };
+    $site = trim((string)(Seo::settings()['site_name'] ?? ''));
+    $parts = [$label];
+    if ($site !== '' && strcasecmp($site, 'AgeCMS') !== 0) {
+        $parts[] = $site;
+    }
+    if ($user !== null || count($parts) === 1) {
+        $parts[] = 'AgeCMS';
+    }
+    return implode(' - ', $parts);
+}
+
+/** The title of the page open in the block editor: several editor tabs differ by it. */
+function admin_edited_page_title(): string
+{
+    $slug = (string)($_GET['slug'] ?? '');
+    $doc = Pages::slugValid($slug) ? Pages::doc($slug) : null;
+    return trim((string)($doc['title'] ?? '')) ?: 'Редактор страницы';
+}
+
 /** URL of an admin section. @param array<string,string> $params */
 function admin_url(string $section, array $params = []): string
 {
@@ -784,6 +831,9 @@ if ($user === null && $section === 'reset') {
     header('Referrer-Policy: no-referrer'); // the link carries the secret
 }
 
+$view = $user !== null ? 'layout' : (in_array($section, ['forgot', 'reset'], true) ? $section : (Auth::pendingSecondFactor() !== null ? 'login2' : 'login'));
+$title = admin_title($user !== null ? $section : $view, $user, $adminModule, $moduleReply);
+
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -791,7 +841,7 @@ if ($user === null && $section === 'reset') {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <title>AgeCMS</title>
+    <title><?= h($title) ?></title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23cf4a17'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='monospace' font-size='18' font-weight='700' fill='white'%3EA%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="<?= h(admin_asset('admin.css')) ?>">
     <script src="<?= h(admin_asset('theme.js')) ?>"></script>
@@ -799,7 +849,7 @@ if ($user === null && $section === 'reset') {
 <body>
 <?php
 if ($user === null) {
-    admin_view(in_array($section, ['forgot', 'reset'], true) ? $section : (Auth::pendingSecondFactor() !== null ? 'login2' : 'login'), ['error' => $error, 'notice' => $notice, 'resetDone' => ($_GET['reset'] ?? '') === 'ok']);
+    admin_view($view, ['error' => $error, 'notice' => $notice, 'resetDone' => ($_GET['reset'] ?? '') === 'ok']);
 } else {
     $csrf = Auth::csrf();
     $isAdmin = Security::can($user['role'], 'system.manage');

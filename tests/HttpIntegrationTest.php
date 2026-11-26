@@ -287,6 +287,32 @@ final class HttpIntegrationTest extends HttpCase
         $this->assertContains('name="action" value="module_sign"', $page);
     }
 
+    public function testTheBrowserTabNamesTheSectionAndTheSite(): void
+    {
+        $this->boot();
+        $title = function (string $query): string {
+            preg_match('~<title>(.*?)</title>~s', $this->http('GET', '/admin/' . $query, null, [], true)['body'], $m);
+            return html_entity_decode($m[1] ?? '', ENT_QUOTES | ENT_HTML5);
+        };
+        $site = (string)\AgeCMS\Seo::settings()['site_name'];
+        $this->assertTrue($site !== '' && $site !== 'AgeCMS');
+        $this->assertSame("Вход - {$site}", $title(''));
+        $this->assertSame("Восстановление пароля - {$site}", $title('?s=forgot'));
+
+        $this->adminLogin();
+        foreach (['' => 'Обзор', '?s=pages' => 'Страницы', '?s=media' => 'Медиа', '?s=trash' => 'Корзина', '?s=history' => 'История', '?s=leads' => 'Заявки', '?s=users' => 'Пользователи', '?s=agents' => 'ИИ-агенты', '?s=settings' => 'Настройки', '?s=system' => 'Система', '?s=module_settings&m=none' => 'Настройки модуля', '?s=edit&slug=no-such-page' => 'Редактор страницы'] as $query => $label) {
+            $this->assertSame("{$label} - {$site} - AgeCMS", $title($query), $query);
+        }
+        $about = (string)\AgeCMS\Pages::doc('about')['title'];
+        $this->assertSame("{$about} - {$site} - AgeCMS", $title('?s=edit&slug=about'), 'editor tabs differ by the page');
+
+        $rename = static fn(string $name) => Database::write(static fn(\PDO $db) => $db->prepare("UPDATE settings SET value = ? WHERE key = 'site_name'")->execute([$name]));
+        $rename('Автобусы <"Юг"> & Ко');
+        $this->assertSame('Обзор - Автобусы <"Юг"> & Ко - AgeCMS', $title(''), 'the name is escaped');
+        $rename('');
+        $this->assertSame('Обзор - AgeCMS', $title(''));
+    }
+
     public function testAdminSectionsPageCreationAndSettings(): void
     {
         $this->boot();
