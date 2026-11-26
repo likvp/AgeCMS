@@ -7,7 +7,7 @@ declare(strict_types=1);
 //                       [--url=<changelog link>] [--package-url=<https address of the package>] [--out=dist]
 // Two signatures over the same bytes: Ed25519 for servers with sodium, ECDSA P-256 for servers that only have openssl.
 // The keys of the official releases: ~/.config/agecms/release-ed25519.key and ~/.config/agecms/release-p256.pem on
-// Lerk's Mac, copies in his Obsidian vault (Pass/, «AgeCMS доступ»).
+// Lerk's Mac, copies in his Obsidian vault (Pass/, «AgeCMS ключи подписи и тестовая админка»).
 // Writes core/release.json (version, date, notes), then <out>/agecms-<version>.json.gz and <out>/release.json.
 // Upload both files to one public https folder and point updates.url of the sites at that release.json.
 // Without --package-url the package is referenced by its file name, next to release.json.
