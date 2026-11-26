@@ -31,7 +31,7 @@ $fmt = static fn(int $b): string => $b >= 1048576 ? number_format($b / 1048576, 
 <?php if ($pages !== []): ?>
 <section class="panel">
     <div class="panel-h"><h2>Страницы</h2><span class="muted"><?= count($pages) ?> шт.</span></div>
-    <div class="tbl-scroll"><table class="tbl"><tbody>
+    <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Страница</th><th></th></tr></thead><tbody>
         <?php foreach ($pages as $d): ?>
             <tr>
                 <td><span class="mono">/<?= h($d['slug']) ?></span><span class="cell-sub">удалил <?= h($d['actor_name']) ?>, <?= admin_date($d['created_at']) ?></span></td>

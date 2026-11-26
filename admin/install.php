@@ -113,6 +113,7 @@ $self = '/admin/install.php';
     <p class="muted">Смотрим, что есть на хостинге. Это занимает секунду и ничего не меняет.</p>
     <section class="panel">
         <table class="tbl">
+            <thead><tr><th>Проверка</th><th class="r">Итог</th></tr></thead>
             <tbody>
             <?php foreach ($checks as $c): ?>
                 <tr>

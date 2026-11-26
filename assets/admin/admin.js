@@ -82,6 +82,222 @@
         });
     });
 
+    // ---- sorting of tables by a click on a column header ------------------------------------------------------------------
+    // Every table of the admin that has a header is sortable, the pages of modules included: a module writes plain markup and
+    // brings no script (CSP). A click on a header: ascending, descending, the order of the server. Values are read as dates,
+    // numbers (sums, sizes) or text; <td data-sort="..."> gives the value itself. Rows «Итого» and [data-sort-fixed] stay at
+    // the bottom, a row of one wide cell stays under the row before it. [data-nosort] on a table or a <th> turns it off, only
+    // for an order that is itself the data. A header with its own link or field (sorting on the server) is left alone.
+    // The sort works on the rows of the page: a list cut into pages is sorted page by page.
+    var collator = window.Intl && Intl.Collator ? new Intl.Collator('ru', { numeric: true, sensitivity: 'base' }) : null;
+    function compareText(a, b) { return collator ? collator.compare(a, b) : a.localeCompare(b); }
+    // The text a person sorts by: without the second line under the title, buttons and the hidden parts of <details>.
+    function visibleText(node, brief) {
+        var out = '';
+        Array.prototype.forEach.call(node.childNodes, function (c) {
+            if (c.nodeType === 3) { out += c.nodeValue; return; }
+            if (c.nodeType !== 1) { return; }
+            var tag = c.tagName.toUpperCase();
+            if (/^(BUTTON|SELECT|TEXTAREA|NOSCRIPT|SCRIPT|STYLE|TEMPLATE|SVG|DIALOG)$/.test(tag) || c.hidden || c.classList.contains('sr')) { return; }
+            if (brief && (tag === 'SMALL' || c.classList.contains('cell-sub'))) { return; }
+            if (tag === 'DETAILS') { var head = c.querySelector('summary'); out += head ? ' ' + visibleText(head, brief) + ' ' : ''; return; }
+            out += ' ' + visibleText(c, brief) + ' ';
+        });
+        return out.replace(/\s+/g, ' ').trim();
+    }
+    function cellText(cell) {
+        if (!cell) { return ''; }
+        if (cell.hasAttribute('data-sort')) { return cell.getAttribute('data-sort').trim(); }
+        var text = visibleText(cell, true);
+        if (text !== '') { return text; }
+        var field = cell.querySelector('select, textarea, input:not([type=hidden]):not([type=submit]):not([type=button])');
+        if (field) {
+            if (field.type === 'checkbox' || field.type === 'radio') { return field.checked ? '1' : '0'; }
+            if (field.tagName === 'SELECT') { return field.options[field.selectedIndex] ? field.options[field.selectedIndex].text.trim() : ''; }
+            return field.value.trim();
+        }
+        return visibleText(cell, false);
+    }
+    // «6 декабря», «вс, 6 декабря», «26 нояб. 2026 в 14:05». Without a year it is the one that puts the day closest to today.
+    var months = { 'янв': 1, 'фев': 2, 'мар': 3, 'апр': 4, 'мая': 5, 'май': 5, 'июн': 6, 'июл': 7, 'авг': 8, 'сен': 9, 'окт': 10, 'ноя': 11, 'дек': 12 };
+    var wordDate = /^(?:(?:с|от|до) )?(?:(?:пн|вт|ср|чт|пт|сб|вс),? )?(\d{1,2}) (января|янв|февраля|февр|фев|марта|мар|апреля|апр|мая|май|июня|июн|июля|июл|августа|авг|сентября|сент|сен|октября|окт|ноября|нояб|ноя|декабря|дек)(?![а-яё])\.?(?: (\d{4}))?(?:(?:,? в |,? )(\d{1,2}):(\d{2}))?/i;
+    function wordDateParts(t) {
+        var m = wordDate.exec(t);
+        if (!m) { return null; }
+        var month = months[m[2].slice(0, 3).toLowerCase()], year = m[3];
+        if (!year) {
+            var now = new Date(), away = (month - 1 - now.getMonth()) * 30 + parseInt(m[1], 10) - now.getDate();
+            year = now.getFullYear() + (away < -183 ? 1 : (away > 183 ? -1 : 0));
+        }
+        return [year, month, m[1], m[4], m[5], 0];
+    }
+    function asDate(t) {
+        var m = /^(?:(?:с|от|до) )?(\d{1,2})\.(\d{1,2})\.(\d{4})(?:,? +(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(t);
+        var p = m ? [m[3], m[2], m[1], m[4], m[5], m[6]] : null;
+        if (!p) {
+            m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(t);
+            p = m ? [m[1], m[2], m[3], m[4], m[5], m[6]] : null;
+        }
+        p = p || wordDateParts(t);
+        return p ? p.reduce(function (sum, v) { return sum * 100 + (parseInt(v, 10) || 0); }, 0) : null;
+    }
+    // «8 000 ₽», «-12,5 %», «от 300», «№ 7», «3 блока», «1,2 МБ», «4 500 ₽ дети 3 000 ₽» (the first sum). Otherwise a second
+    // number in the text makes it text, not a number.
+    function asNumber(t) {
+        var m = /^(?:(?:от|до|около|№|#|~) ?)?([-+−]?(?:\d{1,3}(?:[    ]\d{3})+|\d+)(?:[.,]\d+)?)(?!\d)(.*)$/i.exec(t);
+        if (!m || (/\d/.test(m[2]) && !/^\s*(₽|руб|р\.|%|€|\$|[кмгт]б(?![а-яё]))/i.test(m[2]))) { return null; }
+        var n = parseFloat(m[1].replace(/[    ]/g, '').replace(',', '.').replace('−', '-'));
+        var size = /^\s*([кмгт])(?:б|иб)(?![а-яё])/i.exec(m[2]);
+        return size ? n * Math.pow(1024, 'кмгт'.indexOf(size[1].toLowerCase()) + 1) : n;
+    }
+    function columnCell(row, column) {
+        var at = 0;
+        for (var i = 0; i < row.cells.length; i++) {
+            at += row.cells[i].colSpan;
+            if (column < at) { return row.cells[i]; }
+        }
+        return null;
+    }
+    function isTotalRow(row) {
+        return row.hasAttribute('data-sort-fixed') || /(^|[\s_-])(total|itogo)($|[\s_-])/i.test(row.className)
+            || /^(итого|всего)(?![а-яё])/i.test(row.cells.length ? visibleText(row.cells[0], true) : '');
+    }
+    function headRowOf(table) {
+        if (table.tHead && table.tHead.rows.length) { return table.tHead.rows[table.tHead.rows.length - 1]; }
+        // No <thead>: the first row counts as the header when it is all <th> and data rows follow.
+        var first = table.rows[0];
+        var allTh = first && table.rows.length > 1 && first.cells.length > 1
+            && Array.prototype.every.call(first.cells, function (c) { return c.tagName === 'TH'; })
+            && Array.prototype.some.call(table.rows[1].cells, function (c) { return c.tagName === 'TD'; });
+        return allTh ? first : null;
+    }
+    function sortBody(body, headRow, columns, state) {
+        var rows = Array.prototype.filter.call(body.rows, function (r) { return r !== headRow; });
+        rows.forEach(function (r) { if (r.__agPos === undefined) { r.__agPos = body.__agNext = (body.__agNext || 0) + 1; } });
+        rows.sort(function (a, b) { return a.__agPos - b.__agPos; });
+        var top = [], units = [], bottom = [];
+        rows.forEach(function (r) {
+            if (isTotalRow(r)) { bottom.push(r); return; }
+            if (columns > 1 && r.cells.length === 1 && r.cells[0].colSpan > 1) {
+                if (units.length) { units[units.length - 1].rows.push(r); } else { top.push(r); }
+                return;
+            }
+            units.push({ rows: [r], pos: r.__agPos });
+        });
+        if (state) {
+            var dates = 0, numbers = 0, filled = 0;
+            units.forEach(function (u) {
+                u.text = cellText(columnCell(u.rows[0], state.column));
+                u.empty = u.text === '' || u.text === '-';
+                u.date = u.empty ? null : asDate(u.text);
+                u.number = u.empty || u.date !== null ? null : asNumber(u.text);
+                if (!u.empty) { filled++; }
+                if (u.date !== null) { dates++; }
+                if (u.number !== null) { numbers++; }
+            });
+            var kind = dates && dates * 2 >= filled ? 'date' : (numbers && numbers * 2 >= filled ? 'number' : 'text');
+            units.forEach(function (u) { u.last = u.empty || (kind !== 'text' && u[kind] === null); });
+            var sign = state.dir === 'desc' ? -1 : 1;
+            units.sort(function (a, b) {
+                if (a.last || b.last) { return a.last === b.last ? a.pos - b.pos : (a.last ? 1 : -1); }
+                var d = kind === 'text' ? 0 : a[kind] - b[kind];
+                if (d === 0) { d = compareText(a.text, b.text); }
+                return d === 0 ? a.pos - b.pos : d * sign;
+            });
+        }
+        var order = top;
+        units.forEach(function (u) { order = order.concat(u.rows); });
+        order.concat(bottom).forEach(function (r) { body.appendChild(r); });
+    }
+    function applySort(table) {
+        var s = table.__agSort;
+        Array.prototype.forEach.call(table.tBodies, function (body) { sortBody(body, s.headRow, s.columns, s.state); });
+        s.heads.forEach(function (h) {
+            if (s.state && s.state.column === h.column) { h.th.setAttribute('aria-sort', s.state.dir === 'desc' ? 'descending' : 'ascending'); } else { h.th.removeAttribute('aria-sort'); }
+        });
+        if (s.select) { s.select.value = s.state ? s.state.column + ':' + s.state.dir : ''; }
+    }
+    function setSort(table, state) {
+        var s = table.__agSort;
+        s.state = state;
+        try {
+            if (state) { sessionStorage.setItem(s.key, state.column + ':' + state.dir); } else { sessionStorage.removeItem(s.key); }
+        } catch (e) { /* ignore */ }
+        applySort(table);
+    }
+    function parseState(raw) {
+        var m = /^(\d+):(asc|desc)$/.exec(raw || '');
+        return m ? { column: parseInt(m[1], 10), dir: m[2] } : null;
+    }
+    // A module may turn its table into cards on a phone and hide the header: then a list «Сортировать» stands above the table.
+    function sortBar(table) {
+        var s = table.__agSort;
+        var style = window.getComputedStyle(s.headRow.parentNode);
+        var hidden = style.display === 'none' || style.visibility === 'hidden' || style.position === 'absolute'
+            || window.getComputedStyle(s.headRow).display === 'none';
+        if (!s.bar && hidden) {
+            var bar = document.createElement('label'); bar.className = 'tbl-sortbar';
+            var name = document.createElement('span'); name.textContent = 'Сортировать';
+            var select = document.createElement('select'); select.className = 'in sm';
+            select.add(new Option('как было', ''));
+            s.heads.forEach(function (h) {
+                select.add(new Option(h.label + ', по возрастанию', h.column + ':asc'));
+                select.add(new Option(h.label + ', по убыванию', h.column + ':desc'));
+            });
+            select.addEventListener('change', function (e) { e.stopPropagation(); setSort(table, parseState(select.value)); });
+            bar.appendChild(name); bar.appendChild(select);
+            var box = table.parentNode.classList.contains('tbl-scroll') ? table.parentNode : table;
+            box.parentNode.insertBefore(bar, box);
+            s.bar = bar; s.select = select;
+            select.value = s.state ? s.state.column + ':' + s.state.dir : '';
+        }
+        if (s.bar) { s.bar.hidden = !hidden; }
+    }
+    function makeSortable(table, index) {
+        if (table.__agSort) { applySort(table); return; }
+        if (table.closest('[data-nosort], [contenteditable]') || table.querySelector('tbody [rowspan]:not([rowspan="1"])')) { return; }
+        var headRow = headRowOf(table);
+        if (!headRow) { return; }
+        var heads = [], columns = 0;
+        Array.prototype.forEach.call(headRow.cells, function (th) {
+            var column = columns;
+            columns += th.colSpan;
+            var label = th.textContent.replace(/\s+/g, ' ').trim();
+            if (th.tagName !== 'TH' || label === '' || th.hasAttribute('data-nosort') || th.querySelector('a, button, input, select, label')) { return; }
+            var button = document.createElement('button');
+            button.type = 'button'; button.className = 'th-sort';
+            while (th.firstChild) { button.appendChild(th.firstChild); }
+            th.appendChild(button);
+            th.classList.add('th-able');
+            th.addEventListener('click', function () {
+                var now = table.__agSort.state;
+                var same = now && now.column === column;
+                setSort(table, !same ? { column: column, dir: 'asc' } : (now.dir === 'asc' ? { column: column, dir: 'desc' } : null));
+            });
+            heads.push({ th: th, column: column, label: label });
+        });
+        if (!heads.length) { return; }
+        // The choice lives as long as the browser tab: a page reloaded after saving a form keeps it.
+        var key = 'ag-sort:' + location.pathname + location.search + ':' + index + ':' + heads.map(function (h) { return h.label; }).join('|');
+        var saved = null;
+        try { saved = parseState(sessionStorage.getItem(key)); } catch (e) { /* ignore */ }
+        if (saved && !heads.some(function (h) { return h.column === saved.column; })) { saved = null; }
+        table.__agSort = { headRow: headRow, columns: columns, heads: heads, key: key, state: saved, bar: null, select: null };
+        applySort(table);
+        sortBar(table);
+    }
+    function sortTables(root) {
+        var found = Array.prototype.slice.call(root.querySelectorAll('table'));
+        var around = root.closest ? root.closest('table') : null;
+        if (around) { found.push(around); }
+        var all = Array.prototype.slice.call(document.querySelectorAll('table'));
+        found.forEach(function (t) { makeSortable(t, all.indexOf(t)); });
+    }
+    window.agSortTables = sortTables;
+    window.addEventListener('resize', function () {
+        document.querySelectorAll('table').forEach(function (t) { if (t.__agSort) { sortBar(t); } });
+    });
+
     // ---- copy to clipboard -----------------------------------------------------------------
     document.addEventListener('click', function (e) {
         var b = e.target.closest ? e.target.closest('[data-copy]') : null;
@@ -279,6 +495,7 @@
         later(every);
     }
     function initLive(root) {
+        sortTables(root);
         root.querySelectorAll('[data-ag-poll], [data-ag-step]').forEach(startLive);
     }
     window.agLive = initLive;

@@ -212,6 +212,17 @@ legend { padding: 0 6px; font-size: 0.82rem; font-weight: 550; color: var(--mute
 .tbl .num, .num { white-space: nowrap; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .tbl .r { text-align: right; white-space: nowrap; }
 .tbl-scroll { overflow-x: auto; }
+/* Sorting by a click on the header (admin.js adds the button, the arrows and aria-sort to every table with a header). */
+th.th-able { cursor: pointer; user-select: none; }
+.th-sort { appearance: none; display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; border-radius: 3px; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: inherit; white-space: inherit; color: inherit; cursor: pointer; }
+.th-sort::after { content: ""; flex: none; width: 7px; height: 11px; background: currentColor; opacity: 0.4; clip-path: polygon(50% 0, 100% 40%, 0 40%, 50% 0, 50% 100%, 0 60%, 100% 60%, 50% 100%); }
+th.th-able:hover, th.th-able[aria-sort] { color: var(--text); }
+th[aria-sort] .th-sort::after { height: 6px; opacity: 1; background: var(--accent); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+th[aria-sort="descending"] .th-sort::after { clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.th-sort:focus-visible { outline: none; box-shadow: var(--ring); }
+.tbl-sortbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 0.82rem; color: var(--muted); }
+.tbl-sortbar[hidden] { display: none; }
+.tbl-sortbar select.in { flex: 1; min-width: 0; width: auto; }
 .cell-title { font-weight: 550; text-decoration: none; }
 .cell-sub { display: block; color: var(--muted); font-family: var(--mono); font-size: 0.78rem; }
 

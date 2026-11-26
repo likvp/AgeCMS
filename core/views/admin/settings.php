@@ -223,7 +223,7 @@ $total = Redirects::count();
 <?php if ($redirects === []): ?>
     <div class="empty"><?= icon('link-simple') ?><b><?= $search === '' ? 'Редиректов нет' : 'Ничего не найдено' ?></b><span>Здесь появятся переходы со старых адресов: после смены адреса страницы и после переноса сайта с другой CMS.</span></div>
 <?php else: ?>
-    <div class="tbl-scroll"><table class="tbl"><tbody>
+    <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Старый адрес</th><th>Куда ведёт</th><th></th></tr></thead><tbody>
 <?php foreach ($redirects as $r): ?>
         <tr>
             <td class="redir-from"><span class="mono"><?= h($r['from']) ?></span><span class="cell-sub"><?= $r['kind'] === 'rename' ? 'адрес страницы изменён' : 'перенос с другого сайта' ?>, <?= admin_date($r['created_at']) ?></span></td>

@@ -553,7 +553,7 @@ final class Page
             }
         }
         if ($r['redirects'] !== []) {
-            $html .= '<details><summary>Переходы со старых адресов (' . count($r['redirects']) . ')</summary><div class="tbl-scroll"><table class="tbl"><tbody>';
+            $html .= '<details><summary>Переходы со старых адресов (' . count($r['redirects']) . ')</summary><div class="tbl-scroll"><table class="tbl"><thead><tr><th>Старый адрес</th><th>Куда ведёт</th></tr></thead><tbody>';
             foreach (array_slice($r['redirects'], 0, 1000) as $rd) {
                 $html .= '<tr><td class="mono">' . $e($rd['from']) . '</td><td class="mono">' . $e($rd['to']) . '</td></tr>';
             }
